@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Yotor",
+  "description": "Premium High-Definition Text-to-Video Cinematic Studio. Segment scripts into dynamic cinematic sequences with localized voiceovers, smart script timing, visual matches, and live renders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
