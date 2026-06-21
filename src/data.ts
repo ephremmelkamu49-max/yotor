@@ -105,7 +105,7 @@ export const DEFAULT_MUSIC: AudioTrack[] = [
   {
     id: "silent",
     title: "No Background Music (Voiceover Only)",
-    vibe: "Silent",
+    vibe: "No Music",
     url: "",
     am: "ሙዚቃ አያስፈልግም"
   },
@@ -113,7 +113,7 @@ export const DEFAULT_MUSIC: AudioTrack[] = [
     id: "ethio_jazz_vibe",
     title: "Ethio-Jazz Night (Ambient)",
     vibe: "Smooth & Cultural",
-    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    url: "/api/music?id=ethio_jazz_vibe",
     category: "Long",
     am: "የኢትዮ-ጃዝ ድባብ"
   },
@@ -121,62 +121,46 @@ export const DEFAULT_MUSIC: AudioTrack[] = [
     id: "habesha_modern_upbeat",
     title: "Modern Habesha Pop (Trending)",
     vibe: "Energetic & Modern",
-    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    url: "/api/music?id=habesha_modern_upbeat",
     category: "Short",
     am: "ዘመናዊ የሀበሻ ዜማ"
   },
   {
-    id: "traditional_masinko",
-    title: "Masinko Soul (Ancient Strings)",
-    vibe: "Traditional & Emotional",
-    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-    category: "Long",
-    am: "የማሲንቆ ቃና"
-  },
-  {
-    id: "lofi_chill_amharic",
+    id: "lofi_addis",
     title: "Lofi Addis (Study & Relax)",
     vibe: "Relaxed & Lo-Fi",
-    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+    url: "/api/music?id=lofi_addis",
     category: "Short",
     am: "አዲስ ሎፋይ"
   },
   {
-    id: "cinematic_heroic",
+    id: "uplifting_cinematic",
     title: "Heroic Destiny (Cinematic)",
     vibe: "Epic & Uplifting",
     url: "/api/music?id=uplifting_cinematic",
     category: "Long",
     am: "ጀግንነት (ሲኒማቲክ)"
-  },
-  {
-    id: "tech_cyberpunk_v2",
-    title: "Digital Addis (Cyberpunk)",
-    vibe: "Futuristic & Tech",
-    url: "/api/music?id=tech_cyberpunk",
-    category: "Short",
-    am: "ዲጂታል አዲስ (ሳይበርፐንክ)"
   }
 ];
 
 export const VIDEO_TEMPLATES = [
   { 
     id: 'trending-shorts', 
-    name: 'Trending Daily News (Shorts)', 
-    am: 'ወቅታዊ ዜና (አጭር)', 
-    prompt: 'In todays top story, the city is buzzing with excitement over the new technology expo. Experts are calling it a game changer for the region. Watch until the end to see the most impressive innovation.'
+    name: 'አጭር ወቅታዊ ዜና (Shorts)', 
+    am: 'አጭር ወቅታዊ ዜና (Shorts)', 
+    prompt: 'የዛሬው ዋነኛ ዜናችን፤ ከተማዋ በአዲሱ የቴክኖሎጂ ኤክስፖ በደስታ እየተናወጠች ነው። ባለሙያዎች ለክልሉ ትልቅ ለውጥ የሚያመጣ መሆኑን ተናግረዋል። በጣም አስገራሚ የሆኑ አዳዲስ ፈጠራዎችን ለማየት እስከ መጨረሻው ይከታተሉ።'
   },
   { 
     id: 'documentary-long', 
-    name: 'Historical Documentary (Long)', 
-    am: 'ታሪካዊ ዘጋቢ ፊልም (ረጅም)', 
-    prompt: 'The Aksumite Empire was one of the most powerful states of the ancient world. Known for its towering stelae and sophisticated trade routes, it remains a testament to early African civilization. Join us as we explore the hidden secrets of Aksum.'
+    name: 'ታሪካዊ ዘጋቢ ፊልም (Documentary)', 
+    am: 'ታሪካዊ ዘጋቢ ፊልም (Documentary)', 
+    prompt: 'የአክሱም ስርወ መንግስት በጥንታዊው አለም ውስጥ ካሉት እጅግ ሀያል መንግስታት አንዱ ነበር። በታላላቅ ሀውልቶቹና ዘመናዊ የንግድ መስመሮቹ የሚታወቀው ይህ ስርወ መንግስት፤ የቀደመው አፍሪካ ስልጣኔ ምስክር ሆኖ ይኖራል። የአክሱምን ሚስጥሮች ስንመረምር አብረውን ይቆዩ።'
   },
   { 
     id: 'motivational-tiktok', 
-    name: 'Motivational Life Wisdom', 
-    am: 'አነቃቂ የህይወት ምክር', 
-    prompt: 'Strength does not come from winning. Your struggles develop your strengths. When you go through hardships and decide not to surrender, that is strength.'
+    name: 'አነቃቂ የህይወት ጥበብ (Motivation)', 
+    am: 'አነቃቂ የህይወት ጥበብ (Motivation)', 
+    prompt: 'ጥንካሬ ከማሸነፍ አይመጣም። መሰናክሎች ጥንካሬህን ያዳብራሉ። በችግር ውስጥ ስታልፍና ላለመሸነፍ ስትወስን ያ ጥንካሬ ነው።'
   }
 ];
 

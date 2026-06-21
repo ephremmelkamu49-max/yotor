@@ -26,6 +26,8 @@ export interface SubtitleStyle {
   position: 'bottom' | 'middle' | 'top';
   fontFamily: 'Inter' | 'Space Grotesk' | 'JetBrains Mono' | 'Playfair Display' | 'Anton' | 'Archivo Black' | 'Outfit';
   uppercase: boolean;
+  animation: 'none' | 'typewriter' | 'karaoke' | 'bounce' | 'slide-up';
+  highlightColor: string; // color for highlighting words
 }
 
 export type VisualStyle = 'realistic' | '3d-animation' | '2d-animation' | 'anime' | 'watercolor' | 'cyberpunk' | 'sketch';

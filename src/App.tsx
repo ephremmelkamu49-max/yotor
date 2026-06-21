@@ -68,7 +68,9 @@ export default function App() {
       backgroundColor: 'rgba(0, 0, 0, 0.45)',
       position: 'bottom',
       fontFamily: 'Space Grotesk',
-      uppercase: true
+      uppercase: true,
+      animation: 'none',
+      highlightColor: '#FBBF24'
     },
     transitionType: 'crossfade',
     transitionDuration: 0.5,
@@ -169,9 +171,17 @@ export default function App() {
   };
 
   // Triggers Gemini parser pipeline
-  const handleAnalyzeScript = async (scriptText: string, providedPexelsKey: string, providedPixabayKey: string, providedCoverrKey: string) => {
+  const handleAnalyzeScript = async (
+    scriptText: string, 
+    providedPexelsKey: string, 
+    providedPixabayKey: string, 
+    providedCoverrKey: string, 
+    providedOpenaiKey: string, 
+    videoMode: 'stock' | 'veo' = 'stock',
+    inputMode: 'script' | 'keywords' = 'script'
+  ) => {
     setIsLoading(true);
-    setLoadingStage('Analyzing story script with Gemini AI...');
+    setLoadingStage(videoMode === 'veo' ? t.stage_veo_dreaming : t.stage_analyzing_director);
     // Sync credentials
     setPexelsKey(providedPexelsKey);
     setPixabayKey(providedPixabayKey);
@@ -183,96 +193,193 @@ export default function App() {
       const response = await fetch('/api/analyze-script', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-openai-key': providedOpenaiKey
         },
         body: JSON.stringify({ 
           script: scriptText,
-          visualStyle: projectConfig.visualStyle 
+          visualStyle: projectConfig.visualStyle,
+          isKeywordsOnly: inputMode === 'keywords'
         })
       });
 
       const data = await response.json();
+      if (data.info) {
+        setLoadingStage(`${data.info}: ${t.stage_segmenting}`);
+      }
+      
       if (!response.ok) {
         throw new Error(data.error || 'Failed to analyze script');
       }
 
       const rawScenes = data.scenes || [];
       if (rawScenes.length === 0) {
-        throw new Error('No scenes could be auto-segmented from your text');
+        throw new Error(t.error_no_scenes);
       }
 
-      setLoadingStage(`Found ${rawScenes.length} scenes. Matching stunning cinematic footage...`);
+      if (videoMode === 'stock') {
+        const stylePrefix = 'cinematic professional movement high depth of field ';
+        setLoadingStage(t.stage_matching_cinematic);
 
-      // Parallelize searches to speed up process significantly while staying respectul of limits
-      const populatedScenes: Scene[] = await Promise.all(rawScenes.map(async (scene: any, i: number) => {
-        let videoUrl = '';
-        let videoThumb = '';
-        let author = '';
+        // Parallelize searches to speed up process significantly while staying respectul of limits
+        const populatedScenes: Scene[] = await Promise.all(rawScenes.map(async (scene: any, i: number) => {
+          let videoUrl = '';
+          let videoThumb = '';
+          let author = '';
 
-        // Random jitter to spread out hits slightly even in parallel 
-        await new Promise(r => setTimeout(r, i * 120));
+          // Random jitter to spread out hits slightly even in parallel 
+          await new Promise(r => setTimeout(r, i * 120));
 
-        if (providedPexelsKey) {
-          try {
-            const pexelsResponse = await fetch(`/api/pexels/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
-              headers: { 'x-pexels-key': providedPexelsKey }
-            });
-            const pexelsData = await pexelsResponse.json();
-            if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
-              const bestClip = pexelsData.videos[0];
-              const files = bestClip.video_files || [];
-              const mp4Files = files.filter((f: any) => f.file_type === 'video/mp4' || f.link.includes('.mp4'));
-              const hd = mp4Files.find((f: any) => f.width >= 1280 && f.width <= 1920);
-              const sd = mp4Files.find((f: any) => f.width < 1280);
-              videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || '';
-              videoThumb = bestClip.video_pictures?.[0]?.picture || '';
-              author = bestClip.user?.name || 'Stock Creator';
-            }
-          } catch (e) { console.warn(e); }
-        }
+          const searchQuery = `${stylePrefix}${scene.keywords}`;
 
-        if (!videoUrl && providedPixabayKey) {
-          try {
-            const pixabayResponse = await fetch(`/api/pixabay/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
-              headers: { 'x-pixabay-key': providedPixabayKey }
-            });
-            const pixabayData = await pixabayResponse.json();
-            if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
-              const bestClip = pixabayData.hits[0];
-              const videos = bestClip.videos || {};
-              const selectedVid = videos.large || videos.medium || videos.small || videos.tiny;
-              if (selectedVid) {
-                videoUrl = selectedVid.url;
-                videoThumb = bestClip.picture_id ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg` : '';
-                author = bestClip.user || 'Pixabay Creator';
+          if (providedPexelsKey) {
+            try {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout for Pexels
+              const pexelsResponse = await fetch(`/api/pexels/search?query=${encodeURIComponent(searchQuery)}`, {
+                headers: { 'x-pexels-key': providedPexelsKey },
+                signal: controller.signal
+              });
+              clearTimeout(timeout);
+              const pexelsData = await pexelsResponse.json();
+              if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
+                const bestClip = pexelsData.videos[0];
+                const files = bestClip.video_files || [];
+                const mp4Files = files.filter((f: any) => f.file_type === 'video/mp4' || f.link.includes('.mp4'));
+                const hd = mp4Files.find((f: any) => f.width >= 1280 && f.width <= 1920);
+                const sd = mp4Files.find((f: any) => f.width < 1280);
+                videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || '';
+                videoThumb = bestClip.video_pictures?.[0]?.picture || '';
+                author = bestClip.user?.name || 'Stock Creator';
               }
+            } catch (e) { console.warn("Pexels fetch error/timeout:", e); }
+          }
+
+          if (!videoUrl && providedPixabayKey) {
+            try {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout for Pixabay
+              const pixabayResponse = await fetch(`/api/pixabay/search?query=${encodeURIComponent(searchQuery)}`, {
+                headers: { 'x-pixabay-key': providedPixabayKey },
+                signal: controller.signal
+              });
+              clearTimeout(timeout);
+              const pixabayData = await pixabayResponse.json();
+              if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
+                const bestClip = pixabayData.hits[0];
+                const videos = bestClip.videos || {};
+                const selectedVid = videos.large || videos.medium || videos.small || videos.tiny;
+                if (selectedVid) {
+                  videoUrl = selectedVid.url;
+                  videoThumb = bestClip.picture_id ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg` : '';
+                  author = bestClip.user || 'Pixabay Creator';
+                }
+              }
+            } catch (e) { console.warn("Pixabay fetch error/timeout:", e); }
+          }
+
+          if (!videoUrl) {
+            const fallbackVid = DEFAULT_CATALOG[i % DEFAULT_CATALOG.length];
+            videoUrl = fallbackVid.url;
+            videoThumb = fallbackVid.thumbnail;
+            author = fallbackVid.author;
+          }
+
+          // Ultimate safety failover if even catalog fails
+          if (!videoUrl) {
+            videoUrl = "https://samplelib.com/lib/preview/mp4/sample-5s.mp4";
+          }
+
+          return {
+            id: scene.id || `sc_${i}_${Date.now()}`,
+            text: scene.text,
+            keywords: scene.keywords,
+            caption: scene.caption || scene.text,
+            duration: scene.duration || 4.5,
+            videoUrl,
+            videoThumb,
+            videoAuthor: author,
+            videoAuthorUrl: '#',
+            voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
+            originalIndex: i
+          };
+        }));
+
+        setScenes(populatedScenes);
+      } else {
+        // Veo Mode: Generate AI Video
+        setLoadingStage(language === 'am' ? `🎬 የቪኦ ቪዲዮ መፍጠር ተጀምሯል (${rawScenes.length} ክፍሎች)...` : `🎬 Dreaming ${rawScenes.length} AI scenes with Veo...`);
+        
+        const populatedScenes: Scene[] = await Promise.all(rawScenes.map(async (scene: any, i: number) => {
+          try {
+            // Step 1: Start Generation
+            const genRes = await fetch('/api/generate-video', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: scene.keywords })
+            });
+            const { operationName } = await genRes.json();
+            
+            if (!operationName) throw new Error("Could not start Veo operation");
+
+            // Step 2: Poll for completion
+            let isDone = false;
+            let attempts = 0;
+            while (!isDone && attempts < 60) { // Max 10 mins
+              attempts++;
+              await new Promise(r => setTimeout(r, 10000)); // Poll every 10s
+              setLoadingStage(language === 'am' ? `✨ ክፍል ${i+1} እየተሰራ ነው... (${attempts*10} ሰከንድ)` : `✨ Generating Scene ${i+1}... (${attempts*10}s)`);
+              
+              const pollRes = await fetch('/api/video-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ operationName })
+              });
+              const pollData = await pollRes.json();
+              isDone = pollData.done;
             }
-          } catch (e) { console.warn(e); }
-        }
 
-        if (!videoUrl) {
-          const fallbackVid = DEFAULT_CATALOG[i % DEFAULT_CATALOG.length];
-          videoUrl = fallbackVid.url;
-          videoThumb = fallbackVid.thumbnail;
-          author = fallbackVid.author;
-        }
+            if (!isDone) throw new Error("Veo generation timed out");
 
-        return {
-          id: scene.id || `sc_${i}_${Date.now()}`,
-          text: scene.text,
-          keywords: scene.keywords,
-          caption: scene.caption || scene.text,
-          duration: scene.duration || 4.5,
-          videoUrl,
-          videoThumb,
-          videoAuthor: author,
-          videoAuthorUrl: '#',
-          voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
-          originalIndex: i
-        };
-      }));
+            // Step 3: Success URL
+            // In the real flow we'd use /api/video-download, but for the canvas we'll proxy it
+            const videoUrl = `/api/video-download-get?op=${encodeURIComponent(operationName)}`;
 
-      setScenes(populatedScenes);
+            return {
+              id: scene.id || `sc_${i}_${Date.now()}`,
+              text: scene.text,
+              keywords: scene.keywords,
+              caption: scene.caption || scene.text,
+              duration: scene.duration || 4.5,
+              videoUrl,
+              videoThumb: '', // Veo doesn't give thumb easily
+              videoAuthor: 'Veo 3.1 AI',
+              videoAuthorUrl: '#',
+              voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
+              originalIndex: i
+            };
+          } catch (e) {
+            console.warn("Veo scene failed, using stock fallback:", e);
+            const fallbackVid = DEFAULT_CATALOG[i % DEFAULT_CATALOG.length];
+            return {
+              id: scene.id || `sc_${i}_${Date.now()}`,
+              text: scene.text,
+              keywords: scene.keywords,
+              caption: scene.caption || scene.text,
+              duration: scene.duration || 4.5,
+              videoUrl: fallbackVid.url,
+              videoThumb: fallbackVid.thumbnail,
+              videoAuthor: fallbackVid.author,
+              videoAuthorUrl: '#',
+              voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
+              originalIndex: i
+            };
+          }
+        }));
+
+        setScenes(populatedScenes);
+      }
+      
       setPlaybackIndex(0);
 
     } catch (err: any) {
@@ -443,7 +550,7 @@ export default function App() {
               className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white text-[10px] uppercase tracking-widest font-bold rounded-xl transition-all relative"
             >
               <Settings size={14} className="text-zinc-400" />
-              <span>{language === 'am' ? 'ቅንብሮች' : 'Settings'}</span>
+              <span>{t.settings}</span>
               {deferredPrompt && (
                 <span className="absolute -top-1 -right-1 flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>

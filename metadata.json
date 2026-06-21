@@ -1,6 +1,6 @@
 {
   "name": "Remix: Yotor",
-  "description": "Premium High-Definition Text-to-Video Cinematic Studio. Segment scripts into dynamic cinematic sequences with localized voiceovers, smart script timing, visual matches, and live renders.",
+  "description": "Pro Text-to-Video Cinematic Studio with AI Video Generation (Veo 3.1) and GPT-4o Director. Features 4K cinematic sequences, premium localized voiceovers, and dynamic AI content mapping.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Eye, EyeOff, Sparkles, AlertCircle, FileText, Settings, Key, HelpCircle, Activity, Volume2, Play, TrendingUp } from 'lucide-react';
+import { Eye, EyeOff, Sparkles, AlertCircle, FileText, Settings, Key, HelpCircle, Activity, Volume2, Play, TrendingUp, Bot } from 'lucide-react';
 import { Language, translations } from '../translations';
 import { GOOGLE_TTS_LANGUAGES, VIDEO_TEMPLATES } from '../data';
 
 interface ScriptInputProps {
-  onAnalyze: (script: string, pexelsKey: string, pixabayKey: string, coverrKey: string) => Promise<void>;
+  onAnalyze: (script: string, pexelsKey: string, pixabayKey: string, coverrKey: string, openaiKey: string, videoMode: 'stock' | 'veo', inputMode: 'script' | 'keywords') => Promise<void>;
   script: string;
   setScript: (script: string) => void;
   isLoading: boolean;
@@ -19,10 +19,14 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
   const [pexelsKey, setPexelsKey] = useState<string>(() => localStorage.getItem('pexels_api_key') || '');
   const [pixabayKey, setPixabayKey] = useState<string>(() => localStorage.getItem('pixabay_api_key') || '');
   const [coverrKey, setCoverrKey] = useState<string>(() => localStorage.getItem('coverr_api_key') || '');
+  const [openaiKey, setOpenaiKey] = useState<string>(() => localStorage.getItem('openai_api_key') || '');
+  const [videoMode, setVideoMode] = useState<'stock' | 'veo'>('stock');
+  const [inputMode, setInputMode] = useState<'script' | 'keywords'>('script');
   
   const [showKey, setShowKey] = useState(false);
   const [showPixabayKey, setShowPixabayKey] = useState(false);
   const [showCoverrKey, setShowCoverrKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
   const [loadingDiagnostic, setLoadingDiagnostic] = useState(false);
@@ -60,8 +64,9 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
     if (pexelsKey) localStorage.setItem('pexels_api_key', pexelsKey); else localStorage.removeItem('pexels_api_key');
     if (pixabayKey) localStorage.setItem('pixabay_api_key', pixabayKey); else localStorage.removeItem('pixabay_api_key');
     if (coverrKey) localStorage.setItem('coverr_api_key', coverrKey); else localStorage.removeItem('coverr_api_key');
+    if (openaiKey) localStorage.setItem('openai_api_key', openaiKey); else localStorage.removeItem('openai_api_key');
     
-    onAnalyze(script, pexelsKey, pixabayKey, coverrKey);
+    onAnalyze(script, pexelsKey, pixabayKey, coverrKey, openaiKey, videoMode, inputMode);
   };
 
   return (
@@ -164,6 +169,30 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
                 </button>
               </div>
             </div>
+
+            <div>
+              <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400 mb-1.5 mt-3">
+                <Bot size={13} className="text-indigo-400" />
+                ChatGPT Pro (OpenAI Key) <span className="text-zinc-650 font-normal lowercase">(For GPT-4o Power)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showOpenaiKey ? "text" : "password"}
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
+                  id="openai-key"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                >
+                  {showOpenaiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
             
             <div className="pt-3.5 border-t border-zinc-900 space-y-2">
               <div className="flex items-center justify-between">
@@ -187,11 +216,25 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
                     <div>
                       <div className="font-semibold text-zinc-300 flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full ${diagResult.geminiApiKeyConfigured ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} />
-                        Gemini AI Core (ይዘት መፍጠሪያ)
+                        {language === 'am' ? 'ጀሚኒ አይ ፔይንክሰል (ይዘት መፍጠሪያ)' : 'Gemini AI Core (Content Gen)'}
                       </div>
                     </div>
                     <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${diagResult.geminiApiKeyConfigured ? 'text-emerald-400 bg-emerald-500/5' : 'text-rose-450 bg-rose-500/5'}`}>
-                      {diagResult.geminiApiKeyConfigured ? "ONLINE" : "MISSING"}
+                      {diagResult.geminiApiKeyConfigured ? t.active : t.inactive}
+                    </span>
+                  </div>
+
+                  <div className="flex items-start justify-between bg-[#080808]/50 p-2 rounded border border-zinc-900/60">
+                    <div className="flex-1 pr-2">
+                      <div className="font-semibold text-zinc-300 flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          diagResult.veoStatus?.includes('Operational') ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`} />
+                        {t.engine_veo}
+                      </div>
+                    </div>
+                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${diagResult.veoStatus?.includes('Operational') ? 'text-emerald-400 bg-emerald-500/5' : 'text-rose-450 bg-rose-500/5'}`}>
+                      {diagResult.veoStatus?.includes('Operational') ? t.active : t.inactive}
                     </span>
                   </div>
 
@@ -201,15 +244,18 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
                         <span className={`w-1.5 h-1.5 rounded-full ${
                           diagResult.geminiTtsStatus === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'
                         }`} />
-                        Premium Amharic Narrator (የተራኪ ድምፅ)
+                        {t.engine_tts}
                       </div>
                     </div>
+                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${diagResult.geminiTtsStatus === 'ok' ? 'text-emerald-400 bg-emerald-500/5' : 'text-rose-450 bg-rose-500/5'}`}>
+                      {diagResult.geminiTtsStatus === 'ok' ? t.active : t.inactive}
+                    </span>
                   </div>
                 </div>
               ) : (
                 <div className="text-[10px] text-zinc-500 italic font-mono p-2 flex items-center gap-2">
                   <div className="w-2.5 h-2.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                  {language === 'am' ? 'ዳይናሚክ ሲስተም ምርመራ...' : 'Dynamic system verification...'}
+                  {t.diagnostics_btn}...
                 </div>
               )}
             </div>
@@ -219,8 +265,81 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
         <div>
            <div className="flex items-center justify-between mb-3 mt-4">
              <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+               <Settings size={13} className="text-indigo-400" />
+               {t.input_mode}
+             </label>
+           </div>
+           <div className="grid grid-cols-2 gap-2 mb-4">
+             <button
+               type="button"
+               onClick={() => setInputMode('script')}
+               className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border transition-all ${
+                 inputMode === 'script' ? 'bg-indigo-500/10 border-indigo-500/50 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.1)]' : 'bg-zinc-950 border-zinc-900 text-zinc-500'
+               }`}
+             >
+               <FileText size={14} />
+               <span className="text-[10px] font-bold">{t.full_script}</span>
+             </button>
+             <button
+               type="button"
+               onClick={() => setInputMode('keywords')}
+               className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border transition-all ${
+                 inputMode === 'keywords' ? 'bg-purple-500/10 border-purple-500/50 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.1)]' : 'bg-zinc-950 border-zinc-900 text-zinc-500'
+               }`}
+             >
+               <Sparkles size={14} />
+               <span className="text-[10px] font-bold">{t.quick_reel}</span>
+             </button>
+           </div>
+
+
+
+           <div className="flex items-center justify-between mb-3 mt-4">
+             <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+               <Volume2 size={13} className="text-indigo-400" />
+               {t.video_source}
+             </label>
+           </div>
+           <div className="grid grid-cols-2 gap-2 mb-4">
+             <button
+               type="button"
+               onClick={() => setVideoMode('stock')}
+               className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all text-center group ${
+                 videoMode === 'stock' 
+                   ? 'bg-indigo-500/10 border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]' 
+                   : 'bg-zinc-950 border-zinc-900 grayscale hover:grayscale-0'
+               }`}
+             >
+               <Play size={14} className={videoMode === 'stock' ? 'text-indigo-400' : 'text-zinc-500'} />
+               <span className={`text-[10px] font-bold mt-1.5 ${videoMode === 'stock' ? 'text-indigo-400' : 'text-zinc-500'}`}>
+                 {t.stock_library}
+               </span>
+             </button>
+             <button
+               type="button"
+               onClick={() => setVideoMode('veo')}
+               className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all text-center relative group ${
+                 videoMode === 'veo' 
+                   ? 'bg-purple-500/10 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]' 
+                   : 'bg-zinc-950 border-zinc-900 grayscale hover:grayscale-0'
+               }`}
+             >
+               <div className="absolute -top-2 -right-1 bg-gradient-to-r from-purple-500 to-indigo-500 text-[8px] font-black text-white px-1.5 py-0.5 rounded-full shadow-lg border border-purple-400/50 animate-pulse">
+                 FREE
+               </div>
+               <Sparkles size={14} className={videoMode === 'veo' ? 'text-purple-400' : 'text-zinc-500'} />
+               <span className={`text-[10px] font-bold mt-1.5 ${videoMode === 'veo' ? 'text-purple-400' : 'text-zinc-500'}`}>
+                 {t.veo_ai_engine}
+               </span>
+             </button>
+           </div>
+
+
+
+           <div className="flex items-center justify-between mb-3 mt-4">
+             <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
                <TrendingUp size={13} className="text-amber-400" />
-               {language === 'am' ? 'ወቅታዊ ትሬንዶች (Trending Templates)' : 'Trending Templates'}
+               {t.trending_templates}
              </label>
            </div>
            <div className="grid grid-cols-3 gap-2 mb-6">
@@ -229,21 +348,19 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
                  key={tmp.id}
                  type="button"
                  onClick={() => {
-                   if (window.confirm(language === 'am' ? 'ያለውን ፅሁፍ በዝግጁ ጭብጥ መቀየር ይፈልጋሉ?' : 'Replace current script with this template?')) {
-                     setScript(tmp.prompt);
-                   }
+                   setScript(tmp.prompt);
                  }}
                  className="flex flex-col items-center justify-center p-3 rounded-xl bg-zinc-950 border border-zinc-900 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all text-center group"
                >
                  <span className="text-[10px] font-bold text-zinc-300 group-hover:text-amber-400">
-                   {language === 'am' ? tmp.am : tmp.name}
+                   {tmp.am}
                  </span>
                </button>
              ))}
            </div>
 
            <div className="flex items-center justify-between mb-1.5 mt-0">
-            <label className="text-xs font-semibold text-zinc-400">{language === 'am' ? `የታሪኩ ዝርዝር (${wordCount} ቃላት)` : `Script Body (${wordCount} words)`}</label>
+            <label className="text-xs font-semibold text-zinc-400">{t.script_body} ({wordCount} {language === 'am' ? 'ቃላት' : 'words'})</label>
             <div className="text-[10px] font-mono text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
               {t.estimated_duration}: <span className="text-indigo-400 font-medium">{minutes > 0 ? `${minutes}${t.estimated_minutes} ` : ''}{seconds}{t.estimated_seconds}</span>
             </div>
@@ -251,7 +368,11 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
           <textarea
             value={script}
             onChange={(e) => setScript(e.target.value)}
-            placeholder={t.script_placeholder}
+            placeholder={
+              inputMode === 'keywords' 
+                ? t.placeholder_keywords
+                : t.placeholder_script
+            }
             rows={8}
             className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 placeholder-zinc-650 text-sm rounded-xl p-4 focus:outline-none focus:border-indigo-500/50 resize-y leading-relaxed font-sans"
             id="script-text-input"

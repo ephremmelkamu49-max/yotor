@@ -178,7 +178,7 @@ export default function RenderModal({
       if (totalSecondsToRender > 60) {
         const m = Math.floor(totalSecondsToRender / 60);
         const s = Math.round(totalSecondsToRender % 60);
-        addLog(`⏳ ረጅም ቪዲዮ ተገኝቷል (${m} ደቂቃ ከ ${s} ሰከንድ)። የይቶር High-Performance ዥረት ቋት (Streaming Buffers) በትክክል ተዘጋጅተዋል...`);
+        addLog(`⏳ ${t.long_video_detected} (${m} ${t.estimated_minutes} ${s} ${t.estimated_seconds}). ${t.streaming_buffers_ready}`);
       }
 
       addLog("Initializing AudioContext Engine...");
@@ -266,11 +266,11 @@ export default function RenderModal({
       if (dataProfile === 'saver') {
         options.videoBitsPerSecond = 750000; // 750 Kbps (Very dense compression, beautiful enough but 5x smaller file size)
         options.audioBitsPerSecond = 48000;  // 48 Kbps
-        addLog("⚡ [Ultra-Saver] የዳታ ቆጣቢ ሞድ በርቷል፡ ቪዲዮውን በትንሽ ዳታ በፍጥነት ለደንበኞች ለማድረስ በጥራት ተጨምቆ በመስራት ላይ ነው...");
+        addLog(`⚡ [Ultra-Saver] ${t.data_saving_mode}...`);
       } else {
         options.videoBitsPerSecond = 3200000; // 3.2 Mbps (Uncompressed cinema frames)
         options.audioBitsPerSecond = 128000;  // 128 Kbps
-        addLog("💎 [Cinema-Max] የከፍተኛ ጥራት ሞድ በርቷል፡ እያንዳንዱ ምስል እና ድምፅ ሳይቀነስ በላቀ ጥራት በመዘጋጀት ላይ ነው...");
+        addLog(`💎 [Cinema-Max] ${t.data_premium_mode}...`);
       }
 
       addLog(`Setting up MediaRecorder compression wrapper. Mode: ${options.mimeType || 'default'} (Target Extension: .${extension})`);
@@ -424,9 +424,9 @@ export default function RenderModal({
         <div className="text-center pb-4 mb-5 border-b border-zinc-805">
           <h1 className="text-sm font-light text-zinc-100 uppercase tracking-widest justify-center flex items-center gap-2">
             <FileVideo className="text-indigo-400" size={18} />
-            {language === 'am' ? 'ዮቶር ቪዲዮ አቀናባሪና መጋጠሚያ' : 'Render & Stitch Studio'}
+            {t.render_studio}
           </h1>
-          <p className="text-xs text-zinc-500 mt-1.5">{language === 'am' ? 'የመረጧቸውን ቪዲዮዎችና ተራኪ ድምፅ በአንድ ላይ ያዋህዳል' : 'Stitches cinematic landscape clips and sound together'}</p>
+          <p className="text-xs text-zinc-500 mt-1.5">{t.render_log_assembling}</p>
         </div>
 
         {renderStatus === 'idle' && (
@@ -439,10 +439,10 @@ export default function RenderModal({
               <div className="flex items-center justify-between gap-2">
                 <div className="space-y-0.5">
                   <span className="px-1.5 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-[8px] font-mono font-bold text-indigo-400 rounded-md uppercase tracking-wide">
-                    {language === 'am' ? 'ባለሙያ የአማርኛ ተራኪ' : 'Fluent Amharic Voiceover'}
+                    {t.engine_tts}
                   </span>
                   <h4 className="text-[11px] font-bold text-white uppercase tracking-tight">
-                    🎙️ {language === 'am' ? 'የአማርኛ የወንድ ተራኪ ድምፅ (Ameha Neural) - ገባሪ' : 'Premium Fluent Male Voicing Active'}
+                    🎙️ {t.voice_speaker_label} (Ameha Neural) - {t.active}
                   </h4>
                 </div>
                 
@@ -454,9 +454,9 @@ export default function RenderModal({
 
               <div className="p-3 bg-[#030304] border border-zinc-900 rounded-xl space-y-2">
                 <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                  <span>{language === 'am' ? 'የቪዲዮ ማውረድ ኮታ (Free Video Downloads):' : 'Free App Video Downloads Remaining:'}</span>
+                  <span>{t.export_quota_title}:</span>
                   <span className={`font-bold font-mono text-xs ${exportQuota > 0 ? 'text-indigo-400' : 'text-rose-400'}`}>
-                    {exportQuota} / 3 {language === 'am' ? 'ቪዲዮ' : 'videos'}
+                    {exportQuota} / 3 {t.ready_to_export}
                   </span>
                 </div>
 
@@ -479,9 +479,7 @@ export default function RenderModal({
 
                 <div className="flex items-center justify-between gap-4 mt-1 text-[10px] text-zinc-500 font-sans leading-normal">
                   <p>
-                    {language === 'am' 
-                      ? 'ቪዲዮ ባወረዱ ቁጥር ይህ ኮታ ይቀንሳል። ሙሉ በሙሉ በነጻ እዚህ መጨመር ይችላሉ!' 
-                      : 'Every video download deducts from this quota. Refill fully for free right here!'}
+                    {t.quota_pills_desc}
                   </p>
                   
                   <button
@@ -489,18 +487,16 @@ export default function RenderModal({
                     onClick={handleRefillQuota}
                     className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:text-indigo-400 text-zinc-400 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all active:scale-[0.98] shrink-0"
                   >
-                    🔄 {language === 'am' ? 'ኮታ ሙላ' : 'Refill Quota'}
+                    🔄 {t.refill_quota}
                   </button>
                 </div>
               </div>
 
               {exportQuota === 0 && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-350 text-[10px] rounded-xl font-semibold leading-relaxed space-y-0.5">
-                  <span className="font-mono text-[8.5px] text-rose-400 uppercase tracking-widest block">⚠️ QUOTA EXHAUSTED</span>
+                  <span className="font-mono text-[8.5px] text-rose-400 uppercase tracking-widest block">⚠️ {t.quota_exhausted}</span>
                   <p>
-                    {language === 'am' 
-                      ? 'ይቅርታ! የነጻ 3 ቪዲዮ የማውረድ ዕድልዎ አልቋል። እባከዎን "ኮታ ሙላ" የሚለውን በመጫን ተጨማሪ የነጻ እድል አሁን ይውሰዱ።' 
-                      : 'Sorry! Your free 3 video download limit is exhausted. Please click the "Refill Quota" button above to get more free downloads instantly.'}
+                    {t.refill_desc}
                   </p>
                 </div>
               )}
@@ -508,7 +504,7 @@ export default function RenderModal({
 
             {/* Resolution/Duration segment */}
             <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
-              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">{language === 'am' ? 'የቪዲዮ ማቀናበሪያ ክፍሎች ምርጫ:' : 'Set Baking Range Option:'}</span>
+              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">{t.baking_range}</span>
               
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -520,8 +516,8 @@ export default function RenderModal({
                       : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  <span className="text-xs font-semibold">{language === 'am' ? 'ሙሉ ቪዲዮ አውጣ (HQ)' : 'HQ Full Render'}</span>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">{language === 'am' ? `ሁሉንም ${scenes.length} የቪዲዮ ክፍሎች ያቀናጃል` : `Renders complete ${scenes.length} scenes verbatim stream`}</span>
+                  <span className="text-xs font-semibold">{t.hq_full_render}</span>
+                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">{t.scenes_verbatim} ({scenes.length})</span>
                 </button>
 
                 <button
@@ -533,8 +529,8 @@ export default function RenderModal({
                       : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  <span className="text-xs font-semibold">{language === 'am' ? 'የሙከራ አጭር ቪዲዮ' : 'Fast Test Segment'}</span>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">{language === 'am' ? 'የመጀመሪያዎቹን 2 ክፍሎች ብቻ ለፈጣን ሙከራ ያዘጋጃል' : 'Bakes first 2 scenes for instantaneous review'}</span>
+                  <span className="text-xs font-semibold">{t.fast_test_segment}</span>
+                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">{t.fast_instant_review}</span>
                 </button>
               </div>
             </div>
@@ -542,7 +538,7 @@ export default function RenderModal({
             {/* Choose Video quality according to active paid plans */}
             <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
               <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block flex items-center gap-1">
-                <Crown size={11} className="text-cyan-400" /> {language === 'am' ? 'የቪዲዮ ማውጫ ጥራት ይምረጡ:' : 'Choose Export Resolution:'}
+                <Crown size={11} className="text-cyan-400" /> {t.export_res}
               </span>
               
               <div className="grid grid-cols-2 gap-3">
@@ -557,11 +553,11 @@ export default function RenderModal({
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold">{language === 'am' ? '720p መካከለኛ (HD)' : '720p HD Quality'}</span>
+                    <span className="text-xs font-semibold">{t.quality_720}</span>
                     {exportQuality === '720p' && <div className="w-2 h-2 rounded-full bg-teal-400" />}
                   </div>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">1280x720 ({language === 'am' ? 'መደበኛ ጥራት' : 'Standard HD'})</span>
-                  <span className="text-[8px] font-mono text-zinc-650 mt-1 uppercase">{language === 'am' ? 'የተፈቀደ • 10K ብር ዕቅድ' : 'Unlocked • 10K ETB Plan'}</span>
+                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">1280x720</span>
+                  <span className="text-[8px] font-mono text-zinc-650 mt-1 uppercase">{t.unlocked_10k}</span>
                 </button>
 
                 {/* 1080p Full HD Cosmic Quality - locked if current activePlan is '720p' */}
@@ -574,7 +570,7 @@ export default function RenderModal({
                       <Lock size={11} className="text-zinc-700" />
                     </div>
                     <span className="text-[9px] text-zinc-650 mt-1 font-sans">1920x1080 (Cinema FHD)</span>
-                    <span className="text-[8px] font-mono text-red-400/80 mt-1 uppercase font-bold">{language === 'am' ? 'ባለ 15K ዕቅድ ያስፈልጋል' : '15K ETB Plan Required'}</span>
+                    <span className="text-[8px] font-mono text-red-400/80 mt-1 uppercase font-bold">{t.plan_requires_15k}</span>
                   </div>
                 ) : (
                   <button
@@ -588,12 +584,12 @@ export default function RenderModal({
                   >
                     <div className="flex items-center justify-between w-full">
                       <span className="text-xs font-semibold flex items-center gap-1">
-                        <Crown size={11} className="text-cyan-400" /> {language === 'am' ? '1080p ከፍተኛ (Cosmic)' : '1080p Cosmic'}
+                        <Crown size={11} className="text-cyan-400" /> {t.quality_1080}
                       </span>
                       {exportQuality === '1080p' && <div className="w-2 h-2 rounded-full bg-cyan-400" />}
                     </div>
-                    <span className="text-[9px] text-zinc-500 mt-1 font-sans">1920x1080 ({language === 'am' ? 'ሲኒማ ጥራት' : 'Cinema Quality'})</span>
-                    <span className="text-[8.5px] font-mono text-cyan-400 mt-1 uppercase">{language === 'am' ? 'የተፈቀደ • 15K ብር ዕቅድ' : 'Unlocked • 15K ETB Plan'}</span>
+                    <span className="text-[9px] text-zinc-500 mt-1 font-sans">1920x1080</span>
+                    <span className="text-[8.5px] font-mono text-cyan-400 mt-1 uppercase">{t.unlocked_15k}</span>
                   </button>
                 )}
               </div>

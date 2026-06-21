@@ -1,8 +1,9 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/genai";
 import { EdgeTTS } from "edge-tts-universal";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -64,6 +65,14 @@ if (process.env.GEMINI_API_KEY) {
   });
 }
 
+// Setup OpenAI Client
+let openai: OpenAI | null = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+}
+
 // Robust fallback wrapper to route around 503 (model overloaded) and other transient errors
 async function generateContentWithFallback(
   aiInstance: GoogleGenAI,
@@ -97,15 +106,143 @@ async function generateContentWithFallback(
   throw lastError;
 }
 
+// --- Veo Video Generation Endpoints ---
+
+app.post("/api/generate-video", async (req, res) => {
+  if (!ai) return res.status(500).json({ error: "Gemini API not configured" });
+  const { prompt, aspectRatio = '16:9', resolution = '720p' } = req.body;
+  
+  try {
+    const operation = await ai.models.generateVideos({
+      model: 'veo-3.1-lite-generate-preview',
+      prompt,
+      config: {
+        numberOfVideos: 1,
+        resolution,
+        aspectRatio
+      }
+    });
+    res.json({ operationName: operation.name });
+  } catch (err: any) {
+    console.error("Veo Generation Error:", err);
+    res.status(500).json({ error: err.message || "Failed to start video generation" });
+  }
+});
+
+app.post("/api/video-status", async (req, res) => {
+  if (!ai) return res.status(500).json({ error: "Gemini API not configured" });
+  const { operationName } = req.body;
+  if (!operationName) return res.status(400).json({ error: "operationName is required" });
+
+  try {
+    const updated = await ai.operations.getVideosOperation({ 
+      operation: { name: operationName } as any 
+    });
+    res.json({ done: updated.done, status: updated.metadata?.state });
+  } catch (err: any) {
+    console.error("Veo Status Error:", err);
+    res.status(500).json({ error: err.message || "Failed to check video status" });
+  }
+});
+
+app.post("/api/video-download", async (req, res) => {
+  if (!ai) return res.status(500).json({ error: "Gemini API not configured" });
+  const { operationName } = req.body;
+  if (!operationName) return res.status(400).json({ error: "operationName is required" });
+
+  try {
+    const updated = await ai.operations.getVideosOperation({ 
+      operation: { name: operationName } as any 
+    });
+    
+    if (!updated.done) {
+      return res.status(400).json({ error: "Video processing is not complete" });
+    }
+
+    const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
+    if (!uri) {
+      return res.status(404).json({ error: "No video URI found in completed operation" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    const videoRes = await fetch(uri, {
+      headers: { 'x-goog-api-key': apiKey! },
+    });
+
+    if (!videoRes.ok) {
+      throw new Error(`Failed to fetch video from storage: ${videoRes.statusText}`);
+    }
+
+    res.setHeader('Content-Type', 'video/mp4');
+    // Using reader for full compatibility with global fetch in Node
+    const reader = videoRes.body?.getReader();
+    if (!reader) throw new Error("No reader on video response body");
+    
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+    }
+    res.end();
+  } catch (err: any) {
+    console.error("Veo Download Error:", err);
+    res.status(500).json({ error: err.message || "Failed to download video" });
+  }
+});
+
+app.get("/api/video-download-get", async (req, res) => {
+  if (!ai) return res.status(500).json({ error: "Gemini API not configured" });
+  const operationName = req.query.op as string;
+  if (!operationName) return res.status(400).json({ error: "op (operationName) is required" });
+
+  try {
+    const updated = await ai.operations.getVideosOperation({ 
+      operation: { name: operationName } as any 
+    });
+    
+    if (!updated.done) {
+      return res.status(400).json({ error: "Video processing is not complete" });
+    }
+
+    const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
+    if (!uri) {
+      return res.status(404).json({ error: "No video URI found" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    const videoRes = await fetch(uri, {
+      headers: { 'x-goog-api-key': apiKey! },
+    });
+
+    if (!videoRes.ok) throw new Error("Failed to fetch video");
+
+    res.setHeader('Content-Type', 'video/mp4');
+    const reader = videoRes.body?.getReader();
+    if (!reader) throw new Error("No reader");
+    
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+    }
+    res.end();
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 1. Script Analysis API - uses Gemini to split user text into structured cinematic scenes
 app.post("/api/analyze-script", async (req, res) => {
-  const { script, visualStyle } = req.body;
+  const { script, visualStyle, isKeywordsOnly } = req.body;
+  const providedOpenaiKey = req.headers["x-openai-key"] as string;
+  
   if (!script || typeof script !== "string") {
     return res.status(400).json({ error: "Script text is required" });
   }
 
   const wordCount = script.trim().split(/\s+/).length;
-  const isLongScript = wordCount > 350;
+  const isAmharic = /[\u1200-\u137F]/.test(script);
+  const isLongScript = script.length > 2000;
 
   const styleMapping: Record<string, string> = {
     'realistic': 'Cinematic realistic 4k, professional lighting, photorealistic textures',
@@ -117,20 +254,55 @@ app.post("/api/analyze-script", async (req, res) => {
     'sketch': 'Hand-drawn pencil sketch, charcoal texture, artistic line work'
   };
 
-  if (!ai) {
+  if (isKeywordsOnly) {
+    const reelPrompt = `Action: Create a 5-scene high-energy cinematic social media reel for the topic: "${script}". 
+    Format: JSON { "scenes": [ { "text": "description", "keywords": "3-5 high quality stock search terms", "caption": "short overlay", "duration": 3 } ] }`;
+
+    try {
+      if (!ai) throw new Error("AI not configured");
+      const result = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{ role: "user", parts: [{ text: reelPrompt + " \nONLY return JSON." }] }]
+      });
+      const responseText = result.text.trim();
+      const parsed = JSON.parse(responseText);
+      const processed = parsed.scenes.map((s: any, idx: number) => ({
+        id: `sc_reel_${idx}`,
+        ...s,
+        originalIndex: idx
+      }));
+      return res.json({ scenes: processed, info: 'AI Reel Dreamer' });
+    } catch (e) {
+      const mockScenes = Array.from({ length: 5 }).map((_, i) => ({
+        id: `scene_kw_${i}`,
+        text: i === 0 ? `Video topic: ${script}` : "",
+        keywords: i === 0 ? script : `${script} cinematic ${i}`,
+        caption: i === 0 ? script : "",
+        duration: 3,
+        originalIndex: i
+      }));
+      return res.json({ scenes: mockScenes, info: 'Baseline Reels' });
+    }
+  }
+
+  if (!ai && !openai && !(providedOpenaiKey?.startsWith('sk-'))) {
     // If API key is missing, fall back to an smart adaptive splitter so the app handles 30 minutes smoothly!
-    console.warn("GEMINI_API_KEY is not defined. Falling back to mechanical split.");
+    console.warn("Neither GEMINI_API_KEY nor OPENAI_API_KEY is defined. Falling back to mechanical split.");
     const sentences = script
       .split(/(?<=[.!?።፤፧])\s+/)
       .map(s => s.trim())
       .filter(s => s.length > 0);
     
+    if (sentences.length === 0 && script.trim().length > 0) {
+      sentences.push(script.trim());
+    }
+    
     // Group sentences if the script is long to avoid hundreds of tiny scenes (critical for 30 minutes support)
     const groupedSentences: string[] = [];
     let currentGroup = "";
     let currentWordSum = 0;
-    // Aim for 35 words per scene if long script (~15 seconds text), or sentence-by-sentence if short
-    const maxTargetWords = isLongScript ? 50 : 25;
+    // Aim for ~10-15 seconds per scene for high cinematic density
+    const maxTargetWords = isLongScript ? 30 : 15;
 
     for (const sentence of sentences) {
       const sentenceWords = sentence.split(/\s+/).length;
@@ -149,11 +321,11 @@ app.post("/api/analyze-script", async (req, res) => {
 
     const scenes = groupedSentences.map((seg, idx) => {
       const segWords = seg.split(/\s+/).length;
-      // speaking speed estimated at 2.4 words per second
-      const duration = Math.max(4.0, Number((segWords / 2.4).toFixed(1))); 
-      // Simple visual keyword guess
-      const nouns = seg.toLowerCase().match(/\b(forest|sunset|technology|people|ocean|city|space|nature|abstract|cyberpunk|office|coding|data|future|workspace|ethiopia|mountains|landscape|flower|human|animal)\b/g) || ["breathtaking cinematic landscape"];
-      const keywords = `${nouns[0]} ${styleMapping[visualStyle || 'realistic']} motion 4k`;
+      // speaking speed estimated at 2.2 words per second (slightly slower for Amharic clarity)
+      const duration = Math.max(4.0, Number((segWords / 2.2).toFixed(1))); 
+      // Enhanced visual keyword guess including more Amharic-relevant roots
+      const nouns = seg.toLowerCase().match(/\b(forest|sunset|technology|people|ocean|city|space|nature|abstract|cyberpunk|office|coding|data|future|workspace|ethiopia|mountains|landscape|flower|human|animal|addis|coffee|culture|history|traditional|luxury|peaceful|wildlife)\b/g) || ["breathtaking cinematic landscape"];
+      const keywords = `${nouns[0]} ${styleMapping[visualStyle || 'realistic']} motion 16:9 cinematic`;
       return {
         id: `scene_${idx}_${Date.now()}`,
         text: seg,
@@ -164,6 +336,17 @@ app.post("/api/analyze-script", async (req, res) => {
       };
     });
 
+    if (scenes.length === 0) {
+      scenes.push({
+        id: `scene_fallback_${Date.now()}`,
+        text: script,
+        keywords: `cinematic ${styleMapping[visualStyle || 'realistic']}`,
+        caption: script,
+        duration: 8,
+        originalIndex: 0
+      });
+    }
+
     return res.json({ scenes, fallback: true, warning: "Using server-side local adaptive regex parsing." });
   }
 
@@ -171,7 +354,7 @@ app.post("/api/analyze-script", async (req, res) => {
     const isAmharic = /[\u1200-\u137F]/.test(script);
     // Build an intelligent length-aware prompt to bundle sentences in long scripts!
     const lengthInstruction = `SCENIC DENSITY & LANGUAGE SPECIFICS:
-Break the script into logical, complete, and sequential scenes.
+Break the script into logical, complete, and sequential scenes. Aim for a high cinematic density: Target scene durations between 6 and 12 seconds each. Do NOT create long 30+ second scenes as they look static.
 ${isAmharic ? `Since the script contains AMHARIC (Ge'ez) text:
 - Identify sentence boundaries primarily using the Amharic punctuation markers '።' (final period), '፤' (semicolon), or '፧'.
 - Group sentences or clauses matching logical visual arcs so they form highly coherent dramatic sections.
@@ -201,6 +384,43 @@ User Script:
 """
 ${script}
 """`;
+
+    let processedScenes: any[] = [];
+
+    // Attempt OpenAI first if requested or available (ChatGPT Pro request)
+    const effectiveOpenAiKey = providedOpenaiKey || process.env.OPENAI_API_KEY;
+    if (effectiveOpenAiKey) {
+      try {
+        console.log("[Director Engine] Using OpenAI (GPT-4o) for high-precision direction...");
+        const localOpenai = new OpenAI({ apiKey: effectiveOpenAiKey });
+        const chatCompletion = await localOpenai.chat.completions.create({
+          messages: [{ role: "user", content: prompt }],
+          model: "gpt-4o",
+          response_format: { type: "json_object" }
+        });
+        
+        const content = chatCompletion.choices[0].message.content;
+        if (content) {
+          const parsedResult = JSON.parse(content);
+          processedScenes = parsedResult.scenes.map((scene: any, index: number) => ({
+            id: `scene_${index}_${Date.now()}`,
+            ...scene,
+            originalIndex: index
+          }));
+          return res.json({ 
+            scenes: processedScenes, 
+            engine: 'openai', 
+            info: 'Precision Director (GPT-4o)' 
+          });
+        }
+      } catch (openAiErr: any) {
+        console.error("OpenAI Direction failed, falling back to Gemini:", openAiErr);
+      }
+    }
+
+    if (!ai) {
+        throw new Error("No primary AI engine available after OpenAI failure.");
+    }
 
     const response = await generateContentWithFallback(ai, {
       model: "gemini-3.1-flash-lite",
@@ -239,13 +459,17 @@ ${script}
     const parsedResult = JSON.parse(responseText.trim());
     
     // Add IDs and original index
-    const processedScenes = parsedResult.scenes.map((scene: any, index: number) => ({
+    processedScenes = parsedResult.scenes.map((scene: any, index: number) => ({
       id: `scene_${index}_${Date.now()}`,
       ...scene,
       originalIndex: index
     }));
 
-    res.json({ scenes: processedScenes });
+    res.json({ 
+      scenes: processedScenes, 
+      engine: 'gemini', 
+      info: 'Localized Director (Gemini 3.1)' 
+    });
   } catch (error: any) {
     console.error("Gemini script parser failed:", error);
     // Return standard fallback chunking on exception
@@ -493,6 +717,9 @@ app.get("/api/diagnose", async (req, res) => {
   
   const diagnostics: any = {
     geminiApiKeyConfigured: !!process.env.GEMINI_API_KEY,
+    openaiApiKeyConfigured: !!process.env.OPENAI_API_KEY,
+    chatGptProStatus: !!process.env.OPENAI_API_KEY ? "Active (GPT-4o Platinum)" : "Inactive",
+    veoStatus: !!process.env.GEMINI_API_KEY ? "Operational (Experimental 3.1)" : "Inactive",
     geminiTtsStatus: "ok", // 'ok', 'quota_limit', 'error', 'no_key'
     geminiTtsMessage: "Premium & Unlimited Neural Voices Active.",
     pexelsApiKeyConfigured: !!(req.headers["x-pexels-key"] || process.env.PEXELS_API_KEY)
@@ -739,6 +966,32 @@ app.get("/api/music", (req, res) => {
       const wave3 = Math.sin(2 * Math.PI * (sweepFrequency * 2) * t);
       const env = 0.5 + 0.3 * Math.sin(2 * Math.PI * 0.25 * t);
       sampleVal = ((wave1 + wave2 * 0.4 + wave3 * 0.2) / 1.6) * env;
+    } else if (trackId === "ethio_jazz_vibe") {
+      // Tizita Scale (C D E G A)
+      const barDuration = 4;
+      const barIndex = Math.floor(t / barDuration) % 4;
+      const notes = [130.81, 146.83, 164.81, 196.00, 220.00]; // C D E G A
+      const f1 = notes[barIndex % 5];
+      const f2 = notes[(barIndex + 2) % 5];
+      const lead = Math.sin(2 * Math.PI * f1 * t + 0.3 * Math.sin(2 * Math.PI * 4 * t)); // Pulsing lead
+      const pad = Math.sin(2 * Math.PI * (f1 / 2) * t) + Math.sin(2 * Math.PI * (f2 / 2) * t);
+      sampleVal = (lead * 0.3 + pad * 0.4) * (0.8 + 0.2 * Math.sin(2 * Math.PI * 0.5 * t));
+    } else if (trackId === "habesha_modern_upbeat") {
+      // Fast pentatonic rhythm
+      const tempo = 0.35; // Fast
+      const pulse = t % tempo;
+      const kick = Math.exp(-25 * pulse) * Math.sin(2 * Math.PI * 55);
+      const noteFreq = 440 * Math.pow(2, (Math.floor(t * 4) % 12) / 12);
+      const synth = Math.sin(2 * Math.PI * noteFreq * t) * Math.exp(-4 * pulse);
+      sampleVal = kick * 0.6 + synth * 0.4;
+    } else if (trackId === "lofi_addis") {
+      // Pentatonic Lofi
+      const beat = t % 1.2;
+      const kick = Math.exp(-15 * beat) * Math.sin(2 * Math.PI * 50);
+      const snare = (beat > 0.6 && beat < 0.65) ? (Math.random() - 0.5) * 0.3 : 0;
+      const rainy = (Math.random() - 0.5) * 0.05;
+      const keys = Math.sin(2 * Math.PI * 329.63 * t) * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.2 * t)); // E
+      sampleVal = kick * 0.4 + snare * 0.3 + rainy + keys * 0.2;
     } else if (trackId === "uplifting_cinematic") {
       const barDuration = 2.5;
       const barIndex = Math.floor(t / barDuration) % 4;

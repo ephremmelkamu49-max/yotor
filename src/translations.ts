@@ -7,6 +7,7 @@ export const translations = {
     studio_title: "የፊልም አዘጋጅ ስቱዲዮ",
     full_web_view: "🌐 ሙሉ ስክሪን እይታ",
     ready_to_export: "🎬 አዘጋጅና አውርድ (EXPORT)",
+    settings: "ቅንብሮች",
 
     // Script Input Section
     script_processor: "የፊልም ፅሁፍ ማቀነባበሪያ",
@@ -99,7 +100,90 @@ export const translations = {
 
     // Visual Style Selector
     visual_style_title: "የምስል አቀራረብ ዘይቤ (Visual Style)",
-    visual_style_desc: "የቪዲዮው ምስሎች ምን አይነት መልክ እንዲኖራቸው ይፈልጋሉ?"
+    visual_style_desc: "የቪዲዮው ምስሎች ምን አይነት መልክ እንዲኖራቸው ይፈልጋሉ?",
+
+    // New Features (Input/Style modes)
+    input_mode: "የአሰራር ዘዴ",
+    full_script: "ሙሉ ታሪክ (Full Script)",
+    quick_reel: "ፈጣን ሪል (Quick Reel)",
+    visual_aesthetic: "የቪዲዮ አይነት",
+    cinematic_pro: "ሲኒማቲክ ፕሮ (Cinematic)",
+    social_media_vibe: "ካፕካት (Social Media)",
+    video_source: "የቪዲዮ ምንጭ",
+    stock_library: "የስቶክ ቪዲዮዎች (Stock Video)",
+    veo_ai_engine: "ቪኦ (Veo 3.1 AI)",
+    capcut_integration: "በካፕካት (CapCut Web) ስክሪፕቱን ተጠቀም",
+    capcut_copied: "ፅሁፉ ተቀድቷል! አሁን በካፕካት (CapCut) መጠቀም ትችላለህ።",
+    capcut_btn: "ቪዲዮውን በካፕካት አቀናብር",
+    
+    // Status Labels
+    active: "ንቁ",
+    inactive: "ንቁ አይደለም",
+    engine_veo: "ቪኦ 3.1 ቪዲዮ ሞተር",
+    engine_tts: "የኢትዮጵያ ፕሪሚየም የተራኪ ድምፅ",
+    engine_openai: "ዳይሬክተር (GPT-4o)",
+    engine_gemini: "ዳይሬክተር (Gemini 3.1)",
+    
+    // Additional Placeholders
+    placeholder_keywords: "ቪዲዮው ስለ ምን እንዲሆን ይፈልጋሉ? (ለምሳሌ፡ ኒዮን ከተማ፣ ፈጣን መኪናዎች...)",
+    placeholder_script: "የታሪኩን ጽሁፍ እዚህ ያስገቡ ወይም ዜና ይለጥፉ...",
+    placeholder_api: "ኤፒአይ ቁልፍ (API Key) እዚህ ያስገቡ",
+    
+    // Analysis info
+    info_director_openai: "ከፍተኛ ዳይሬክተር (GPT-4o)",
+    info_director_gemini: "ረዳት ዳይሬክተር (Gemini 3.1)",
+    info_reel_ai: "አይ ሪል ፈጣሪ (AI Reel Dreamer)",
+    playing: "በማሳየት ላይ (PLAYING)",
+    choose_clip: "ምረጥ (Choose)",
+    by_author: "በ",
+    no_visual: "ምስል የለውም",
+
+    // Loading stages & Errors
+    error_no_scenes: "ምንም የቪዲዮ ክፍሎች አልተገኙም። እባክዎ የታሪኩን ጽሁፍ አጠር አድርገው ይሞክሩ።",
+    stage_veo_dreaming: "በቪኦ 3.1 አይ (Veo 3.1 AI) ምስሎችን በማለም ላይ...",
+    stage_analyzing_director: "በአይ ዳይሬክተር አማካኝነት ታሪኩን በመመርመር ላይ...",
+    stage_matching_cinematic: "ሲኒማቲክ (Pro) ቪዲዮዎችን ፈልጎ በማውጣት ላይ...",
+    stage_matching_social: "የካፕካት/ቲኪቶክ ስታይል (Social) ቪዲዮዎችን ፈልጎ በማውጣት ላይ...",
+    stage_segmenting: "ታሪኩን ወደ ክፍሎች በመከፋፈል ላይ...",
+    syncing_clips: "ቪዲዮዎችን ከበይነመረብ ላይ በመፈለግ ላይ ነው...",
+    search_hint: "የሚፈልጉትን የቪዲዮ መግለጫ ከላይ በመጻፍ ይፈልጉ (ለምሳሌ፡ \"nature fire\")",
+    copilot_greeting: "ሰላም! እኔ ዮቶር የግል ቪዲዮ ረዳት አይ (Yotor Personal AI) ነኝ። ማንኛውንም እገዛ ከፈለጉ እዘዙኝ! ለምሳሌ ክፍሎችን እንድጨምር፣ ጥራት እንድቀይር፣ ማጀቢያ ሙዚቃዎችን ወይም ተራኪ ድምፅ ለመቆጣጠር መፃፍ ይችላሉ።",
+    export_quota_title: "የቪዲዮ ማውረጃ ብዛት (Export Downloads Remaining)",
+    refill_quota: "ብዛት ጨምር (Refill Downloads)",
+    quality_720: "720p (HD Standard)",
+    quality_1080: "1080p (FHD Pro)",
+    upgrade_plan: "ፕላኑን ያሳድጉ (Upgrade to GOLD Tier)",
+    render_log_init: "የቪዲዮ ማቀናበሪያው እየጀመረ ነው...",
+    render_log_assembling: "ክፍሎችን እየሰበሰበ ነው...",
+    render_log_audio_sync: "ድምፆችን እያዋሃደ ነው...",
+    render_log_exporting: "ቪዲዮውን በማውጣት ላይ...",
+    status_processing: "እያቀናበረ ነው...",
+    plan_requires_15k: "ባለ 15K ዕቅድ ያስፈልጋል",
+    unlocked_15k: "የተፈቀደ • 15K ብር ዕቅድ",
+    unlocked_10k: "የተፈቀደ • 10K ብር ዕቅድ",
+    fast_test_segment: "የሙከራ አጭር ቪዲዮ",
+    hq_full_render: "ሙሉ ቪዲዮ አውጣ (HQ)",
+    scenes_verbatim: "ሁሉንም የቪዲዮ ክፍሎች ያቀናጃል",
+    fast_instant_review: "የመጀመሪያዎቹን 2 ክፍሎች ብቻ ለፈጣን ሙከራ ያዘጋጃል",
+    streaming_buffers_ready: "የይቶር High-Performance ዥረት ቋት (Streaming Buffers) በትክክል ተዘጋጅተዋል...",
+    quota_pills_desc: "ቪዲዮ ባወረዱ ቁጥር ይህ ኮታ ይቀንሳል። ሙሉ በሙሉ በነጻ እዚህ መጨመር ይችላሉ!",
+    quota_exhausted: "ኮታ አልቋል (QUOTA EXHAUSTED)",
+    refill_desc: "ይቅርታ! የነጻ 3 ቪዲዮ የማውረድ ዕድልዎ አልቋል። እባከዎን \"ኮታ ሙላ\" የሚለውን በመጫን ተጨማሪ የነጻ እድል አሁን ይውሰዱ።",
+    baking_range: "የቪዲዮ ማቀናበሪያ ክፍሎች ምርጫ:",
+    export_res: "የቪዲዮ ማውጫ ጥራት ይምረጡ:",
+    long_video_detected: "ረጅም ቪዲዮ ተገኝቷል",
+    trending_templates: "ወቅታዊ ትሬንዶች (Trending)",
+    confirm_template_replacement: "ያለውን ፅሁፍ በዝግጁ ጭብጥ መቀየር ይፈልጋሉ?",
+    amharic_only_trends: "የአማርኛ ትሬንዶች",
+    script_body: "የታሪኩ ዝርዝር",
+    subtitle_animation: "የቅርጽ እንቅስቃሴ (Animation)",
+    anim_none: "ዝም ያለ (Static)",
+    anim_typewriter: "ታይፕራይተር (Typewriter)",
+    anim_karaoke: "ቃላት በቃላት (Karaoke)",
+    anim_bounce: "ጫወታ (Bounce)",
+    anim_slide_up: "ወደ ላይ (Slide Up)",
+    highlight_color: "መለያ ቀለም (Highlight)",
+    text_color: "የፅሁፍ ቀለም (Color)"
   },
   en: {
     // Header
@@ -107,6 +191,7 @@ export const translations = {
     studio_title: "AI Director Studio",
     full_web_view: "🌐 Full Web View",
     ready_to_export: "🎬 BAKE & EXPORT",
+    settings: "Settings",
 
     // Script Input Section
     script_processor: "Script Processor / Story Editor",
@@ -199,6 +284,89 @@ export const translations = {
 
     // Visual Style Selector
     visual_style_title: "Visual Art Style",
-    visual_style_desc: "Choose the aesthetic direction for your video footage."
+    visual_style_desc: "Choose the aesthetic direction for your video footage.",
+
+    // New Features
+    input_mode: "Input Mode",
+    full_script: "Full Script",
+    quick_reel: "Quick Reel",
+    visual_aesthetic: "Visual Aesthetic",
+    cinematic_pro: "Cinematic Pro",
+    social_media_vibe: "CapCut Trendy",
+    video_source: "Video Source Mode",
+    stock_library: "Stock Footage",
+    veo_ai_engine: "Veo 3.1 AI",
+    capcut_integration: "Use Script on CapCut Web (Expert Editor)",
+    capcut_copied: "Script copied! Opening CapCut Web...",
+    capcut_btn: "Edit in CapCut",
+
+    // Status Labels
+    active: "ACTIVE",
+    inactive: "INACTIVE",
+    engine_veo: "AI Video Engine (Veo 3.1)",
+    engine_tts: "Premium Amharic Narrator",
+    engine_openai: "Director (GPT-4o)",
+    engine_gemini: "Director (Gemini 3.1)",
+
+    // Placeholders
+    placeholder_keywords: "What is the video about? (e.g. Neon city, sports cars...)",
+    placeholder_script: "Paste your story script or news article here...",
+    placeholder_api: "Enter API Key here",
+
+    // Analysis info
+    info_director_openai: "Precision Director (GPT-4o)",
+    info_director_gemini: "Localized Director (Gemini 3.1)",
+    info_reel_ai: "AI Reel Dreamer",
+    playing: "PLAYING",
+    choose_clip: "CHOOSE",
+    by_author: "By",
+    no_visual: "No Visual",
+
+    // Loading stages & Errors
+    error_no_scenes: "No scenes could be auto-segmented from your text",
+    stage_veo_dreaming: "Dreaming with Veo 3.1 AI...",
+    stage_analyzing_director: "Analyzing story script with AI Director...",
+    stage_matching_cinematic: "Matching Cinematic Pro Stock...",
+    stage_matching_social: "Matching TikTok/CapCut Trendy Stock...",
+    stage_segmenting: "Segmenting story...",
+    syncing_clips: "Syncing clip vectors...",
+    search_hint: "TYPE CINEMATIC SEARCH AND TRIGGER THE MATCH ENGINE.",
+    copilot_greeting: "Greetings! I am Yotor Personal AI, your dedicated video co-pilot. I can control everything for you—just ask me to update layouts, translate text, tweak subtitles, or generate brand new scenes!",
+    export_quota_title: "Export Downloads Remaining",
+    refill_quota: "Refill Quota",
+    quality_720: "720p (HD Standard)",
+    quality_1080: "1080p (FHD Pro)",
+    upgrade_plan: "Upgrade to GOLD Tier",
+    render_log_init: "Initializing render sequence...",
+    render_log_assembling: "Assembling movie timeline blocks...",
+    render_log_audio_sync: "Synchronizing atmospheric audio streams...",
+    render_log_exporting: "Encoding finalized cinematic binary...",
+    status_processing: "Processing...",
+    plan_requires_15k: "15K ETB Plan Required",
+    unlocked_15k: "Unlocked • 15K ETB Plan",
+    unlocked_10k: "Unlocked • 10K ETB Plan",
+    fast_test_segment: "Fast Test Segment",
+    hq_full_render: "HQ Full Render",
+    scenes_verbatim: "Renders complete scenes verbatim stream",
+    fast_instant_review: "Bakes first 2 scenes for instantaneous review",
+    streaming_buffers_ready: "Yotor High-Performance Streaming Buffers initialized...",
+    quota_pills_desc: "Every video download deducts from this quota. Refill fully for free right here!",
+    quota_exhausted: "QUOTA EXHAUSTED",
+    refill_desc: "Sorry! Your free 3 video download limit is exhausted. Please click the \"Refill Quota\" button above to get more free downloads instantly.",
+    baking_range: "Set Baking Range Option:",
+    export_res: "Choose Export Resolution:",
+    long_video_detected: "Long video detected",
+    trending_templates: "Trending Templates",
+    confirm_template_replacement: "Replace current script with this template?",
+    amharic_only_trends: "Amharic Trends Only",
+    script_body: "Script Body",
+    subtitle_animation: "Text Animation",
+    anim_none: "Static (None)",
+    anim_typewriter: "Typewriter",
+    anim_karaoke: "Karaoke (Word-by-Word)",
+    anim_bounce: "Dynamic Bounce",
+    anim_slide_up: "Slide Up",
+    highlight_color: "Highlight Color",
+    text_color: "Text Color"
   }
 };

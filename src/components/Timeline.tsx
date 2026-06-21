@@ -11,10 +11,12 @@ interface StockClipCardProps {
   clip: any;
   index: number;
   onSelect: (clip: any) => void;
+  language: Language;
   key?: any;
 }
 
-function StockClipCard({ clip, index, onSelect }: StockClipCardProps) {
+function StockClipCard({ clip, index, onSelect, language }: StockClipCardProps) {
+  const t = translations[language];
   const [isHovered, setIsHovered] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -66,7 +68,7 @@ function StockClipCard({ clip, index, onSelect }: StockClipCardProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 bg-emerald-500/15 px-2 py-0.5 rounded text-[8px] font-mono font-bold text-emerald-400 border border-emerald-500/25">
             <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-            <span>PLAYING</span>
+            <span>{t.playing}</span>
           </div>
 
           <button
@@ -77,7 +79,7 @@ function StockClipCard({ clip, index, onSelect }: StockClipCardProps) {
             }}
             className="bg-indigo-650 hover:bg-indigo-500 text-white font-bold text-[9px] uppercase px-2 py-0.5 rounded tracking-wider border border-indigo-400/20 shadow transition-colors"
           >
-            Choose / ምረጥ
+            {t.choose_clip}
           </button>
         </div>
 
@@ -96,7 +98,7 @@ function StockClipCard({ clip, index, onSelect }: StockClipCardProps) {
         {/* Bottom bar with author details */}
         <div className="flex items-end justify-between">
           <span className="text-[9px] text-zinc-350 truncate max-w-[80%] font-semibold italic drop-shadow">
-            By: {clip.user?.name || 'Stock Creator'}
+            {t.by_author}: {clip.user?.name || 'Stock Creator'}
           </span>
           <span className="text-[8px] font-mono px-1 bg-black/60 rounded text-indigo-400 font-bold">
             PREVIEW
@@ -420,7 +422,7 @@ export default function Timeline({
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-zinc-650">
                         <Film size={20} />
-                        <span className="text-[9px] mt-1">No Visual</span>
+                        <span className="text-[9px] mt-1">{t.no_visual}</span>
                       </div>
                     )}
                     <div className="absolute left-1.5 bottom-1.5 bg-[#050505]/90 backdrop-blur-sm text-[9px] font-mono text-indigo-400 px-1.5 py-0.5 rounded border border-zinc-800">
@@ -589,11 +591,11 @@ export default function Timeline({
               {isSearching ? (
                 <div className="flex flex-col items-center justify-center py-16 space-y-3">
                   <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                  <p className="text-xs text-zinc-500 font-mono">{language === 'am' ? 'ቪዲዮዎችን ከበይነመረብ ላይ በመፈለግ ላይ ነው...' : 'Syncing clip vectors...'}</p>
+                  <p className="text-xs text-zinc-500 font-mono">{t.syncing_clips}</p>
                 </div>
               ) : searchResults.length === 0 ? (
                 <div className="text-center py-12 text-zinc-500 text-xs font-mono">
-                  {language === 'am' ? 'የሚፈልጉትን የቪዲዮ መግለጫ ከላይ በመጻፍ ይፈልጉ (ለምሳሌ፡ "nature fire")' : 'TYPE CINEMATIC SEARCH AND TRIGGER THE MATCH ENGINE.'}
+                  {t.search_hint}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5" id="stock-results-grid">
@@ -603,6 +605,7 @@ export default function Timeline({
                       clip={clip}
                       index={index}
                       onSelect={handleSelectClip}
+                      language={language}
                     />
                   ))}
                 </div>

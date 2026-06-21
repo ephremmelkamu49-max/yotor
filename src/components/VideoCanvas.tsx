@@ -64,9 +64,7 @@ export default function VideoCanvas({
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>(() => [
     {
       role: 'assistant',
-      text: language === 'am' 
-        ? 'ሰላም! እኔ ዮቶር የግል ቪዲዮ ረዳት አይ (Yotor Personal AI) ነኝ። ማንኛውንም እገዛ ከፈለጉ እዘዙኝ! ለምሳሌ ክፍሎችን እንድጨምር፣ ጥራት እንድቀይር፣ ማጀቢያ ሙዚቃዎችን ወይም ተራኪ ድምፅ ለመቆጣጠር መፃፍ ይችላሉ።' 
-        : 'Greetings! I am Yotor Personal AI, your dedicated video co-pilot. I can control everything for you—just ask me to update layouts, translate text, tweak subtitles, or generate brand new scenes!'
+      text: t.copilot_greeting
     }
   ]);
   const [chatInput, setChatInput] = useState('');
@@ -651,92 +649,150 @@ export default function VideoCanvas({
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, width, height);
 
-      // 3. Draw Captions/Subtitles
-      if (currentScene && projectConfig.subtitleStyle.enabled) {
-        const text = projectConfig.subtitleStyle.uppercase 
-          ? currentScene.caption.toUpperCase()
-          : currentScene.caption;
+        // 3. Draw Captions/Subtitles
+        if (currentScene && projectConfig.subtitleStyle.enabled) {
+          const fullText = projectConfig.subtitleStyle.uppercase 
+            ? currentScene.caption.toUpperCase()
+            : currentScene.caption;
 
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // Dynamic scaled font sizing relative to resolution
-        const baseFontSize = projectConfig.subtitleStyle.fontSize;
-        const scaleFactor = width / 1280;
-        const finalFontSize = Math.max(16, Math.floor(baseFontSize * scaleFactor));
-        
-        ctx.font = `600 ${finalFontSize}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
+          const animType = projectConfig.subtitleStyle.animation || 'none';
+          const progress = currentScene.duration > 0 ? (smoothTime / currentScene.duration) : 1;
 
-        const words = text.split(' ');
-        const lines = [];
-        let currentLine = '';
-        const maxLineWidth = width * 0.85; // Margin line padding limits
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          // Dynamic scaled font sizing relative to resolution
+          const baseFontSize = projectConfig.subtitleStyle.fontSize;
+          const scaleFactor = width / 1280;
+          const finalFontSize = Math.max(16, Math.floor(baseFontSize * scaleFactor));
+          
+          ctx.font = `600 ${finalFontSize}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
 
-        // Wrap words to fit canvas width neatly
-        for (let n = 0; n < words.length; n++) {
-          const testLine = currentLine + words[n] + ' ';
-          const metrics = ctx.measureText(testLine);
-          if (metrics.width > maxLineWidth && n > 0) {
-            lines.push(currentLine.trim());
-            currentLine = words[n] + ' ';
-          } else {
-            currentLine = testLine;
+          const allWords = fullText.split(' ');
+          const lines: string[] = [];
+          let currentLine = '';
+          const maxLineWidth = width * 0.85;
+
+          // Wrap words to fit canvas width neatly
+          for (let n = 0; n < allWords.length; n++) {
+            const testLine = currentLine + allWords[n] + ' ';
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > maxLineWidth && n > 0) {
+              lines.push(currentLine.trim());
+              currentLine = allWords[n] + ' ';
+            } else {
+              currentLine = testLine;
+            }
           }
-        }
-        lines.push(currentLine.trim());
+          lines.push(currentLine.trim());
 
-        // Subtitle layout adjustments
-        const lineHeight = finalFontSize * 1.35;
-        const totalTextHeight = lines.length * lineHeight;
-        
-        let py = height * 0.82; // standard bottom
-        if (projectConfig.subtitleStyle.position === 'middle') {
-          py = height / 2;
-        } else if (projectConfig.subtitleStyle.position === 'top') {
-          py = height * 0.18;
-        }
-
-        // Adjust starting drawing Y position
-        const startY = py - (totalTextHeight / 2) + (lineHeight / 2);
-
-        // Draw background box or text styling
-        lines.forEach((line, index) => {
-          const ly = startY + (index * lineHeight);
-          const textWidth = ctx.measureText(line).width;
-
-          // Translucent padding capsule background box
-          if (projectConfig.subtitleStyle.backgroundColor) {
-            ctx.fillStyle = projectConfig.subtitleStyle.backgroundColor;
-            const px = 18 * scaleFactor;
-            const pyBox = 8 * scaleFactor;
-            ctx.beginPath();
-            ctx.roundRect(
-              width/2 - textWidth/2 - px,
-              ly - lineHeight/2 - pyBox + (finalFontSize * 0.08),
-              textWidth + px*2,
-              lineHeight + pyBox*2 - (finalFontSize * 0.16),
-              10 * scaleFactor
-            );
-            ctx.fill();
+          // Subtitle layout adjustments
+          const lineHeight = finalFontSize * 1.35;
+          const totalTextHeight = lines.length * lineHeight;
+          
+          let py = height * 0.82; // standard bottom
+          if (projectConfig.subtitleStyle.position === 'middle') {
+            py = height / 2;
+          } else if (projectConfig.subtitleStyle.position === 'top') {
+            py = height * 0.18;
           }
 
-          // Subtle text shadow effect
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-          ctx.shadowBlur = 8 * scaleFactor;
-          ctx.shadowOffsetX = 2 * scaleFactor;
-          ctx.shadowOffsetY = 2 * scaleFactor;
+          const startY = py - (totalTextHeight / 2) + (lineHeight / 2);
+          
+          // Animation calculations
+          const visibleCharsTotal = animType === 'typewriter' 
+            ? Math.floor(fullText.length * Math.min(1, progress * 1.3)) 
+            : fullText.length;
+          
+          const activeWordIndexTotal = animType === 'karaoke'
+            ? Math.floor(allWords.length * Math.min(0.99, progress))
+            : -1;
 
-          // Draw the caption letters
-          ctx.fillStyle = projectConfig.subtitleStyle.color;
-          ctx.fillText(line, width / 2, ly);
+          let charCounter = 0;
+          let wordGlobalCounter = 0;
 
-          // Reset shadows
-          ctx.shadowColor = 'transparent';
-          ctx.shadowBlur = 0;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 0;
-        });
-      }
+          // Draw backdrop and text
+          lines.forEach((line, index) => {
+            const ly = startY + (index * lineHeight);
+            const textWidth = ctx.measureText(line).width;
+
+            // Translucent padding capsule background box
+            if (projectConfig.subtitleStyle.backgroundColor) {
+              ctx.fillStyle = projectConfig.subtitleStyle.backgroundColor;
+              const px = 18 * scaleFactor;
+              const pyBox = 8 * scaleFactor;
+              ctx.beginPath();
+              ctx.roundRect(
+                width/2 - textWidth/2 - px,
+                ly - lineHeight/2 - pyBox + (finalFontSize * 0.08),
+                textWidth + px*2,
+                lineHeight + pyBox*2 - (finalFontSize * 0.16),
+                10 * scaleFactor
+              );
+              ctx.fill();
+            }
+
+            // Subtle text shadow effect
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+            ctx.shadowBlur = 8 * scaleFactor;
+            ctx.shadowOffsetX = 2 * scaleFactor;
+            ctx.shadowOffsetY = 2 * scaleFactor;
+
+            if (animType === 'karaoke') {
+              // Draw word by word for karaoke highlight
+              const lineWords = line.split(' ');
+              let currentX = width / 2 - textWidth / 2;
+              
+              lineWords.forEach((word) => {
+                const isHighlighted = wordGlobalCounter === activeWordIndexTotal;
+                ctx.fillStyle = isHighlighted 
+                  ? projectConfig.subtitleStyle.highlightColor 
+                  : projectConfig.subtitleStyle.color;
+                
+                // Scale highlight for emphasize effect
+                if (isHighlighted) {
+                  ctx.font = `800 ${finalFontSize * 1.05}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
+                } else {
+                  ctx.font = `600 ${finalFontSize}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
+                }
+
+                ctx.textAlign = 'left';
+                ctx.fillText(word, currentX, ly);
+                currentX += ctx.measureText(word + ' ').width;
+                wordGlobalCounter++;
+              });
+            } else if (animType === 'typewriter') {
+              // Typewriter slice
+              const lineVisibleChars = Math.max(0, visibleCharsTotal - charCounter);
+              const lineToDraw = line.slice(0, lineVisibleChars);
+              ctx.textAlign = 'center';
+              ctx.fillStyle = projectConfig.subtitleStyle.color;
+              ctx.fillText(lineToDraw, width / 2, ly);
+              charCounter += line.length + 1;
+            } else if (animType === 'bounce') {
+               // Soft bounce/scale in
+               const scale = 1 + Math.sin(progress * Math.PI) * 0.05;
+               ctx.save();
+               ctx.translate(width/2, ly);
+               ctx.scale(scale, scale);
+               ctx.textAlign = 'center';
+               ctx.fillStyle = projectConfig.subtitleStyle.color;
+               ctx.fillText(line, 0, 0);
+               ctx.restore();
+            } else {
+              // Normal static render
+              ctx.textAlign = 'center';
+              ctx.fillStyle = projectConfig.subtitleStyle.color;
+              ctx.fillText(line, width / 2, ly);
+            }
+
+            // Reset shadows
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+          });
+        }
 
       rafRef.current = requestAnimationFrame(render);
     };
@@ -864,11 +920,9 @@ export default function VideoCanvas({
           )}
 
           {showConfigTabs === 'subtitle' && (
-            <div className="w-full space-y-3">
-
-
-              <div className="flex items-center justify-between mb-1 pb-1 border-b border-zinc-900">
-                <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">Visibility Toggle</span>
+            <div className="w-full space-y-4">
+              <div className="flex items-center justify-between mb-1 pb-1 border-b border-zinc-900/50">
+                <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">{t.subtitle_style_title}</span>
                 <button
                   onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, enabled: !projectConfig.subtitleStyle.enabled } })}
                   className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold transition-all border ${
@@ -885,46 +939,95 @@ export default function VideoCanvas({
                 </button>
               </div>
               
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, position: 'bottom' } })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.subtitleStyle.position === 'bottom' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900 text-zinc-500'}`}
-                >
-                  Bottom Box
-                </button>
-                <button
-                  onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, position: 'middle' } })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.subtitleStyle.position === 'middle' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900 text-zinc-500'}`}
-                >
-                  Center Box
-                </button>
-                <button
-                  onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, position: 'top' } })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.subtitleStyle.position === 'top' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900 text-zinc-500'}`}
-                >
-                  Top Header
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-500 font-mono uppercase text-[9px] tracking-wider">Font:</span>
-                  <select
-                    value={projectConfig.subtitleStyle.fontFamily}
-                    onChange={(e) => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, fontFamily: e.target.value as any } })}
-                    className="bg-zinc-950 border border-zinc-850 rounded px-2 py-1 text-zinc-300"
-                  >
-                    <option value="Space Grotesk">Space Grotesk</option>
-                    <option value="Inter">Inter</option>
-                    <option value="JetBrains Mono">JetBrains Mono</option>
-                    <option value="Playfair Display">Playfair Display</option>
-                    <option value="Anton">Anton (Shorts)</option>
-                    <option value="Archivo Black">Archivo Black</option>
-                    <option value="Outfit">Outfit</option>
-                  </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">{t.subtitle_animation}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['none', 'typewriter', 'karaoke', 'bounce'] as const).map(anim => (
+                      <button
+                        key={anim}
+                        onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, animation: anim } })}
+                        className={`py-1.5 px-2 border rounded-lg text-[9px] font-bold transition-all ${
+                          projectConfig.subtitleStyle.animation === anim 
+                            ? 'bg-zinc-900 border-indigo-500 text-indigo-400' 
+                            : 'bg-black border-zinc-900 text-zinc-600 hover:text-zinc-400'
+                        }`}
+                      >
+                        {anim === 'none' ? t.anim_none : anim === 'typewriter' ? t.anim_typewriter : anim === 'karaoke' ? t.anim_karaoke : t.anim_bounce}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="space-y-2">
+                  <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">{t.text_position}</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['top', 'middle', 'bottom'] as const).map(pos => (
+                      <button
+                        key={pos}
+                        onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, position: pos } })}
+                        className={`py-1.5 border rounded-lg text-[9px] font-bold uppercase transition-all ${
+                          projectConfig.subtitleStyle.position === pos 
+                            ? 'bg-zinc-900 border-indigo-500 text-indigo-400' 
+                            : 'bg-black border-zinc-900 text-zinc-600 hover:text-zinc-400'
+                        }`}
+                      >
+                        {pos}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-zinc-900/40">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">{t.text_color}</span>
+                    <div className="flex items-center gap-1.5">
+                      {['#FFFFFF', '#FACC15', '#4ADE80', '#F87171', '#60A5FA'].map(c => (
+                        <button
+                          key={c}
+                          onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, color: c } })}
+                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.color === c ? 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-black' : ''}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1 pl-3 border-l border-zinc-900">
+                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">{t.highlight_color}</span>
+                    <div className="flex items-center gap-1.5">
+                      {['#FBBF24', '#22D3EE', '#A855F7', '#FAFAFA', '#10B981'].map(c => (
+                        <button
+                          key={c}
+                          onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, highlightColor: c } })}
+                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.highlightColor === c ? 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-black' : ''}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">Font</span>
+                    <select
+                      value={projectConfig.subtitleStyle.fontFamily}
+                      onChange={(e) => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, fontFamily: e.target.value as any } })}
+                      className="bg-zinc-950 border border-zinc-850 rounded px-2 py-0.5 text-[10px] text-zinc-300"
+                    >
+                      <option value="Space Grotesk">Space Grotesk</option>
+                      <option value="Inter">Inter</option>
+                      <option value="JetBrains Mono">JetBrains Mono</option>
+                      <option value="Playfair Display">Playfair Display</option>
+                      <option value="Anton">Anton (Shorts)</option>
+                      <option value="Archivo Black">Archivo Black</option>
+                      <option value="Outfit">Outfit</option>
+                    </select>
+                  </div>
+                  
                   <button
                     type="button"
                     onClick={() => onUpdateConfig({
@@ -933,26 +1036,16 @@ export default function VideoCanvas({
                         ...projectConfig.subtitleStyle,
                         fontFamily: 'Anton',
                         uppercase: true,
-                        fontSize: 42,
-                        position: 'middle'
+                        fontSize: 45,
+                        position: 'middle',
+                        animation: 'karaoke',
+                        highlightColor: '#FBBF24'
                       }
                     })}
-                    className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-500/20 transition-all flex items-center gap-1.5 shadow-sm"
+                    className="px-2 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[8px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-500/20 transition-all shadow-sm"
                   >
-                    🔥 Shorts Trends Auto-Tune
+                    🔥 SHORTS AUTO-TUNE
                   </button>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 cursor-pointer text-zinc-500 font-mono uppercase text-[9px] tracking-wider">
-                    <input
-                      type="checkbox"
-                      checked={projectConfig.subtitleStyle.uppercase}
-                      onChange={(e) => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, uppercase: e.target.checked } })}
-                      className="rounded border-zinc-800 text-indigo-600 focus:ring-indigo-550"
-                    />
-                    ALL CAPS
-                  </label>
                 </div>
               </div>
             </div>
