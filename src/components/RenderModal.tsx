@@ -27,6 +27,18 @@ export default function RenderModal({
 }: RenderModalProps) {
   const t = translations[language];
   const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'completed' | 'failed'>('idle');
+  
+  // Custom video download quota (starts at 3)
+  const [exportQuota, setExportQuota] = useState<number>(() => {
+    const saved = localStorage.getItem('yotor_video_quota');
+    return saved ? parseInt(saved, 10) : 3;
+  });
+
+  const handleRefillQuota = () => {
+    setExportQuota(3);
+    localStorage.setItem('yotor_video_quota', '3');
+  };
+
   const [progress, setProgress] = useState<number>(0);
   const [renderLogs, setRenderLogs] = useState<string[]>([]);
   const [renderOption, setRenderOption] = useState<'full' | 'fast'>('full');
@@ -420,6 +432,80 @@ export default function RenderModal({
         {renderStatus === 'idle' && (
           <div className="space-y-4 py-2 overflow-y-auto max-h-[70vh] pr-1 scrollbar-thin">
             
+            {/* 🎙️ Fluent Amharic Voice & Video Download Quota System */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-zinc-950 via-[#0a0a0d] to-zinc-950 border border-indigo-500/10 shadow-xl space-y-3 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-xl pointer-events-none" />
+              
+              <div className="flex items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <span className="px-1.5 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-[8px] font-mono font-bold text-indigo-400 rounded-md uppercase tracking-wide">
+                    {language === 'am' ? 'ባለሙያ የአማርኛ ተራኪ' : 'Fluent Amharic Voiceover'}
+                  </span>
+                  <h4 className="text-[11px] font-bold text-white uppercase tracking-tight">
+                    🎙️ {language === 'am' ? 'የአማርኛ የወንድ ተራኪ ድምፅ (Ameha Neural) - ገባሪ' : 'Premium Fluent Male Voicing Active'}
+                  </h4>
+                </div>
+                
+                <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Active
+                </span>
+              </div>
+
+              <div className="p-3 bg-[#030304] border border-zinc-900 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                  <span>{language === 'am' ? 'የቪዲዮ ማውረድ ኮታ (Free Video Downloads):' : 'Free App Video Downloads Remaining:'}</span>
+                  <span className={`font-bold font-mono text-xs ${exportQuota > 0 ? 'text-indigo-400' : 'text-rose-400'}`}>
+                    {exportQuota} / 3 {language === 'am' ? 'ቪዲዮ' : 'videos'}
+                  </span>
+                </div>
+
+                {/* Quota pills */}
+                <div className="flex gap-2">
+                  {[1, 2, 3].map((num) => {
+                    const isFilled = exportQuota >= num;
+                    return (
+                      <div 
+                        key={num} 
+                        className={`h-2 flex-1 rounded-full transition-all duration-300 ${
+                          isFilled 
+                            ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 shadow-[0_0_8px_rgba(99,102,241,0.2)]' 
+                            : 'bg-zinc-900'
+                        }`} 
+                      />
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between gap-4 mt-1 text-[10px] text-zinc-500 font-sans leading-normal">
+                  <p>
+                    {language === 'am' 
+                      ? 'ቪዲዮ ባወረዱ ቁጥር ይህ ኮታ ይቀንሳል። ሙሉ በሙሉ በነጻ እዚህ መጨመር ይችላሉ!' 
+                      : 'Every video download deducts from this quota. Refill fully for free right here!'}
+                  </p>
+                  
+                  <button
+                    type="button"
+                    onClick={handleRefillQuota}
+                    className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:text-indigo-400 text-zinc-400 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all active:scale-[0.98] shrink-0"
+                  >
+                    🔄 {language === 'am' ? 'ኮታ ሙላ' : 'Refill Quota'}
+                  </button>
+                </div>
+              </div>
+
+              {exportQuota === 0 && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-350 text-[10px] rounded-xl font-semibold leading-relaxed space-y-0.5">
+                  <span className="font-mono text-[8.5px] text-rose-400 uppercase tracking-widest block">⚠️ QUOTA EXHAUSTED</span>
+                  <p>
+                    {language === 'am' 
+                      ? 'ይቅርታ! የነጻ 3 ቪዲዮ የማውረድ ዕድልዎ አልቋል። እባከዎን "ኮታ ሙላ" የሚለውን በመጫን ተጨማሪ የነጻ እድል አሁን ይውሰዱ።' 
+                      : 'Sorry! Your free 3 video download limit is exhausted. Please click the "Refill Quota" button above to get more free downloads instantly.'}
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Resolution/Duration segment */}
             <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
               <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">{language === 'am' ? 'የቪዲዮ ማቀናበሪያ ክፍሎች ምርጫ:' : 'Set Baking Range Option:'}</span>
@@ -600,12 +686,22 @@ export default function RenderModal({
               </button>
               <button
                 type="button"
-                onClick={initiateRenderAndStitching}
-                className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 transition-all shadow-xl shadow-indigo-600/40 active:scale-95 border border-indigo-400/30"
+                onClick={() => {
+                  if (exportQuota <= 0) {
+                    alert(language === 'am' ? 'እባክዎ መጀመሪያ ነጻ ኮታዎን ይሙሉ!' : 'Please refill your free quota first!');
+                    return;
+                  }
+                  initiateRenderAndStitching();
+                }}
+                className={`py-4 text-white font-black text-sm uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 transition-all border border-indigo-400/30 ${
+                  exportQuota > 0
+                    ? 'bg-indigo-600 hover:bg-indigo-505 shadow-xl shadow-indigo-600/40 active:scale-95 cursor-pointer'
+                    : 'bg-zinc-800 border-zinc-900 cursor-not-allowed opacity-40'
+                }`}
                 id="render-start-btn"
               >
-                <Download size={18} fill="currentColor" className="animate-bounce" />
-                {language === 'am' ? 'አሁን ቪዲዮውን አዘጋጅና አውርድ' : 'START VIDEO EXPORT'}
+                <Download size={18} fill="currentColor" className={exportQuota > 0 ? "animate-bounce" : ""} />
+                {language === 'am' ? (exportQuota > 0 ? 'አሁን ቪዲዮውን አዘጋጅና አውርድ' : 'ኮታ የለም • ኮታውን ይሙሉ') : (exportQuota > 0 ? 'START VIDEO EXPORT' : 'EMPTY QUOTA • REFILL NOW')}
               </button>
             </div>
           </div>
@@ -726,6 +822,16 @@ export default function RenderModal({
               </div>
             </div>
 
+            <div className="p-3.5 bg-indigo-500/5 border border-indigo-500/10 rounded-xl flex items-center justify-between text-[11px] text-zinc-400">
+              <span className="flex items-center gap-1.5 font-sans">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                {language === 'am' ? 'ቀሪ የነጻ ቪዲዮ ማውረጃ ዕድል (Remaining Quota):' : 'Remaining Free Video Downloads:'}
+              </span>
+              <span className="font-mono font-bold text-indigo-400">
+                {exportQuota} / 3 {language === 'am' ? 'ጊዜ' : 'times'}
+              </span>
+            </div>
+
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -742,6 +848,13 @@ export default function RenderModal({
               <a
                 href={renderedBlobUrl || '#'}
                 download={`yotor_official_video_${Date.now()}.${downloadExtension}`}
+                onClick={() => {
+                  if (exportQuota > 0) {
+                    const nextQ = exportQuota - 1;
+                    setExportQuota(nextQ);
+                    localStorage.setItem('yotor_video_quota', String(nextQ));
+                  }
+                }}
                 className="flex-1 py-5 bg-gradient-to-r from-emerald-600 to-teal-650 hover:from-emerald-500 hover:to-teal-600 text-white font-black block text-center rounded-2xl text-sm shadow-xl shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer font-mono uppercase tracking-[0.1em] border border-emerald-400/20"
                 id="download-master-video-file-btn"
               >

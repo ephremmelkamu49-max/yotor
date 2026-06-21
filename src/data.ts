@@ -138,4 +138,22 @@ export const DEFAULT_MUSIC: AudioTrack[] = [
   }
 ];
 
+export const GOOGLE_TTS_LANGUAGES = [
+  { code: "am-yotor-epic-male", name: "ይቶር (Yotor) - አነቃቂ የተረካ ድምፅ ወንድ (Inspiring Narrator)" },
+  { code: "am-yotor-warm-female", name: "እሌኒ (Eleni) - ማራኪ የተረካ ድምፅ (Warm Female Narrator)" },
+  { code: "am-yotor-bright-female", name: "ሳራ (Sara) - አጫጭር ቪዲዮዎች ደስደስ የሚል ድምፅ (Bright Shorts Female)" },
+  { code: "am-yotor-rugged-male", name: "አቤል (Abel) - ለረጅም ቪዲዮዎች ጎርናና ድምፅ (Deep Rugged Male)" },
+  { code: "am-male", name: "Amharic (Ethiopia) male - መደበኛ (Google Standard)" },
+  { code: "en", name: "English (US) - Neutral" },
+  { code: "en-gb", name: "English (UK) - British Accent" },
+  { code: "en-in", name: "English (India) - India Accent" },
+  { code: "es", name: "Spanish - Español" },
+  { code: "fr", name: "French - Français" },
+  { code: "de", name: "German - Deutsch" },
+  { code: "it", name: "Italian - Italiano" },
+  { code: "hi", name: "Hindi - हिन्दी" },
+  { code: "ja", name: "Japanese - 日本語" },
+  { code: "pt", name: "Portuguese - Português" }
+];
+
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Scene, AspectRatio, ProjectConfig, AnimationStyle } from '../types';
-import { DEFAULT_MUSIC, DEFAULT_CATALOG } from '../data';
+import { DEFAULT_MUSIC, DEFAULT_CATALOG, GOOGLE_TTS_LANGUAGES } from '../data';
 import { Language, translations } from '../translations';
 import { 
   Play, Pause, SkipForward, SkipBack, Volume2, Maximize, RefreshCw, Layers, Check, Sparkles, Eye, EyeOff, Cpu
@@ -993,23 +993,20 @@ export default function VideoCanvas({
                   </button>
                   {projectConfig.isVoiceEnabled && (
                     <select
-                      value={projectConfig.voiceLanguage === 'am-edge-male' || projectConfig.voiceLanguage === 'am-edge-female' || projectConfig.voiceLanguage === 'am-google' || projectConfig.voiceLanguage === 'am-gemini-male' || projectConfig.voiceLanguage === 'am-gemini-female' ? projectConfig.voiceLanguage : 'am-edge-male'}
+                      value={projectConfig.voiceLanguage || 'am-yotor-epic-male'}
                       onChange={(e) => {
                          const val = e.target.value;
                          let type: 'male'|'female' = 'male';
                          if (val.includes('female')) type = 'female';
                          onUpdateConfig({ voiceLanguage: val, voiceType: type });
-                         
-                         // Invalidate audio cache essentially by updating the scenes but the API handles the URL fallback
-                         // We might want to force URL reload, but that's handled by `projectConfig.voiceLanguage` changes in template rendering
                       }}
-                      className="ml-2 bg-black border border-zinc-800 text-zinc-300 text-[10px] rounded px-1.5 py-0.5 outline-none cursor-pointer"
+                      className="ml-2 bg-black border border-zinc-800 text-zinc-300 text-[10px] rounded px-1.5 py-0.5 outline-none cursor-pointer max-w-[150px]"
                     >
-                      <option value="am-edge-male">Ameha (Male - Microsoft Edge)</option>
-                      <option value="am-edge-female">Mekdes (Female - Microsoft Edge)</option>
-                      <option value="am-gemini-male">Puck (Male - Gemini Premium)</option>
-                      <option value="am-gemini-female">Aoede (Female - Gemini Premium)</option>
-                      <option value="am-google">Standard (Free Fallback)</option>
+                      {GOOGLE_TTS_LANGUAGES.map((langOpt) => (
+                        <option key={langOpt.code} value={langOpt.code}>
+                          {langOpt.name}
+                        </option>
+                      ))}
                     </select>
                   )}
                 </div>

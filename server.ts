@@ -64,6 +64,41 @@ if (process.env.GEMINI_API_KEY) {
   });
 }
 
+// Robust fallback wrapper to route around 503 (model overloaded) and other transient errors
+async function generateContentWithFallback(
+  aiInstance: GoogleGenAI,
+  options: {
+    model: string;
+    contents: any;
+    config?: any;
+  }
+): Promise<any> {
+  const modelFallbackList = [
+    options.model,
+    "gemini-2.1-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash"
+  ];
+  const uniqueModels = Array.from(new Set(modelFallbackList));
+  
+  let lastError: any = null;
+  for (const modelName of uniqueModels) {
+    try {
+      console.log(`[Gemini Fallback System] Attempting generation with model: ${modelName}`);
+      const response = await aiInstance.models.generateContent({
+        ...options,
+        model: modelName
+      });
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[Gemini Fallback System] Model ${modelName} encountered error: ${err.message || err}`);
+    }
+  }
+  throw lastError;
+}
+
 // 1. Script Analysis API - uses Gemini to split user text into structured cinematic scenes
 app.post("/api/analyze-script", async (req, res) => {
   const { script } = req.body;
@@ -159,7 +194,7 @@ User Script:
 ${script}
 """`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithFallback(ai, {
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
@@ -324,7 +359,7 @@ Respond with valid JSON structure matching the specified schema.`;
     }
     contents.push({ role: 'user', parts: [{ text: message }] });
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithFallback(ai, {
       model: "gemini-3.5-flash",
       contents,
       config: {
@@ -484,9 +519,9 @@ app.get("/api/tts", async (req, res) => {
     // ---------------------------------------------------------
     // MICROSOFT EDGE TTS (Unlimited, Neural Free Voices)
     // ---------------------------------------------------------
-    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male') {
+    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male' || lang.startsWith('am-yotor-')) {
       try {
-        const voiceName = (lang === 'am-edge-female') ? "am-ET-MekdesNeural" : "am-ET-AmehaNeural";
+        const voiceName = (lang === 'am-edge-female' || lang === 'am-yotor-warm-female' || lang === 'am-yotor-bright-female') ? "am-ET-MekdesNeural" : "am-ET-AmehaNeural";
         const tts = new EdgeTTS(safeText, voiceName);
         const result = await tts.synthesize();
         const combinedBuffer = Buffer.from(await result.audio.arrayBuffer());
@@ -920,7 +955,7 @@ app.post("/api/thumbnail", async (req, res) => {
     const { aspectRatio, scenesText } = req.body;
     
     // 1. Generate visual image prompt using text model
-    const promptResponse = await ai.models.generateContent({
+    const promptResponse = await generateContentWithFallback(ai, {
       model: "gemini-3.5-flash",
       contents: [{ role: "user", parts: [{ text: `You are an expert YouTube Thumbnail designer. Generate a highly detailed image generation prompt for an amazing, eye-catching, highly clickable video thumbnail based on this video script snippet. The thumbnail should be cinematic, vibrant, and highly dramatic. IMPORTANT: Do NOT include text or typography instructions in the image prompt, just describe the raw visual composition and lighting.
 

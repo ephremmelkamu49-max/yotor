@@ -56,7 +56,7 @@ export default function App() {
     aspectRatio: '16:9',
     musicTrack: DEFAULT_MUSIC[1].url, // Meditative pad default
     musicVolume: 0.12,
-    voiceLanguage: 'am-edge-male',
+    voiceLanguage: 'am-yotor-epic-male',
     voiceType: 'male',
     subtitleStyle: {
       enabled: true,
