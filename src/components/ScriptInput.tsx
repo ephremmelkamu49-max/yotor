@@ -1,36 +1,50 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff, Sparkles, AlertCircle, FileText, Settings, Key, HelpCircle, Activity } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Eye, EyeOff, Sparkles, AlertCircle, FileText, Settings, Key, HelpCircle, Activity, Volume2, Play } from 'lucide-react';
 import { Language, translations } from '../translations';
+import { GOOGLE_TTS_LANGUAGES } from '../data';
 
 interface ScriptInputProps {
-  onAnalyze: (script: string, pexelsKey: string, pixabayKey: string, coverrKey: string) => Promise<void>;
+  onAnalyze: (script: string, pexelsKey: string, pixabayKey: string, coverrKey: string, voiceLanguage: string) => Promise<void>;
+  script: string;
+  setScript: (script: string) => void;
   isLoading: boolean;
   loadingStage?: string;
   language: Language;
 }
 
-export default function ScriptInput({ onAnalyze, isLoading, loadingStage, language }: ScriptInputProps) {
+export default function ScriptInput({ onAnalyze, script, setScript, isLoading, loadingStage, language }: ScriptInputProps) {
   const t = translations[language];
   const displayedLoadingStage = loadingStage === "Analyzing Script..." ? t.running_analysis : loadingStage;
+  
+  const [selectedVoice, setSelectedVoice] = useState<string>(GOOGLE_TTS_LANGUAGES[0].code);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
 
-  const [script, setScript] = useState<string>(
-    "We stand on the edge of a new cosmos. Stars flicker in the endless fabric of space, calling us to explore what lies beyond. For generations, we have looked up and wondered. Now, we build the engines of discovery. We journey through deep nebulae, seeking new horizons and celestial wonders. This is the story of our infinite horizon, and the endless search for knowledge."
-  );
-  const [pexelsKey, setPexelsKey] = useState<string>(() => {
-    return localStorage.getItem('pexels_api_key') || '';
-  });
-  const [pixabayKey, setPixabayKey] = useState<string>(() => {
-    return localStorage.getItem('pixabay_api_key') || '';
-  });
-  const [coverrKey, setCoverrKey] = useState<string>(() => {
-    return localStorage.getItem('coverr_api_key') || '';
-  });
+  const [pexelsKey, setPexelsKey] = useState<string>(() => localStorage.getItem('pexels_api_key') || '');
+  const [pixabayKey, setPixabayKey] = useState<string>(() => localStorage.getItem('pixabay_api_key') || '');
+  const [coverrKey, setCoverrKey] = useState<string>(() => localStorage.getItem('coverr_api_key') || '');
+  
   const [showKey, setShowKey] = useState(false);
   const [showPixabayKey, setShowPixabayKey] = useState(false);
   const [showCoverrKey, setShowCoverrKey] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
   const [loadingDiagnostic, setLoadingDiagnostic] = useState(false);
+
+  const previewVoice = () => {
+    if (isPlayingPreview) {
+      audioPreviewRef.current?.pause();
+      setIsPlayingPreview(false);
+      return;
+    }
+    
+    const textToPreview = language === 'am' ? "ዮቶር ስቱዲዮ ይመስገን።" : "Yotor Studio is ready.";
+    const url = `/api/tts?text=${encodeURIComponent(textToPreview)}&lang=${selectedVoice}`;
+    
+    audioPreviewRef.current = new Audio(url);
+    audioPreviewRef.current.onended = () => setIsPlayingPreview(false);
+    audioPreviewRef.current.play().then(() => setIsPlayingPreview(true)).catch(e => console.error(e));
+  };
 
   const runDiagnostics = async () => {
     setLoadingDiagnostic(true);
@@ -53,7 +67,6 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
     }
   }, [showSettings]);
 
-  // Approximate reading speed helper (estimating ~140 words per minute, i.e., 2.3 words/second)
   const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
   const estimatedSeconds = Math.round(wordCount / 2.3);
   const minutes = Math.floor(estimatedSeconds / 60);
@@ -63,33 +76,15 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
     e.preventDefault();
     if (!script.trim()) return;
     
-    // Persist key locally for convenience
-    if (pexelsKey) {
-      localStorage.setItem('pexels_api_key', pexelsKey);
-    } else {
-      localStorage.removeItem('pexels_api_key');
-    }
+    if (pexelsKey) localStorage.setItem('pexels_api_key', pexelsKey); else localStorage.removeItem('pexels_api_key');
+    if (pixabayKey) localStorage.setItem('pixabay_api_key', pixabayKey); else localStorage.removeItem('pixabay_api_key');
+    if (coverrKey) localStorage.setItem('coverr_api_key', coverrKey); else localStorage.removeItem('coverr_api_key');
     
-    // Persist Pixabay key locally
-    if (pixabayKey) {
-      localStorage.setItem('pixabay_api_key', pixabayKey);
-    } else {
-      localStorage.removeItem('pixabay_api_key');
-    }
-    
-    // Persist Coverr key locally
-    if (coverrKey) {
-      localStorage.setItem('coverr_api_key', coverrKey);
-    } else {
-      localStorage.removeItem('coverr_api_key');
-    }
-    
-    onAnalyze(script, pexelsKey, pixabayKey, coverrKey);
+    onAnalyze(script, pexelsKey, pixabayKey, coverrKey, selectedVoice);
   };
 
   return (
     <div className="bg-[#0c0c0e]/95 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden" id="script-panel">
-      {/* Visual background lights */}
       <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none" />
 
@@ -117,7 +112,6 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Settings and Pexels integration keys */}
         {showSettings && (
           <div className="p-4 bg-zinc-950 border border-zinc-800/80 rounded-xl space-y-3.5 animate-fadeIn" id="settings-drawer">
             <div>
@@ -142,14 +136,8 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
                   {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-500 mt-1.5 leading-relaxed">
-                If left blank, the applet automatically uses a **premium pre-curated cinematic library** with stunning 4K landscape footage so you can generate professional clips instantly. Get a free API key at{" "}
-                <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">
-                  pexels.com/api
-                </a>
-              </p>
             </div>
-
+            
             <div>
               <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400 mb-1.5 mt-3">
                 <Key size={13} className="text-indigo-400" />
@@ -160,7 +148,6 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
                   type={showPixabayKey ? "text" : "password"}
                   value={pixabayKey}
                   onChange={(e) => setPixabayKey(e.target.value)}
-                  placeholder="Paste your Pixabay API key here..."
                   className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
                   id="pixabay-key"
                 />
@@ -172,12 +159,6 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
                   {showPixabayKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-500 mt-1.5 leading-relaxed">
-                Pixabay images/videos will be used if provided. Get a free API key at{" "}
-                <a href="https://pixabay.com/api/docs/" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">
-                  pixabay.com/api/docs
-                </a>
-              </p>
             </div>
 
             <div>
@@ -190,7 +171,6 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
                   type={showCoverrKey ? "text" : "password"}
                   value={coverrKey}
                   onChange={(e) => setCoverrKey(e.target.value)}
-                  placeholder="Paste your Coverr API key here..."
                   className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
                   id="coverr-key"
                 />
@@ -202,12 +182,8 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
                   {showCoverrKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-500 mt-1.5 leading-relaxed">
-                Rare cinematic videos will be searched via Coverr API if provided.
-              </p>
             </div>
-
-            {/* System Diagnostic Center */}
+            
             <div className="pt-3.5 border-t border-zinc-900 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
@@ -226,42 +202,27 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
 
               {diagResult ? (
                 <div className="space-y-1.5 text-xs font-sans">
-                  {/* Gemini Key Status */}
                   <div className="flex items-start justify-between bg-[#080808]/50 p-2 rounded border border-zinc-900/60">
                     <div>
                       <div className="font-semibold text-zinc-300 flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full ${diagResult.geminiApiKeyConfigured ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} />
                         Gemini AI Core (ይዘት መፍጠሪያ)
                       </div>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        {diagResult.geminiApiKeyConfigured ? "የቪዲዮ ይዘት መከፋፈያና Copilot ሞተር ዝግጁ ነው" : "ይዘት ለመፍጠር የGemini ቁልፍ ማዋቀር ያስፈልጋል"}
-                      </p>
                     </div>
                     <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${diagResult.geminiApiKeyConfigured ? 'text-emerald-400 bg-emerald-500/5' : 'text-rose-450 bg-rose-500/5'}`}>
                       {diagResult.geminiApiKeyConfigured ? "ONLINE" : "MISSING"}
                     </span>
                   </div>
 
-                  {/* Gemini TTS Capability */}
                   <div className="flex items-start justify-between bg-[#080808]/50 p-2 rounded border border-zinc-900/60">
                     <div className="flex-1 pr-2">
                       <div className="font-semibold text-zinc-300 flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full ${
-                          diagResult.geminiTtsStatus === 'ok' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : (diagResult.geminiTtsStatus === 'quota_limit' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500')
+                          diagResult.geminiTtsStatus === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'
                         }`} />
                         Premium Amharic Narrator (የተራኪ ድምፅ)
                       </div>
-                      <p className="text-[10.5px] text-zinc-450 mt-1 leading-relaxed">
-                        {diagResult.geminiTtsMessage}
-                      </p>
                     </div>
-                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 ${
-                      diagResult.geminiTtsStatus === 'ok' 
-                        ? 'text-emerald-400 bg-emerald-500/5' 
-                        : (diagResult.geminiTtsStatus === 'quota_limit' ? 'text-amber-400 bg-amber-500/5' : 'text-rose-400 bg-rose-500/5')
-                    }`}>
-                      {diagResult.geminiTtsStatus.toUpperCase()}
-                    </span>
                   </div>
                 </div>
               ) : (
@@ -273,6 +234,32 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
             </div>
           </div>
         )}
+
+         <div>
+          <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400 mb-2">
+            <Volume2 size={13} className="text-indigo-400" />
+            {language === 'am' ? 'የድምፅ ምርጫ' : 'Voice Selection'}
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={selectedVoice}
+              onChange={(e) => setSelectedVoice(e.target.value)}
+              className="flex-1 bg-[#050505] border border-zinc-800 text-zinc-200 text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500/50"
+            >
+              {GOOGLE_TTS_LANGUAGES.map(lang => (
+                <option key={lang.code} value={lang.code}>{lang.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={previewVoice}
+              className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-xl hover:bg-zinc-800 transition-all flex items-center gap-2"
+            >
+              <Play size={16} />
+              {isPlayingPreview ? '...' : (language === 'am' ? 'ሙከራ' : 'Preview')}
+            </button>
+          </div>
+        </div>
 
         <div>
           <div className="flex items-center justify-between mb-1.5 mt-4">
@@ -327,13 +314,6 @@ export default function ScriptInput({ onAnalyze, isLoading, loadingStage, langua
             <span className="text-xs font-mono text-indigo-400 font-medium">{displayedLoadingStage}</span>
           </div>
         )}
-
-        <div className="flex items-start gap-2 p-3 bg-indigo-500/5 border border-indigo-500/10 rounded-xl text-[10.5px] text-zinc-400 leading-relaxed">
-          <AlertCircle size={14} className="mt-0.5 shrink-0 text-indigo-400" />
-          <span>
-            <strong>System Security Verification:</strong> {language === 'am' ? 'ይህ ዮቶር የፊልም አቀናባሪ ታሪክዎን በቀጥታ ከቪዲዮ በይነመረብ ጋር በሰከንዶች ውስጥ በማገናኘት እጅግ ማራኪ የሆኑ ቪዲዮዎችን እንዲሰሩ ያስችልዎታል።' : 'The visual text segmenter maps your narration to high-definition footage in real-time. This server uses standard clean models for safety.'}
-          </span>
-        </div>
       </form>
     </div>
   );

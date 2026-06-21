@@ -11,6 +11,7 @@ export interface Scene {
   voiceoverUrl: string | null; // Google Translate TTS url
   originalIndex: number;  // Keep track of chronological order
   animationStyle?: AnimationStyle;
+  transitionToNext?: 'none' | 'crossfade' | 'slide' | 'wipe' | 'flicker';
 }
 
 export type AnimationStyle = 'zoom-in' | 'zoom-out' | 'pan-lr' | 'pan-rl' | 'tilt-up' | 'tilt-down' | 'diagonal-br' | 'diagonal-bl' | 'static' | 'dynamic';

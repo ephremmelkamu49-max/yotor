@@ -347,8 +347,25 @@ export default function VideoCanvas({
     if (projectConfig.isVoiceEnabled) {
       const audio = audioRefs.current[currentScene.id];
       if (audio) {
+        console.log(`[TTS] Attempting playback for scene ${currentScene.id}, src: ${audio.src}`);
         audio.currentTime = currentSceneTimeRef.current;
-        audio.play().catch(err => console.warn("TTS Playback blocked:", err));
+        // Pause before play to reset state, avoiding "interrupted by pause" errors
+        audio.pause();
+        
+        // Small delay to ensure browser processed the pause
+        setTimeout(() => {
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+             playPromise.then(_ => {
+               console.log(`[TTS] Playback started for scene ${currentScene.id}`);
+             }).catch(err => {
+               console.error(`[TTS] Playback failed for scene ${currentScene.id}:`, err);
+               if (err.name !== 'AbortError') console.warn("TTS Playback blocked:", err);
+             });
+          }
+        }, 50);
+      } else {
+         console.warn(`[TTS] Audio element not found for scene ${currentScene.id}`);
       }
     }
     
@@ -1432,6 +1449,7 @@ export default function VideoCanvas({
             src={s.voiceoverUrl || `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}`}
             className="hidden"
             crossOrigin="anonymous"
+            onError={(e) => console.error(`[TTS] Error loading audio for scene ${s.id}:`, e)}
             onLoadedMetadata={(e) => {
                // Update scene duration if audio is longer than estimated
                const aud = e.currentTarget;

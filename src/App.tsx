@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scene, ProjectConfig, AspectRatio } from './types';
 import { DEFAULT_CATALOG, DEFAULT_MUSIC } from './data';
 import ScriptInput from './components/ScriptInput';
+import NarrativeAnalyzer from './components/NarrativeAnalyzer';
 import Timeline from './components/Timeline';
 import VideoCanvas from './components/VideoCanvas';
 import RenderModal from './components/RenderModal';
@@ -25,6 +26,9 @@ export default function App() {
   const t = translations[language];
 
   const [scenes, setScenes] = useState<Scene[]>([]);
+  const [script, setScript] = useState<string>(
+    "We stand on the edge of a new cosmos. Stars flicker in the endless fabric of space, calling us to explore what lies beyond. For generations, we have looked up and wondered. Now, we build the engines of discovery. We journey through deep nebulae, seeking new horizons and celestial wonders. This is the story of our infinite horizon, and the endless search for knowledge."
+  );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStage, setLoadingStage] = useState<string>('Analyzing narration text...');
   const [pexelsKey, setPexelsKey] = useState<string>(() => {
@@ -146,13 +150,14 @@ export default function App() {
   };
 
   // Triggers Gemini parser pipeline
-  const handleAnalyzeScript = async (scriptText: string, providedPexelsKey: string, providedPixabayKey: string, providedCoverrKey: string) => {
+  const handleAnalyzeScript = async (scriptText: string, providedPexelsKey: string, providedPixabayKey: string, providedCoverrKey: string, voiceLanguage: string) => {
     setIsLoading(true);
     setLoadingStage('Analyzing story script with Gemini AI...');
     // Sync credentials
     setPexelsKey(providedPexelsKey);
     setPixabayKey(providedPixabayKey);
     setCoverrKey(providedCoverrKey);
+    setProjectConfig(prev => ({ ...prev, voiceLanguage }));
     setIsPlaying(false);
     setPlaybackIndex(0);
 
@@ -193,7 +198,7 @@ export default function App() {
 
         if (providedPexelsKey) {
           try {
-            const pexelsResponse = await fetch(`/api/pexels/search?query=${encodeURIComponent(scene.keywords)}`, {
+            const pexelsResponse = await fetch(`/api/pexels/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
               headers: {
                 'x-pexels-key': providedPexelsKey
               }
@@ -219,7 +224,7 @@ export default function App() {
 
         if (!videoUrl && providedPixabayKey) {
           try {
-            const pixabayResponse = await fetch(`/api/pixabay/search?query=${encodeURIComponent(scene.keywords)}`, {
+            const pixabayResponse = await fetch(`/api/pixabay/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
               headers: {
                 'x-pixabay-key': providedPixabayKey
               }
@@ -248,7 +253,7 @@ export default function App() {
 
         if (!videoUrl && providedCoverrKey) {
           try {
-            const coverrResponse = await fetch(`/api/coverr/search?query=${encodeURIComponent(scene.keywords)}`, {
+            const coverrResponse = await fetch(`/api/coverr/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
               headers: {
                 'x-coverr-key': providedCoverrKey
               }
@@ -279,6 +284,9 @@ export default function App() {
           author = fallbackVid.author;
         }
 
+        // Generate voiceover URL
+        voiceoverUrl = `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${voiceLanguage}`;
+        
         populatedScenes.push({
           id: scene.id || `sc_${i}_${Date.now()}`,
           text: scene.text,
@@ -503,12 +511,17 @@ export default function App() {
           
           {/* Left Column: Inputs & Scenarios Sequence (Grids 7) */}
           <div className="lg:col-span-7 space-y-6 flex flex-col">
-            <ScriptInput
-              onAnalyze={handleAnalyzeScript}
-              isLoading={isLoading}
-              loadingStage={loadingStage}
-              language={language}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <ScriptInput
+                script={script}
+                setScript={setScript}
+                onAnalyze={handleAnalyzeScript}
+                isLoading={isLoading}
+                loadingStage={loadingStage}
+                language={language}
+              />
+              <NarrativeAnalyzer script={script} />
+            </div>
 
             <Timeline
               scenes={scenes}

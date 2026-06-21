@@ -349,14 +349,6 @@ export default function RenderModal({
         // Small 300ms sleep to allow the scene state to propagate and the correct background video element to seek/load
         await new Promise((resolve) => setTimeout(resolve, 300));
 
-        // Delay slightly to let the video source mount and load, then play it!
-        // This ensures the recorded WebM composition stream features dynamic flowing video motion!
-        const videoEl = (canvasElement?.parentElement?.parentElement?.querySelector('video') || document.querySelector('video')) as HTMLVideoElement;
-        if (videoEl) {
-          videoEl.muted = true;
-          videoEl.play().catch(() => {});
-        }
-
         try {
           await new Promise((resolve) => {
             // We run this scene for the calculated duration

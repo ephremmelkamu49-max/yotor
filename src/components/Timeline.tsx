@@ -349,162 +349,185 @@ export default function Timeline({
       <div className="space-y-4 max-h-[550px] overflow-y-auto pr-1" id="scenarios-list">
         {scenes.map((scene, idx) => {
           const isActive = scene.id === activeSceneId;
-          return (
-            <div
-              key={scene.id}
-              onClick={() => onSelectScene(scene.id)}
-              className={`group border rounded-xl p-4 transition-all duration-300 relative cursor-pointer ${
-                isActive
-                  ? 'bg-indigo-500/5 border-indigo-500/50 shadow-lg shadow-indigo-500/5'
-                  : 'bg-zinc-950/40 border-zinc-900/60 hover:border-zinc-800'
-              }`}
-            >
-              {/* Controls floating top right */}
-              <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMoveScene(idx, 'up');
-                  }}
-                  disabled={idx === 0}
-                  className="p-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-200 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Move Up"
-                >
-                  <ChevronUp size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMoveScene(idx, 'down');
-                  }}
-                  disabled={idx === scenes.length - 1}
-                  className="p-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-200 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Move Down"
-                >
-                  <ChevronDown size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteScene(scene.id);
-                  }}
-                  disabled={scenes.length <= 1}
-                  className="p-1 bg-red-950/40 hover:bg-red-900/60 border border-red-900/30 rounded text-red-400 hover:text-red-200 disabled:opacity-30 disabled:pointer-events-none ml-1"
-                  title="Delete Scene"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
+          const showTransition = idx < scenes.length - 1;
+          const transitionTypes: ('none' | 'crossfade' | 'slide' | 'wipe' | 'flicker')[] = ['none', 'crossfade', 'slide', 'wipe', 'flicker'];
+          
+          const handleCycleTransition = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            const current = scene.transitionToNext || 'none';
+            const nextIndex = (transitionTypes.indexOf(current) + 1) % transitionTypes.length;
+            onUpdateScene(scene.id, { transitionToNext: transitionTypes[nextIndex] });
+          };
 
-              <div className="flex gap-4">
-                {/* Visual Video Thumbnail box */}
-                <div className="relative shrink-0 w-28 h-20 bg-[#050505] border border-zinc-800 rounded-lg overflow-hidden group">
-                  {scene.videoThumb ? (
-                    <img 
-                      src={scene.videoThumb} 
-                      alt="Thumbnail" 
-                      className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-zinc-650">
-                      <Film size={20} />
-                      <span className="text-[9px] mt-1">No Visual</span>
-                    </div>
-                  )}
-                  <div className="absolute left-1.5 bottom-1.5 bg-[#050505]/90 backdrop-blur-sm text-[9px] font-mono text-indigo-400 px-1.5 py-0.5 rounded border border-zinc-800">
-                    S-{idx + 1}
-                  </div>
-                  
-                  {/* Visual selection hover button */}
+          return (
+            <React.Fragment key={scene.id}>
+              <div
+                onClick={() => onSelectScene(scene.id)}
+                className={`group border rounded-xl p-4 transition-all duration-300 relative cursor-pointer ${
+                  isActive
+                    ? 'bg-indigo-500/5 border-indigo-500/50 shadow-lg shadow-indigo-500/5'
+                    : 'bg-zinc-950/40 border-zinc-900/60 hover:border-zinc-800'
+                }`}
+              >
+                {/* Controls floating top right */}
+                <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleOpenSearch(scene);
+                      onMoveScene(idx, 'up');
                     }}
-                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all"
+                    disabled={idx === 0}
+                    className="p-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-200 disabled:opacity-30 disabled:pointer-events-none"
+                    title="Move Up"
                   >
-                    <div className="bg-indigo-600 text-white p-1.5 rounded-full transition-transform hover:scale-110">
-                      <Search size={14} />
-                    </div>
+                    <ChevronUp size={14} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMoveScene(idx, 'down');
+                    }}
+                    disabled={idx === scenes.length - 1}
+                    className="p-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-200 disabled:opacity-30 disabled:pointer-events-none"
+                    title="Move Down"
+                  >
+                    <ChevronDown size={14} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteScene(scene.id);
+                    }}
+                    disabled={scenes.length <= 1}
+                    className="p-1 bg-red-950/40 hover:bg-red-900/60 border border-red-900/30 rounded text-red-400 hover:text-red-200 disabled:opacity-30 disabled:pointer-events-none ml-1"
+                    title="Delete Scene"
+                  >
+                    <Trash2 size={14} />
                   </button>
                 </div>
 
-                {/* Content details inputs */}
-                <div className="flex-1 space-y-2.5">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* Caption Editing */}
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
-                        {language === 'am' ? 'የትርጉም ጽሑፍ የግርጌ መግቢያ (Caption)' : 'Subtitles Caption'}
-                      </label>
-                      <input
-                        type="text"
-                        value={scene.text}
-                        onChange={(e) => onUpdateScene(scene.id, { text: e.target.value, caption: e.target.value })}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500/50 font-sans"
+                <div className="flex gap-4">
+                  {/* Visual Video Thumbnail box */}
+                  <div className="relative shrink-0 w-28 h-20 bg-[#050505] border border-zinc-800 rounded-lg overflow-hidden group">
+                    {scene.videoThumb ? (
+                      <img 
+                        src={scene.videoThumb} 
+                        alt="Thumbnail" 
+                        className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"
                       />
-                    </div>
-
-                    {/* Duration and Animation inputs */}
-                    <div className="flex gap-2">
-                       <div className="flex-1 space-y-1">
-                        <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
-                          {language === 'am' ? 'ቆይታ በሰከንድ' : 'Duration (sec)'}
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                          <Clock size={12} className="text-zinc-500" />
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="1"
-                            max="120"
-                            value={scene.duration}
-                            onChange={(e) => onUpdateScene(scene.id, { duration: Math.max(1, parseFloat(e.target.value) || 3) })}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-xs font-mono rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500/50"
-                          />
-                        </div>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-zinc-650">
+                        <Film size={20} />
+                        <span className="text-[9px] mt-1">No Visual</span>
                       </div>
-
-                      <div className="flex-1 space-y-1">
-                        <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
-                          {language === 'am' ? 'እንቅስቃሴ' : 'Animation'}
-                        </label>
-                        <select
-                          value={scene.animationStyle || 'default'}
-                          onChange={(e) => onUpdateScene(scene.id, { animationStyle: e.target.value === 'default' ? undefined : (e.target.value as any) })}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-[10px] rounded px-2.5 py-2.5 focus:outline-none focus:border-indigo-500/50 appearance-none uppercase tracking-tighter"
-                        >
-                          <option value="default">{language === 'am' ? '— ራስ-ሰር —' : '— Auto —'}</option>
-                          <option value="zoom-in">{language === 'am' ? 'Zoom In (ማቅረቢያ)' : 'Zoom In'}</option>
-                          <option value="zoom-out">{language === 'am' ? 'Zoom Out (ማራቂያ)' : 'Zoom Out'}</option>
-                          <option value="pan-lr">{language === 'am' ? 'Pan Right (ወደ ቀኝ)' : 'Pan Right'}</option>
-                          <option value="pan-rl">{language === 'am' ? 'Pan Left (ወደ ግራ)' : 'Pan Left'}</option>
-                          <option value="tilt-up">{language === 'am' ? 'Tilt Up (ወደ ላይ)' : 'Tilt Up'}</option>
-                          <option value="tilt-down">{language === 'am' ? 'Tilt Down (ወደ ታች)' : 'Tilt Down'}</option>
-                          <option value="diagonal-br">Diagonal ↘</option>
-                          <option value="diagonal-bl">Diagonal ↙</option>
-                          <option value="static">{language === 'am' ? 'Static (የማይንቀሳቀስ)' : 'Static'}</option>
-                        </select>
-                      </div>
+                    )}
+                    <div className="absolute left-1.5 bottom-1.5 bg-[#050505]/90 backdrop-blur-sm text-[9px] font-mono text-indigo-400 px-1.5 py-0.5 rounded border border-zinc-800">
+                      S-{idx + 1}
                     </div>
+                    
+                    {/* Visual selection hover button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenSearch(scene);
+                      }}
+                      className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all"
+                    >
+                      <div className="bg-indigo-600 text-white p-1.5 rounded-full transition-transform hover:scale-110">
+                        <Search size={14} />
+                      </div>
+                    </button>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-400">
-                    <span className="flex items-center gap-1.5 text-xs text-zinc-300">
-                      <span className="font-semibold text-indigo-400 font-mono text-[10px] uppercase">Keywords / ፍለጋ:</span> {scene.keywords}
-                    </span>
-                    {scene.videoAuthor && (
-                      <span className="text-[10px] italic text-zinc-500 font-sans">
-                        Clip by: {scene.videoAuthor}
+                  {/* Content details inputs */}
+                  <div className="flex-1 space-y-2.5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Caption Editing */}
+                      <div className="md:col-span-2 space-y-1">
+                        <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
+                          {language === 'am' ? 'የትርጉም ጽሑፍ የግርጌ መግቢያ (Caption)' : 'Subtitles Caption'}
+                        </label>
+                        <input
+                          type="text"
+                          value={scene.text}
+                          onChange={(e) => onUpdateScene(scene.id, { text: e.target.value, caption: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500/50 font-sans"
+                        />
+                      </div>
+
+                      {/* Duration and Animation inputs */}
+                      <div className="flex gap-2">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
+                            {language === 'am' ? 'ቆይታ በሰከንድ' : 'Duration (sec)'}
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={12} className="text-zinc-500" />
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="1"
+                              max="120"
+                              value={scene.duration}
+                              onChange={(e) => onUpdateScene(scene.id, { duration: Math.max(1, parseFloat(e.target.value) || 3) })}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-xs font-mono rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500/50"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
+                            {language === 'am' ? 'እንቅስቃሴ' : 'Animation'}
+                          </label>
+                          <select
+                            value={scene.animationStyle || 'default'}
+                            onChange={(e) => onUpdateScene(scene.id, { animationStyle: e.target.value === 'default' ? undefined : (e.target.value as any) })}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-[10px] rounded px-2.5 py-2.5 focus:outline-none focus:border-indigo-500/50 appearance-none uppercase tracking-tighter"
+                          >
+                            <option value="default">{language === 'am' ? '— ራስ-ሰር —' : '— Auto —'}</option>
+                            <option value="zoom-in">{language === 'am' ? 'Zoom In (ማቅረቢያ)' : 'Zoom In'}</option>
+                            <option value="zoom-out">{language === 'am' ? 'Zoom Out (ማራቂያ)' : 'Zoom Out'}</option>
+                            <option value="pan-lr">{language === 'am' ? 'Pan Right (ወደ ቀኝ)' : 'Pan Right'}</option>
+                            <option value="pan-rl">{language === 'am' ? 'Pan Left (ወደ ግራ)' : 'Pan Left'}</option>
+                            <option value="tilt-up">{language === 'am' ? 'Tilt Up (ወደ ላይ)' : 'Tilt Up'}</option>
+                            <option value="tilt-down">{language === 'am' ? 'Tilt Down (ወደ ታች)' : 'Tilt Down'}</option>
+                            <option value="diagonal-br">Diagonal ↘</option>
+                            <option value="diagonal-bl">Diagonal ↙</option>
+                            <option value="static">{language === 'am' ? 'Static (የማይንቀሳቀስ)' : 'Static'}</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-400">
+                      <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+                        <span className="font-semibold text-indigo-400 font-mono text-[10px] uppercase">Keywords / ፍለጋ:</span> {scene.keywords}
                       </span>
-                    )}
+                      {scene.videoAuthor && (
+                        <span className="text-[10px] italic text-zinc-500 font-sans">
+                          Clip by: {scene.videoAuthor}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+              
+              {showTransition && (
+                <div className="flex justify-center -my-2 z-20">
+                  <button
+                    onClick={handleCycleTransition}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 border border-zinc-700 rounded-full text-[10px] text-zinc-400 hover:border-indigo-500 hover:text-indigo-400 transition-all shadow-md"
+                  >
+                    <RefreshCw size={10} />
+                    {scene.transitionToNext || 'none'}
+                  </button>
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
       </div>

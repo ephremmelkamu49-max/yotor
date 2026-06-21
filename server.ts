@@ -75,10 +75,8 @@ async function generateContentWithFallback(
 ): Promise<any> {
   const modelFallbackList = [
     options.model,
-    "gemini-2.1-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
+    "gemini-flash-latest",
+    "gemini-3.1-flash-lite"
   ];
   const uniqueModels = Array.from(new Set(modelFallbackList));
   
@@ -1008,6 +1006,48 @@ ${scenesText.substring(0, 5000)}` }] }]
       imageUrl: "https://images.pexels.com/photos/310452/pexels-photo-310452.jpeg?auto=compress&cs=tinysrgb&w=800",
       prompt: "fallback abstract thumbnail"
     });
+  }
+});
+
+// 6. Narrative Analysis - AI feedback for pacing & emotional keywords
+app.post("/api/analyze-narrative", async (req, res) => {
+  if (!ai) {
+    return res.status(500).json({ error: "AI not initialized" });
+  }
+  const { script } = req.body;
+  try {
+    const prompt = `Analyze this script segment to suggest better pacing or highlight emotional keywords/themes. Provide a short, actionable analysis:
+"${script}"
+
+Return JSON: { "analysis": "...", "pacing": "...", "keywords": ["...", "..."] }`;
+    const response = await generateContentWithFallback(ai, {
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+             analysis: { type: Type.STRING },
+             pacing: { type: Type.STRING },
+             keywords: { type: Type.ARRAY, items: { type: Type.STRING } }
+          },
+          required: ["analysis", "pacing", "keywords"]
+        }
+      }
+    });
+    
+    let responseText = response.text.trim();
+    if (responseText.startsWith('```json')) {
+      responseText = responseText.replace(/^```json\n/, '').replace(/\n```$/, '');
+    } else if (responseText.startsWith('```')) {
+      responseText = responseText.replace(/^```\n/, '').replace(/\n```$/, '');
+    }
+    
+    res.json(JSON.parse(responseText.trim()));
+  } catch (error: any) {
+    console.error("Narrative analysis failed:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
