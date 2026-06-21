@@ -24,9 +24,11 @@ export interface SubtitleStyle {
   color: string;          // hex/rgba
   backgroundColor: string;// background box color (e.g. rgba(0,0,0,0.5))
   position: 'bottom' | 'middle' | 'top';
-  fontFamily: 'Inter' | 'Space Grotesk' | 'JetBrains Mono' | 'Playfair Display';
+  fontFamily: 'Inter' | 'Space Grotesk' | 'JetBrains Mono' | 'Playfair Display' | 'Anton' | 'Archivo Black' | 'Outfit';
   uppercase: boolean;
 }
+
+export type VisualStyle = 'realistic' | '3d-animation' | '2d-animation' | 'anime' | 'watercolor' | 'cyberpunk' | 'sketch';
 
 export interface ProjectConfig {
   aspectRatio: AspectRatio;
@@ -44,6 +46,7 @@ export interface ProjectConfig {
   isTransitionsEnabled?: boolean;
   isSubtitlesEnabled?: boolean;
   isMusicEnabled?: boolean;
+  visualStyle?: VisualStyle;
 }
 
 export interface VideoClip {

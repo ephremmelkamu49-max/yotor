@@ -99,7 +99,7 @@ async function generateContentWithFallback(
 
 // 1. Script Analysis API - uses Gemini to split user text into structured cinematic scenes
 app.post("/api/analyze-script", async (req, res) => {
-  const { script } = req.body;
+  const { script, visualStyle } = req.body;
   if (!script || typeof script !== "string") {
     return res.status(400).json({ error: "Script text is required" });
   }
@@ -107,11 +107,21 @@ app.post("/api/analyze-script", async (req, res) => {
   const wordCount = script.trim().split(/\s+/).length;
   const isLongScript = wordCount > 350;
 
+  const styleMapping: Record<string, string> = {
+    'realistic': 'Cinematic realistic 4k, professional lighting, photorealistic textures',
+    '3d-animation': '3D Pixar style animation, cute expressive characters, vibrant volumetric lighting, Disney style 3D render',
+    '2d-animation': '2D hand-drawn animation, flat colors, expressive line art, illustrative style',
+    'anime': 'Studio Ghibli aesthetic, anime style background, detailed characters, Japanese animation',
+    'watercolor': 'Soft watercolor painting, artistic bleeding colors, paper texture, impressionist',
+    'cyberpunk': 'Cyberpunk aesthetic, neon colored lights, futuristic cityscape, rainy night, high tech',
+    'sketch': 'Hand-drawn pencil sketch, charcoal texture, artistic line work'
+  };
+
   if (!ai) {
     // If API key is missing, fall back to an smart adaptive splitter so the app handles 30 minutes smoothly!
     console.warn("GEMINI_API_KEY is not defined. Falling back to mechanical split.");
     const sentences = script
-      .split(/(?<=[.!?።፧])\s+/)
+      .split(/(?<=[.!?።፤፧])\s+/)
       .map(s => s.trim())
       .filter(s => s.length > 0);
     
@@ -142,8 +152,8 @@ app.post("/api/analyze-script", async (req, res) => {
       // speaking speed estimated at 2.4 words per second
       const duration = Math.max(4.0, Number((segWords / 2.4).toFixed(1))); 
       // Simple visual keyword guess
-      const nouns = seg.toLowerCase().match(/\b(forest|sunset|technology|people|ocean|city|space|nature|abstract|cyberpunk|office|coding|data|future|workspace|ethiopia|mountains|landscape)\b/g) || ["breathtaking cinematic landscape"];
-      const keywords = `${nouns[0]} slow motion epic cinematic ambient 4k`;
+      const nouns = seg.toLowerCase().match(/\b(forest|sunset|technology|people|ocean|city|space|nature|abstract|cyberpunk|office|coding|data|future|workspace|ethiopia|mountains|landscape|flower|human|animal)\b/g) || ["breathtaking cinematic landscape"];
+      const keywords = `${nouns[0]} ${styleMapping[visualStyle || 'realistic']} motion 4k`;
       return {
         id: `scene_${idx}_${Date.now()}`,
         text: seg,
@@ -154,7 +164,7 @@ app.post("/api/analyze-script", async (req, res) => {
       };
     });
 
-    return res.json({ scenes, fallback: true, warning: "Using server-side local adaptive regex parsing as GEMINI_API_KEY is not configured." });
+    return res.json({ scenes, fallback: true, warning: "Using server-side local adaptive regex parsing." });
   }
 
   try {
@@ -163,29 +173,29 @@ app.post("/api/analyze-script", async (req, res) => {
     const lengthInstruction = `SCENIC DENSITY & LANGUAGE SPECIFICS:
 Break the script into logical, complete, and sequential scenes.
 ${isAmharic ? `Since the script contains AMHARIC (Ge'ez) text:
-- Identify sentence boundaries using the Amharic punctuation markers '።' (double-dot / final period), '፤' (semicolon), or '፧'.
+- Identify sentence boundaries primarily using the Amharic punctuation markers '።' (final period), '፤' (semicolon), or '፧'.
 - Group sentences or clauses matching logical visual arcs so they form highly coherent dramatic sections.
-- Estimation of read/voice time: Amharic is read at approximately 1.8 words per second. Calculate segment durations accurately based on this rate.
+- Estimation of read/voice time: Amharic is read at approximately 1.7 words per second. Calculate segment durations accurately based on this rate.
 - Captions MUST be in Amharic (verbatim) matching the narration.
-- Visual description 'keywords' MUST be in ENGLISH to successfully search stock media databases like Pexels, Pixabay, and Coverr. Do not output Amharic keywords.` : `English script guidelines:
+- Visual description 'keywords' MUST be in ENGLISH (e.g. 'sunset over mountains', 'high tech laboratory') to successfully search stock media databases. Do NOT output Amharic keywords.` : `English script guidelines:
 - Identify logical transitions, narrative pause points, or sentence markers.
 - Speak pacing timing: 2.3 words per second.
 - Captions must match the segment wording exactly.`}
 
 - Use verbatim original text segments. Do NOT summarize or omit ANY text. 100% of the script must be accounted for.
-- Visual keywords should describe real-world physical settings, cinematic camera actions, and lighting setups (e.g., 'mysterious dark forest drone shot cinematic lighting slow motion', 'abstract digital network server blinking LED lights premium close-up') that translate abstract concepts into dramatic high-definition scenes.`;
+- Visual keywords should describe real-world physical settings, cinematic camera actions, and lighting setups.
+${visualStyle ? `- VISUAL STYLE DESCRIPTOR: The user prefers a "${visualStyle}" aesthetic. Ensure 'keywords' incorporate descriptors like "${styleMapping[visualStyle] || ""}" to help find or represent this style.` : ""}
+- Ensure keywords are descriptive enough for a stock video search engine (e.g. 'slow motion 3d animation of child smiling pixar style' instead of just 'animation')`;
 
-    const prompt = `You are "Yoto AI Director", a world-class cinematic video producer and director specializing in breathtaking visual storytelling. Your goal is to transform the user's script (enclosed in triple quotes) into a masterfully paced, logical, and aesthetically pleasing sequential scene structure.
+    const prompt = `You are "Yoto AI Director", a cinematic video producer. Transform the user's script (enclosed in triple quotes) into a masterfully paced sequential scene structure.
 
 ${lengthInstruction}
 
 For each scene segment, provide:
 1. 'text': The exact verbatim original script excerpt for this scene.
-2. 'keywords': High-quality, cinematic visual search query tags. 
-   - MUST ALWAYS BE IN ENGLISH (very important for international stock footages).
-   - Never use generic words like "video" or abstract actions. Describe tangible scenery: 'vivid sunrise reflecting over mountain lake wide angle', 'futuristic neon tech background', 'extreme macro face showing deep expression 8k'.
+2. 'keywords': High-quality, cinematic visual search query tags (MUST BE IN ENGLISH).
 3. 'caption': Accurate subtitles matching the original text segment verbatim.
-4. 'duration': Estimated speech duration in seconds (use rate limits, min 4.0 seconds, max 16.0 seconds per scene).
+4. 'duration': Estimated speech duration in seconds (min 4.0s).
 
 User Script:
 """
@@ -193,7 +203,7 @@ ${script}
 """`;
 
     const response = await generateContentWithFallback(ai, {
-      model: "gemini-3.5-flash",
+      model: "gemini-3.1-flash-lite",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -202,26 +212,14 @@ ${script}
           properties: {
             scenes: {
               type: Type.ARRAY,
-              description: "Array of sequential, non-overlapping visual and audio scenes that represent the full script.",
+              description: "Array of sequential visual and audio scenes.",
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  text: {
-                    type: Type.STRING,
-                    description: "Verbatim, exact unaltered sentences from the original script corresponding to this scene."
-                  },
-                  keywords: {
-                    type: Type.STRING,
-                    description: "Cinematic, physical search keywords for stock video clips (e.g. 'moody office server room blinking green lights steadycam')."
-                  },
-                  caption: {
-                    type: Type.STRING,
-                    description: "Polished subtitle text for this segment."
-                  },
-                  duration: {
-                    type: Type.NUMBER,
-                    description: "Estimated speaking duration in seconds (based on length, min 4.0s)."
-                  }
+                  text: { type: Type.STRING },
+                  keywords: { type: Type.STRING },
+                  caption: { type: Type.STRING },
+                  duration: { type: Type.NUMBER }
                 },
                 required: ["text", "keywords", "caption", "duration"]
               }
@@ -252,7 +250,7 @@ ${script}
     console.error("Gemini script parser failed:", error);
     // Return standard fallback chunking on exception
     const sentences = script
-      .split(/(?<=[.!?።፧])\s+/)
+      .split(/(?<=[.!?።፤፧])\s+/)
       .map(s => s.trim())
       .filter(s => s.length > 0);
     
@@ -441,8 +439,13 @@ app.post("/api/analyze-video", async (req, res) => {
   try {
     console.log(`[Video Analyzer] Fetching video file from: ${videoUrl}`);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
-    const fetchRes = await fetch(videoUrl, { signal: controller.signal });
+    const timeout = setTimeout(() => controller.abort(), 25000); // Increased timeout to 25s
+    const fetchRes = await fetch(videoUrl, { 
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
     clearTimeout(timeout);
 
     if (!fetchRes.ok) {
@@ -455,9 +458,9 @@ app.post("/api/analyze-video", async (req, res) => {
 
     const geminiPrompt = prompt || "Analyze this video clip and describe what happens, identify objects, color scheme, visual pacing, and key informational details.";
 
-    console.log(`[Video Analyzer] Requesting video understanding from gemini-3.1-pro-preview...`);
+    console.log(`[Video Analyzer] Requesting video understanding from gemini-1.5-flash...`);
     const result = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-1.5-flash",
       contents: [
         {
           inlineData: {
@@ -465,11 +468,11 @@ app.post("/api/analyze-video", async (req, res) => {
             mimeType: "video/mp4"
           }
         },
-        geminiPrompt
+        { text: geminiPrompt }
       ]
     });
 
-    res.json({ analysis: result.text || "No analysis generated by video model." });
+    return res.json({ analysis: result.text || "No analysis generated by video model." });
   } catch (error: any) {
     console.error("[Video Analyzer] Failure:", error);
     res.status(500).json({ error: error.message || "An error occurred during video analysis." });
@@ -1006,48 +1009,6 @@ ${scenesText.substring(0, 5000)}` }] }]
       imageUrl: "https://images.pexels.com/photos/310452/pexels-photo-310452.jpeg?auto=compress&cs=tinysrgb&w=800",
       prompt: "fallback abstract thumbnail"
     });
-  }
-});
-
-// 6. Narrative Analysis - AI feedback for pacing & emotional keywords
-app.post("/api/analyze-narrative", async (req, res) => {
-  if (!ai) {
-    return res.status(500).json({ error: "AI not initialized" });
-  }
-  const { script } = req.body;
-  try {
-    const prompt = `Analyze this script segment to suggest better pacing or highlight emotional keywords/themes. Provide a short, actionable analysis:
-"${script}"
-
-Return JSON: { "analysis": "...", "pacing": "...", "keywords": ["...", "..."] }`;
-    const response = await generateContentWithFallback(ai, {
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-             analysis: { type: Type.STRING },
-             pacing: { type: Type.STRING },
-             keywords: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["analysis", "pacing", "keywords"]
-        }
-      }
-    });
-    
-    let responseText = response.text.trim();
-    if (responseText.startsWith('```json')) {
-      responseText = responseText.replace(/^```json\n/, '').replace(/\n```$/, '');
-    } else if (responseText.startsWith('```')) {
-      responseText = responseText.replace(/^```\n/, '').replace(/\n```$/, '');
-    }
-    
-    res.json(JSON.parse(responseText.trim()));
-  } catch (error: any) {
-    console.error("Narrative analysis failed:", error);
-    res.status(500).json({ error: error.message });
   }
 });
 

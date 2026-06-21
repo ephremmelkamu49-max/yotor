@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { Eye, EyeOff, Sparkles, AlertCircle, FileText, Settings, Key, HelpCircle, Activity, Volume2, Play } from 'lucide-react';
+import { Eye, EyeOff, Sparkles, AlertCircle, FileText, Settings, Key, HelpCircle, Activity, Volume2, Play, TrendingUp } from 'lucide-react';
 import { Language, translations } from '../translations';
-import { GOOGLE_TTS_LANGUAGES } from '../data';
+import { GOOGLE_TTS_LANGUAGES, VIDEO_TEMPLATES } from '../data';
 
 interface ScriptInputProps {
-  onAnalyze: (script: string, pexelsKey: string, pixabayKey: string, coverrKey: string, voiceLanguage: string) => Promise<void>;
+  onAnalyze: (script: string, pexelsKey: string, pixabayKey: string, coverrKey: string) => Promise<void>;
   script: string;
   setScript: (script: string) => void;
   isLoading: boolean;
@@ -16,10 +16,6 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
   const t = translations[language];
   const displayedLoadingStage = loadingStage === "Analyzing Script..." ? t.running_analysis : loadingStage;
   
-  const [selectedVoice, setSelectedVoice] = useState<string>(GOOGLE_TTS_LANGUAGES[0].code);
-  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
-
   const [pexelsKey, setPexelsKey] = useState<string>(() => localStorage.getItem('pexels_api_key') || '');
   const [pixabayKey, setPixabayKey] = useState<string>(() => localStorage.getItem('pixabay_api_key') || '');
   const [coverrKey, setCoverrKey] = useState<string>(() => localStorage.getItem('coverr_api_key') || '');
@@ -30,21 +26,6 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
   const [showSettings, setShowSettings] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
   const [loadingDiagnostic, setLoadingDiagnostic] = useState(false);
-
-  const previewVoice = () => {
-    if (isPlayingPreview) {
-      audioPreviewRef.current?.pause();
-      setIsPlayingPreview(false);
-      return;
-    }
-    
-    const textToPreview = language === 'am' ? "ዮቶር ስቱዲዮ ይመስገን።" : "Yotor Studio is ready.";
-    const url = `/api/tts?text=${encodeURIComponent(textToPreview)}&lang=${selectedVoice}`;
-    
-    audioPreviewRef.current = new Audio(url);
-    audioPreviewRef.current.onended = () => setIsPlayingPreview(false);
-    audioPreviewRef.current.play().then(() => setIsPlayingPreview(true)).catch(e => console.error(e));
-  };
 
   const runDiagnostics = async () => {
     setLoadingDiagnostic(true);
@@ -80,7 +61,7 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
     if (pixabayKey) localStorage.setItem('pixabay_api_key', pixabayKey); else localStorage.removeItem('pixabay_api_key');
     if (coverrKey) localStorage.setItem('coverr_api_key', coverrKey); else localStorage.removeItem('coverr_api_key');
     
-    onAnalyze(script, pexelsKey, pixabayKey, coverrKey, selectedVoice);
+    onAnalyze(script, pexelsKey, pixabayKey, coverrKey);
   };
 
   return (
@@ -235,34 +216,33 @@ export default function ScriptInput({ onAnalyze, script, setScript, isLoading, l
           </div>
         )}
 
-         <div>
-          <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400 mb-2">
-            <Volume2 size={13} className="text-indigo-400" />
-            {language === 'am' ? 'የድምፅ ምርጫ' : 'Voice Selection'}
-          </label>
-          <div className="flex gap-2">
-            <select
-              value={selectedVoice}
-              onChange={(e) => setSelectedVoice(e.target.value)}
-              className="flex-1 bg-[#050505] border border-zinc-800 text-zinc-200 text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500/50"
-            >
-              {GOOGLE_TTS_LANGUAGES.map(lang => (
-                <option key={lang.code} value={lang.code}>{lang.name}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={previewVoice}
-              className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-xl hover:bg-zinc-800 transition-all flex items-center gap-2"
-            >
-              <Play size={16} />
-              {isPlayingPreview ? '...' : (language === 'am' ? 'ሙከራ' : 'Preview')}
-            </button>
-          </div>
-        </div>
-
         <div>
-          <div className="flex items-center justify-between mb-1.5 mt-4">
+           <div className="flex items-center justify-between mb-3 mt-4">
+             <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+               <TrendingUp size={13} className="text-amber-400" />
+               {language === 'am' ? 'ወቅታዊ ትሬንዶች (Trending Templates)' : 'Trending Templates'}
+             </label>
+           </div>
+           <div className="grid grid-cols-3 gap-2 mb-6">
+             {VIDEO_TEMPLATES.map(tmp => (
+               <button
+                 key={tmp.id}
+                 type="button"
+                 onClick={() => {
+                   if (window.confirm(language === 'am' ? 'ያለውን ፅሁፍ በዝግጁ ጭብጥ መቀየር ይፈልጋሉ?' : 'Replace current script with this template?')) {
+                     setScript(tmp.prompt);
+                   }
+                 }}
+                 className="flex flex-col items-center justify-center p-3 rounded-xl bg-zinc-950 border border-zinc-900 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all text-center group"
+               >
+                 <span className="text-[10px] font-bold text-zinc-300 group-hover:text-amber-400">
+                   {language === 'am' ? tmp.am : tmp.name}
+                 </span>
+               </button>
+             ))}
+           </div>
+
+           <div className="flex items-center justify-between mb-1.5 mt-0">
             <label className="text-xs font-semibold text-zinc-400">{language === 'am' ? `የታሪኩ ዝርዝር (${wordCount} ቃላት)` : `Script Body (${wordCount} words)`}</label>
             <div className="text-[10px] font-mono text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
               {t.estimated_duration}: <span className="text-indigo-400 font-medium">{minutes > 0 ? `${minutes}${t.estimated_minutes} ` : ''}{seconds}{t.estimated_seconds}</span>

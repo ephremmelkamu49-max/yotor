@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scene, ProjectConfig, AspectRatio } from './types';
-import { DEFAULT_CATALOG, DEFAULT_MUSIC } from './data';
+import { DEFAULT_CATALOG, DEFAULT_MUSIC, GOOGLE_TTS_LANGUAGES, VISUAL_STYLES } from './data';
 import ScriptInput from './components/ScriptInput';
-import NarrativeAnalyzer from './components/NarrativeAnalyzer';
 import Timeline from './components/Timeline';
 import VideoCanvas from './components/VideoCanvas';
 import RenderModal from './components/RenderModal';
@@ -78,7 +77,8 @@ export default function App() {
     isAnimationEnabled: true,
     isTransitionsEnabled: true,
     isSubtitlesEnabled: true,
-    isMusicEnabled: true
+    isMusicEnabled: true,
+    visualStyle: 'realistic'
   });
 
   // Load spectacular cosmic startup template
@@ -110,6 +110,16 @@ export default function App() {
     };
   }, []);
 
+  // Sync scene voiceover URLs when project voice settings change
+  useEffect(() => {
+    if (scenes.length > 0) {
+      setScenes(prev => prev.map(s => ({
+        ...s,
+        voiceoverUrl: `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}`
+      })));
+    }
+  }, [projectConfig.voiceLanguage, projectConfig.voiceType]);
+
   const triggerPwaInstall = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -117,6 +127,15 @@ export default function App() {
     if (outcome === 'accepted') {
       setDeferredPrompt(null);
     }
+  };
+
+  const handleTestVoice = () => {
+    const testText = language === 'am' 
+      ? "እንኳን ወደ ይቶር ሲኒማቲክ ስቱዲዮ በሰላም መጡ። ይህ የድምፅ መሞከሪያ ነው።" 
+      : "Welcome to Yotor Cinematic Studio. This is a voice test.";
+    const url = `/api/tts?text=${encodeURIComponent(testText)}&lang=${projectConfig.voiceLanguage}`;
+    const audio = new Audio(url);
+    audio.play().catch(e => console.error("Voice test failed:", e));
   };
 
   const loadStartupCosmicTemplate = () => {
@@ -150,14 +169,13 @@ export default function App() {
   };
 
   // Triggers Gemini parser pipeline
-  const handleAnalyzeScript = async (scriptText: string, providedPexelsKey: string, providedPixabayKey: string, providedCoverrKey: string, voiceLanguage: string) => {
+  const handleAnalyzeScript = async (scriptText: string, providedPexelsKey: string, providedPixabayKey: string, providedCoverrKey: string) => {
     setIsLoading(true);
     setLoadingStage('Analyzing story script with Gemini AI...');
     // Sync credentials
     setPexelsKey(providedPexelsKey);
     setPixabayKey(providedPixabayKey);
     setCoverrKey(providedCoverrKey);
-    setProjectConfig(prev => ({ ...prev, voiceLanguage }));
     setIsPlaying(false);
     setPlaybackIndex(0);
 
@@ -167,7 +185,10 @@ export default function App() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ script: scriptText })
+        body: JSON.stringify({ 
+          script: scriptText,
+          visualStyle: projectConfig.visualStyle 
+        })
       });
 
       const data = await response.json();
@@ -182,101 +203,53 @@ export default function App() {
 
       setLoadingStage(`Found ${rawScenes.length} scenes. Matching stunning cinematic footage...`);
 
-      // To prevent rate limits and support long videos up to 30 minutes, process searches sequentially,
-      // and update the loading stages dynamically!
-      const populatedScenes: Scene[] = [];
-      
-      for (let i = 0; i < rawScenes.length; i++) {
-        const scene = rawScenes[i];
-        setLoadingStage(`Securing footage for scene ${i + 1} of ${rawScenes.length}...`);
-        
-        let voiceoverUrl: string | null = null;
-        
+      // Parallelize searches to speed up process significantly while staying respectul of limits
+      const populatedScenes: Scene[] = await Promise.all(rawScenes.map(async (scene: any, i: number) => {
         let videoUrl = '';
         let videoThumb = '';
         let author = '';
 
+        // Random jitter to spread out hits slightly even in parallel 
+        await new Promise(r => setTimeout(r, i * 120));
+
         if (providedPexelsKey) {
           try {
             const pexelsResponse = await fetch(`/api/pexels/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
-              headers: {
-                'x-pexels-key': providedPexelsKey
-              }
+              headers: { 'x-pexels-key': providedPexelsKey }
             });
             const pexelsData = await pexelsResponse.json();
-            
-            if (pexelsResponse.ok && pexelsData.videos && pexelsData.videos.length > 0) {
+            if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
               const bestClip = pexelsData.videos[0];
               const files = bestClip.video_files || [];
               const mp4Files = files.filter((f: any) => f.file_type === 'video/mp4' || f.link.includes('.mp4'));
               const hd = mp4Files.find((f: any) => f.width >= 1280 && f.width <= 1920);
               const sd = mp4Files.find((f: any) => f.width < 1280);
-              const anyMp4 = mp4Files[0];
-
-              videoUrl = hd?.link || sd?.link || anyMp4?.link || '';
+              videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || '';
               videoThumb = bestClip.video_pictures?.[0]?.picture || '';
               author = bestClip.user?.name || 'Stock Creator';
             }
-          } catch (e) {
-            console.warn(`Could not fetch Pexels video for scene ${i}:`, e);
-          }
+          } catch (e) { console.warn(e); }
         }
 
         if (!videoUrl && providedPixabayKey) {
           try {
             const pixabayResponse = await fetch(`/api/pixabay/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
-              headers: {
-                'x-pixabay-key': providedPixabayKey
-              }
+              headers: { 'x-pixabay-key': providedPixabayKey }
             });
             const pixabayData = await pixabayResponse.json();
-            
-            if (pixabayResponse.ok && pixabayData.hits && pixabayData.hits.length > 0) {
+            if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
               const bestClip = pixabayData.hits[0];
               const videos = bestClip.videos || {};
               const selectedVid = videos.large || videos.medium || videos.small || videos.tiny;
-              
               if (selectedVid) {
                 videoUrl = selectedVid.url;
-                // Pixabay videos response doesn't always include a picture field at root, but sometimes id is used
-                // Fallback to picture_id if available to construct thumbnail if possible or use a default
-                videoThumb = bestClip.picture_id
-                  ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
-                  : bestClip.placeholderUrl || '';
+                videoThumb = bestClip.picture_id ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg` : '';
                 author = bestClip.user || 'Pixabay Creator';
               }
             }
-          } catch (e) {
-            console.warn(`Could not fetch Pixabay video for scene ${i}:`, e);
-          }
+          } catch (e) { console.warn(e); }
         }
 
-        if (!videoUrl && providedCoverrKey) {
-          try {
-            const coverrResponse = await fetch(`/api/coverr/search?query=${encodeURIComponent(`${scene.keywords} cinematic movement motion`)}`, {
-              headers: {
-                'x-coverr-key': providedCoverrKey
-              }
-            });
-            const coverrData = await coverrResponse.json();
-            
-            if (coverrResponse.ok && coverrData.hits && coverrData.hits.length > 0) {
-              const bestClip = coverrData.hits[0];
-              const videos = bestClip.urls || {};
-              const selectedVid = videos.mp4 || videos.mp4_download;
-              
-              if (selectedVid) {
-                videoUrl = selectedVid;
-                videoThumb = bestClip.thumbnail || '';
-                author = bestClip.author?.name || 'Coverr Creator';
-              }
-            }
-          } catch (e) {
-            console.warn(`Could not fetch Coverr video for scene ${i}:`, e);
-          }
-        }
-
-        // Fallback to beautiful pre-curated catalog files if search returned nothing
         if (!videoUrl) {
           const fallbackVid = DEFAULT_CATALOG[i % DEFAULT_CATALOG.length];
           videoUrl = fallbackVid.url;
@@ -284,10 +257,7 @@ export default function App() {
           author = fallbackVid.author;
         }
 
-        // Generate voiceover URL
-        voiceoverUrl = `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${voiceLanguage}`;
-        
-        populatedScenes.push({
+        return {
           id: scene.id || `sc_${i}_${Date.now()}`,
           text: scene.text,
           keywords: scene.keywords,
@@ -297,23 +267,22 @@ export default function App() {
           videoThumb,
           videoAuthor: author,
           videoAuthorUrl: '#',
-          voiceoverUrl,
+          voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
           originalIndex: i
-        });
-
-        // Small cooling delay between API fetches to protect Pexels rate limits on wide scripts!
-        if (providedPexelsKey && i < rawScenes.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, i % 5 === 0 ? 400 : 150));
-        }
-      }
+        };
+      }));
 
       setScenes(populatedScenes);
       setPlaybackIndex(0);
 
     } catch (err: any) {
-      console.warn("Gemini generation failed, using local smart parser fallback:", err);
-      // Better local fallback: use the actual script text instead of cosmic template
-      const sentences = scriptText.replace(/([.?!])\s*(?=[A-Z])/g, "$1|").split("|").filter(s => s.trim().length > 0);
+      console.warn("Generation failed:", err);
+      // Better local fallback: support Amharic punctuation and sequential logic
+      const sentences = scriptText
+        .split(/(?<=[.!?።፤፧])\s+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      
       const manualScenes: Scene[] = sentences.map((s, index) => {
         const fallbackVid = DEFAULT_CATALOG[index % DEFAULT_CATALOG.length];
         return {
@@ -321,7 +290,7 @@ export default function App() {
           text: s.trim(),
           keywords: "cinematic landscape",
           caption: s.trim(),
-          duration: Math.max(4.0, (s.split(/\s+/).length / 2.2)),
+          duration: Math.max(4.0, (s.split(/\s+/).length / 2.1)),
           videoUrl: fallbackVid.url,
           videoThumb: fallbackVid.thumbnail,
           videoAuthor: fallbackVid.author,
@@ -333,6 +302,7 @@ export default function App() {
       
       setScenes(manualScenes);
       setPlaybackIndex(0);
+      alert(language === 'am' ? "AI ማቀናበሩ አልተሳካም። ቀለል ያለ አማራጭ እየተጠቀምን ነው።" : "AI analysis failed. Using a simplified local breakdown.");
     } finally {
       setIsLoading(false);
     }
@@ -493,14 +463,10 @@ export default function App() {
             <button
               onClick={() => setIsRenderOpen(true)}
               disabled={scenes.length === 0}
-              className="group relative flex items-center justify-center gap-3 px-8 py-4 bg-white hover:bg-zinc-100 text-black font-black text-sm uppercase tracking-[0.2em] rounded-2xl transition-all shadow-[0_0_20px_rgba(255,255,255,0.25)] hover:shadow-[0_0_35px_rgba(255,255,255,0.4)] disabled:opacity-30 disabled:pointer-events-none active:scale-[0.98] animate-shimmer"
+              className="group relative flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-30 disabled:pointer-events-none active:scale-[0.98]"
               id="bake-video-btn"
             >
-              <div className="absolute -top-1 -right-1 flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-indigo-500"></span>
-              </div>
-              <Download size={18} className="stroke-[3px] group-hover:translate-y-0.5 transition-transform" />
+              <Download size={14} className="stroke-[2.5px]" />
               {t.ready_to_export}
             </button>
           </div>
@@ -511,17 +477,14 @@ export default function App() {
           
           {/* Left Column: Inputs & Scenarios Sequence (Grids 7) */}
           <div className="lg:col-span-7 space-y-6 flex flex-col">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <ScriptInput
-                script={script}
-                setScript={setScript}
-                onAnalyze={handleAnalyzeScript}
-                isLoading={isLoading}
-                loadingStage={loadingStage}
-                language={language}
-              />
-              <NarrativeAnalyzer script={script} />
-            </div>
+            <ScriptInput
+              script={script}
+              setScript={setScript}
+              onAnalyze={handleAnalyzeScript}
+              isLoading={isLoading}
+              loadingStage={loadingStage}
+              language={language}
+            />
 
             <Timeline
               scenes={scenes}
@@ -533,6 +496,7 @@ export default function App() {
               onMoveScene={handleMoveScene}
               pexelsKey={pexelsKey}
               language={language}
+              visualStyle={projectConfig.visualStyle}
             />
           </div>
 
@@ -550,6 +514,7 @@ export default function App() {
                 setPlaybackIndex={setPlaybackIndex}
                 isPlaying={isPlaying}
                 setIsPlaying={setIsPlaying}
+                isRendering={isRenderOpen}
                 canvasRef={canvasRef}
                 renderTime={renderTime}
                 language={language}
@@ -599,7 +564,99 @@ export default function App() {
 
               {/* Content body */}
               <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
-                {/* 1. App Language Config */}
+                {/* 1. Voice / Narration Settings (The requested "Voice memokriya" - Prominent / Front) */}
+                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                        {language === 'am' ? 'የድምፅ ንባብ (Voiceover Narration)' : 'Voiceover Narration'}
+                      </label>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                        {language === 'am' ? 'ቪዲዮው ላይ የሰው ድምፅ እንዲኖር ያድርጉ።' : 'Enable realistic narration for your project.'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleUpdateConfig({ isVoiceEnabled: !projectConfig.isVoiceEnabled })}
+                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
+                        projectConfig.isVoiceEnabled ? 'bg-indigo-600' : 'bg-zinc-800'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none absolute left-0 inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                          projectConfig.isVoiceEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {projectConfig.isVoiceEnabled && (
+                    <div className="space-y-3 animate-fadeIn">
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider block">Select Narration Voice / ድምፅ ይምረጡ</span>
+                        <select
+                          value={projectConfig.voiceLanguage || 'am-yotor-epic-male'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            let type: 'male' | 'female' = 'male';
+                            if (val.includes('female')) type = 'female';
+                            handleUpdateConfig({ voiceLanguage: val, voiceType: type });
+                          }}
+                          className="w-full bg-zinc-950 border border-zinc-900 text-zinc-300 text-xs rounded-xl px-3 py-2.5 outline-none cursor-pointer hover:border-zinc-800 transition-all font-sans"
+                        >
+                          {GOOGLE_TTS_LANGUAGES.map((langOpt) => (
+                            <option key={langOpt.code} value={langOpt.code}>
+                              {langOpt.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleTestVoice}
+                        className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-indigo-400 hover:text-indigo-300 font-bold text-[11px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2"
+                      >
+                         🔊 {language === 'am' ? 'የድምፅ መሞከሪያ (Memokriya)' : 'Test Voice Output'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Visual Style Selection (Animation support requested) */}
+                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                      {translations[language].visual_style_title}
+                    </label>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      {translations[language].visual_style_desc}
+                    </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {VISUAL_STYLES.map((style) => (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => handleUpdateConfig({ visualStyle: style.id as any })}
+                        className={`flex flex-col items-start p-2.5 rounded-xl border transition-all text-left ${
+                          projectConfig.visualStyle === style.id
+                            ? 'bg-indigo-600/10 border-indigo-600/50 ring-1 ring-indigo-600/20'
+                            : 'bg-zinc-950 border-zinc-900 hover:border-zinc-800'
+                        }`}
+                      >
+                        <span className={`text-[11px] font-bold ${projectConfig.visualStyle === style.id ? 'text-indigo-400' : 'text-zinc-300'}`}>
+                          {language === 'am' ? style.am : style.name}
+                        </span>
+                        <span className="text-[9px] text-zinc-500 mt-0.5 line-clamp-1">
+                          {style.id === 'realistic' ? 'Cinematic 4K' : style.id.replace('-', ' ')}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. App Language Config */}
                 <div className="space-y-2 pb-5 border-b border-zinc-900/40">
                   <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
                     {language === 'am' ? 'የመተግበሪያ ቋንቋ / App Language' : 'App Language'}

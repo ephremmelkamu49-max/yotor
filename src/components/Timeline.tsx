@@ -123,6 +123,7 @@ interface TimelineProps {
   onMoveScene: (index: number, direction: 'up' | 'down') => void;
   pexelsKey: string;
   language: Language;
+  visualStyle?: string;
 }
 
 export default function Timeline({
@@ -134,7 +135,8 @@ export default function Timeline({
   onDeleteScene,
   onMoveScene,
   pexelsKey,
-  language
+  language,
+  visualStyle
 }: TimelineProps) {
   const t = translations[language];
   const [searchSceneId, setSearchSceneId] = useState<string | null>(null);
@@ -424,6 +426,12 @@ export default function Timeline({
                     <div className="absolute left-1.5 bottom-1.5 bg-[#050505]/90 backdrop-blur-sm text-[9px] font-mono text-indigo-400 px-1.5 py-0.5 rounded border border-zinc-800">
                       S-{idx + 1}
                     </div>
+
+                    {visualStyle && visualStyle !== 'realistic' && (
+                      <div className="absolute right-1.5 bottom-1.5 bg-indigo-600/90 backdrop-blur-sm text-[8px] font-bold text-white px-1.5 py-0.5 rounded shadow-lg uppercase tracking-tighter">
+                        {visualStyle.replace('-', ' ')}
+                      </div>
+                    )}
                     
                     {/* Visual selection hover button */}
                     <button

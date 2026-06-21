@@ -17,6 +17,7 @@ interface VideoCanvasProps {
   setPlaybackIndex: React.Dispatch<React.SetStateAction<number>>;
   isPlaying: boolean;
   setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
+  isRendering?: boolean;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   renderTime?: number;
   language: Language;
@@ -33,6 +34,7 @@ export default function VideoCanvas({
   setPlaybackIndex,
   isPlaying,
   setIsPlaying,
+  isRendering,
   canvasRef,
   renderTime,
   language
@@ -315,7 +317,7 @@ export default function VideoCanvas({
     return () => {
       clearTimelineTimer();
     };
-  }, [isPlaying, currentScene?.id]);
+  }, [isPlaying, isRendering, currentScene?.id]);
 
   const stopAllTtsAudios = () => {
     (Object.values(audioRefs.current) as HTMLAudioElement[]).forEach(aud => {
@@ -916,7 +918,29 @@ export default function VideoCanvas({
                     <option value="Inter">Inter</option>
                     <option value="JetBrains Mono">JetBrains Mono</option>
                     <option value="Playfair Display">Playfair Display</option>
+                    <option value="Anton">Anton (Shorts)</option>
+                    <option value="Archivo Black">Archivo Black</option>
+                    <option value="Outfit">Outfit</option>
                   </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateConfig({
+                      aspectRatio: '9:16',
+                      subtitleStyle: {
+                        ...projectConfig.subtitleStyle,
+                        fontFamily: 'Anton',
+                        uppercase: true,
+                        fontSize: 42,
+                        position: 'middle'
+                      }
+                    })}
+                    className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-500/20 transition-all flex items-center gap-1.5 shadow-sm"
+                  >
+                    🔥 Shorts Trends Auto-Tune
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -941,13 +965,22 @@ export default function VideoCanvas({
                   <button
                     key={track.id}
                     onClick={() => onUpdateConfig({ musicTrack: track.url })}
-                    className={`p-1.5 border rounded-lg text-left truncate flex flex-col justify-center ${
+                    className={`p-1.5 border rounded-lg text-left truncate flex flex-col justify-center relative ${
                       projectConfig.musicTrack === track.url
                         ? 'bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold'
                         : 'border-[#0c0c0e] text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
-                    <span className="font-semibold block truncate leading-tight">{track.title.split(' (')[0]}</span>
+                    <div className="flex items-center justify-between gap-1 w-full overflow-hidden">
+                      <span className="font-semibold block truncate leading-tight flex-1">
+                        {language === 'am' && track.am ? track.am : track.title.split(' (')[0]}
+                      </span>
+                      {track.category && (
+                        <span className={`text-[7px] px-1 rounded font-bold shrink-0 ${track.category === 'Short' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-400'}`}>
+                          {track.category}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[9px] text-zinc-650 block truncate">{track.vibe}</span>
                   </button>
                 ))}
@@ -987,45 +1020,6 @@ export default function VideoCanvas({
                         }`}
                       />
                   </button>
-                </div>
-
-                {/* Global Voice Toggle & Provider */}
-                <div className="flex items-center gap-2 pr-2 border-l border-zinc-900 pl-4 ml-2">
-                  <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">Voice Narration</span>
-                  <button
-                      onClick={() => onUpdateConfig({ isVoiceEnabled: !projectConfig.isVoiceEnabled })}
-                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
-                        projectConfig.isVoiceEnabled ? 'bg-indigo-500' : 'bg-zinc-800'
-                      }`}
-                      role="switch"
-                      aria-checked={projectConfig.isVoiceEnabled}
-                    >
-                      <span className="sr-only">Use setting</span>
-                      <span
-                        aria-hidden="true"
-                        className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
-                          projectConfig.isVoiceEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
-                        }`}
-                      />
-                  </button>
-                  {projectConfig.isVoiceEnabled && (
-                    <select
-                      value={projectConfig.voiceLanguage || 'am-yotor-epic-male'}
-                      onChange={(e) => {
-                         const val = e.target.value;
-                         let type: 'male'|'female' = 'male';
-                         if (val.includes('female')) type = 'female';
-                         onUpdateConfig({ voiceLanguage: val, voiceType: type });
-                      }}
-                      className="ml-2 bg-black border border-zinc-800 text-zinc-300 text-[10px] rounded px-1.5 py-0.5 outline-none cursor-pointer max-w-[150px]"
-                    >
-                      {GOOGLE_TTS_LANGUAGES.map((langOpt) => (
-                        <option key={langOpt.code} value={langOpt.code}>
-                          {langOpt.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
                 </div>
 
                 {/* Global Music Toggle */}

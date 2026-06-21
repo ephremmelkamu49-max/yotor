@@ -6,7 +6,7 @@ export const translations = {
     logo_sub: "ዮቶር አይ",
     studio_title: "የፊልም አዘጋጅ ስቱዲዮ",
     full_web_view: "🌐 ሙሉ ስክሪን እይታ",
-    ready_to_export: "🎬 ቪዲዮውን አዘጋጅና አውርድ (READY TO EXPORT)",
+    ready_to_export: "🎬 አዘጋጅና አውርድ (EXPORT)",
 
     // Script Input Section
     script_processor: "የፊልም ፅሁፍ ማቀነባበሪያ",
@@ -95,14 +95,18 @@ export const translations = {
     rendering_progress: "የቪዲዮ ክፍሎች በመሰባሰብ ላይ ናቸው",
     rendering_complete: "🎉 የቪዲዮ ማጠናቀቁ በተሳካ ሁኔታ ተጠናቋል። ወደ ስልክዎ ወይም ኮምፒውተርዎ አውርደው ማየት ይችላሉ!",
     download_btn: "🎬 ቪዲዮውን አሁን አውርድ (DOWNLOAD VIDEO)",
-    close_btn: "ዝጋ (Close)"
+    close_btn: "ዝጋ (Close)",
+
+    // Visual Style Selector
+    visual_style_title: "የምስል አቀራረብ ዘይቤ (Visual Style)",
+    visual_style_desc: "የቪዲዮው ምስሎች ምን አይነት መልክ እንዲኖራቸው ይፈልጋሉ?"
   },
   en: {
     // Header
     logo_sub: "Yotor AI",
     studio_title: "AI Director Studio",
     full_web_view: "🌐 Full Web View",
-    ready_to_export: "🎬 BAKE VIDEO & DOWNLOAD (READY TO EXPORT)",
+    ready_to_export: "🎬 BAKE & EXPORT",
 
     // Script Input Section
     script_processor: "Script Processor / Story Editor",
@@ -191,6 +195,10 @@ export const translations = {
     rendering_progress: "Assembling movie timeline blocks",
     rendering_complete: "🎉 Video rendering completed successfully! Download or watch your finalized cinematic file below.",
     download_btn: "🎬 DOWNLOAD MP4 / WEBM VIDEO FILE NOW",
-    close_btn: "Close Studio"
+    close_btn: "Close Studio",
+
+    // Visual Style Selector
+    visual_style_title: "Visual Art Style",
+    visual_style_desc: "Choose the aesthetic direction for your video footage."
   }
 };

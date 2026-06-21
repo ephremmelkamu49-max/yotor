@@ -12,6 +12,8 @@ export interface AudioTrack {
   title: string;
   vibe: string;
   url: string;
+  category?: 'Short' | 'Long' | 'All';
+  am?: string;
 }
 
 // Pre-curated highly aesthetic cinematic stock clips
@@ -98,43 +100,83 @@ export const DEFAULT_CATALOG: CatalogVideo[] = [
   }
 ];
 
-// Rich, high-quality audio loops for background theme music (Mixkit free loops)
+// Rich, high-quality audio loops for background theme music
 export const DEFAULT_MUSIC: AudioTrack[] = [
   {
     id: "silent",
     title: "No Background Music (Voiceover Only)",
     vibe: "Silent",
-    url: ""
+    url: "",
+    am: "ሙዚቃ አያስፈልግም"
   },
   {
-    id: "ambient_mindful",
-    title: "Sunset Serenade (Mindful Harp & Pad)",
-    vibe: "Meditative & Warm",
-    url: "/api/music?id=ambient_mindful"
+    id: "ethio_jazz_vibe",
+    title: "Ethio-Jazz Night (Ambient)",
+    vibe: "Smooth & Cultural",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    category: "Long",
+    am: "የኢትዮ-ጃዝ ድባብ"
   },
   {
-    id: "tech_cyberpunk",
-    title: "Cyberpunk Runner (Tech House Vibes)",
-    vibe: "Tech-Forward & Monotonous",
-    url: "/api/music?id=tech_cyberpunk"
+    id: "habesha_modern_upbeat",
+    title: "Modern Habesha Pop (Trending)",
+    vibe: "Energetic & Modern",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    category: "Short",
+    am: "ዘመናዊ የሀበሻ ዜማ"
   },
   {
-    id: "dreamy_cosmos",
-    title: "Astral Dream (Stellar Ambient Synth)",
-    vibe: "Futuristic & Deep",
-    url: "/api/music?id=dreamy_cosmos"
+    id: "traditional_masinko",
+    title: "Masinko Soul (Ancient Strings)",
+    vibe: "Traditional & Emotional",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    category: "Long",
+    am: "የማሲንቆ ቃና"
   },
   {
-    id: "uplifting_cinematic",
-    title: "Culture Echoes (Corporate Cinematic)",
-    vibe: "Inspiring & Modern",
-    url: "/api/music?id=uplifting_cinematic"
+    id: "lofi_chill_amharic",
+    title: "Lofi Addis (Study & Relax)",
+    vibe: "Relaxed & Lo-Fi",
+    url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+    category: "Short",
+    am: "አዲስ ሎፋይ"
   },
   {
-    id: "lofi_chill",
-    title: "Chill Cafe (Lofi Sun & Sky)",
-    vibe: "Relaxed & Vintage",
-    url: "/api/music?id=lofi_chill"
+    id: "cinematic_heroic",
+    title: "Heroic Destiny (Cinematic)",
+    vibe: "Epic & Uplifting",
+    url: "/api/music?id=uplifting_cinematic",
+    category: "Long",
+    am: "ጀግንነት (ሲኒማቲክ)"
+  },
+  {
+    id: "tech_cyberpunk_v2",
+    title: "Digital Addis (Cyberpunk)",
+    vibe: "Futuristic & Tech",
+    url: "/api/music?id=tech_cyberpunk",
+    category: "Short",
+    am: "ዲጂታል አዲስ (ሳይበርፐንክ)"
+  }
+];
+
+export const VIDEO_TEMPLATES = [
+  { 
+    id: 'trending-shorts', 
+    name: 'Trending Daily News (Shorts)', 
+    am: 'ወቅታዊ ዜና (አጭር)', 
+    prompt: 'In todays top story, the city is buzzing with excitement over the new technology expo. Experts are calling it a game changer for the region. Watch until the end to see the most impressive innovation.'
+  },
+  { 
+    id: 'documentary-long', 
+    name: 'Historical Documentary (Long)', 
+    am: 'ታሪካዊ ዘጋቢ ፊልም (ረጅም)', 
+    prompt: 'The Aksumite Empire was one of the most powerful states of the ancient world. Known for its towering stelae and sophisticated trade routes, it remains a testament to early African civilization. Join us as we explore the hidden secrets of Aksum.'
+  },
+  { 
+    id: 'motivational-tiktok', 
+    name: 'Motivational Life Wisdom', 
+    am: 'አነቃቂ የህይወት ምክር', 
+    prompt: 'Strength does not come from winning. Your struggles develop your strengths. When you go through hardships and decide not to surrender, that is strength.'
   }
 ];
 
@@ -154,6 +196,15 @@ export const GOOGLE_TTS_LANGUAGES = [
   { code: "hi", name: "Hindi - हिन्दी" },
   { code: "ja", name: "Japanese - 日本語" },
   { code: "pt", name: "Portuguese - Português" }
+];
+
+export const VISUAL_STYLES = [
+  { id: 'realistic', name: 'Realistic / Cinematic', am: 'እውነተኛ / ሲኒማቲክ' },
+  { id: '3d-animation', name: '3D Pixar Animation', am: '3D አኒሜሽን (Pixar)' },
+  { id: '2d-animation', name: '2D Hand Drawn', am: '2D በእጅ የተሳለ' },
+  { id: 'anime', name: 'Anime Style', am: 'አኒሜ (Anime)' },
+  { id: 'cyberpunk', name: 'Cyberpunk / Tech', am: 'ሳይበርፐንክ / ቴክኖሎጂ' },
+  { id: 'watercolor', name: 'Watercolor Art', am: 'የውሃ ቀለም ስዕል' }
 ];
 
 
