@@ -167,6 +167,8 @@ export const VIDEO_TEMPLATES = [
 export const GOOGLE_TTS_LANGUAGES = [
   { code: "am-yotor-epic-male", name: "ይቶር (Yotor) - አነቃቂ የተረካ ድምፅ ወንድ (Inspiring Narrator)" },
   { code: "am-yotor-warm-female", name: "እሌኒ (Eleni) - ማራኪ የተረካ ድምፅ (Warm Female Narrator)" },
+  { code: "am-openai-onyx", name: "ኦኒክስ (Onyx) - ጥርት ያለ የሰው ወንድ ድምፅ (Clear Human Male)" },
+  { code: "am-openai-nova", name: "ኖቫ (Nova) - ጥርት ያለ የሰው ሴት ድምፅ (Clear Human Female)" },
   { code: "am-yotor-bright-female", name: "ሳራ (Sara) - አጫጭር ቪዲዮዎች ደስደስ የሚል ድምፅ (Bright Shorts Female)" },
   { code: "am-yotor-rugged-male", name: "አቤል (Abel) - ለረጅም ቪዲዮዎች ጎርናና ድምፅ (Deep Rugged Male)" },
   { code: "am-male", name: "Amharic (Ethiopia) male - መደበኛ (Google Standard)" },

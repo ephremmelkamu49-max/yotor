@@ -84,8 +84,9 @@ async function generateContentWithFallback(
 ): Promise<any> {
   const modelFallbackList = [
     options.model,
-    "gemini-flash-latest",
-    "gemini-3.1-flash-lite"
+    "gemini-3.1-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash"
   ];
   const uniqueModels = Array.from(new Set(modelFallbackList));
   
@@ -261,7 +262,7 @@ app.post("/api/analyze-script", async (req, res) => {
     try {
       if (!ai) throw new Error("AI not configured");
       const result = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.1-flash",
         contents: [{ role: "user", parts: [{ text: reelPrompt + " \nONLY return JSON." }] }]
       });
       const responseText = result.text.trim();
@@ -387,6 +388,8 @@ ${script}
 
     let processedScenes: any[] = [];
 
+    let openaiErrorMessage = "";
+
     // Attempt OpenAI first if requested or available (ChatGPT Pro request)
     const effectiveOpenAiKey = providedOpenaiKey || process.env.OPENAI_API_KEY;
     if (effectiveOpenAiKey) {
@@ -414,16 +417,17 @@ ${script}
           });
         }
       } catch (openAiErr: any) {
+        openaiErrorMessage = openAiErr?.message || "Unknown OpenAI Error";
         console.error("OpenAI Direction failed, falling back to Gemini:", openAiErr);
       }
     }
 
     if (!ai) {
-        throw new Error("No primary AI engine available after OpenAI failure.");
+        throw new Error(openaiErrorMessage ? `OpenAI Failed: ${openaiErrorMessage}. Also no Gemini API key configured.` : "No primary AI engine available.");
     }
 
     const response = await generateContentWithFallback(ai, {
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-1.5-pro",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -468,7 +472,8 @@ ${script}
     res.json({ 
       scenes: processedScenes, 
       engine: 'gemini', 
-      info: 'Localized Director (Gemini 3.1)' 
+      info: 'Localized Director (Gemini 3.1)',
+      openaiError: openaiErrorMessage || undefined
     });
   } catch (error: any) {
     console.error("Gemini script parser failed:", error);
@@ -682,9 +687,9 @@ app.post("/api/analyze-video", async (req, res) => {
 
     const geminiPrompt = prompt || "Analyze this video clip and describe what happens, identify objects, color scheme, visual pacing, and key informational details.";
 
-    console.log(`[Video Analyzer] Requesting video understanding from gemini-1.5-flash...`);
+    console.log(`[Video Analyzer] Requesting video understanding from gemini-3.1-flash...`);
     const result = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3.1-flash",
       contents: [
         {
           inlineData: {
@@ -743,13 +748,62 @@ app.get("/api/tts", async (req, res) => {
 
   try {
     const safeText = text.substring(0, 5000);
+    const providedOpenaiKey = req.query.openai_key as string;
+
+    // ---------------------------------------------------------
+    // OPENAI TTS (High Quality, Natural Human Voices)
+    // ---------------------------------------------------------
+    const activeOpenAI = providedOpenaiKey ? new OpenAI({ apiKey: providedOpenaiKey }) : openai;
+    if (activeOpenAI && lang.startsWith('am-openai-')) {
+      try {
+        const voiceName = lang.includes('nova') ? 'nova' : 'onyx';
+        const mp3 = await activeOpenAI.audio.speech.create({
+          model: "tts-1",
+          voice: voiceName,
+          input: safeText,
+        });
+        
+        const arrayBuffer = await mp3.arrayBuffer();
+        const combinedBuffer = Buffer.from(arrayBuffer);
+
+        const range = req.headers.range;
+        if (range) {
+          const parts = range.replace(/bytes=/, "").split("-");
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : combinedBuffer.length - 1;
+          const chunksize = (end - start) + 1;
+          const fileChunk = combinedBuffer.subarray(start, end + 1);
+
+          res.writeHead(206, {
+            "Content-Range": `bytes ${start}-${end}/${combinedBuffer.length}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": chunksize,
+            "Content-Type": "audio/mpeg",
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*"
+          });
+          return res.end(fileChunk);
+        } else {
+          res.writeHead(200, {
+            "Content-Length": combinedBuffer.length,
+            "Accept-Ranges": "bytes",
+            "Content-Type": "audio/mpeg",
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*"
+          });
+          return res.end(combinedBuffer);
+        }
+      } catch (oai_err: any) {
+        console.log(`[Info] OpenAI TTS bypassed; Error: ${oai_err?.message}`);
+      }
+    }
 
     // ---------------------------------------------------------
     // MICROSOFT EDGE TTS (Unlimited, Neural Free Voices)
     // ---------------------------------------------------------
-    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male' || lang.startsWith('am-yotor-')) {
+    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male' || lang.startsWith('am-yotor-') || lang.startsWith('am-openai-')) {
       try {
-        const voiceName = (lang === 'am-edge-female' || lang === 'am-yotor-warm-female' || lang === 'am-yotor-bright-female') ? "am-ET-MekdesNeural" : "am-ET-AmehaNeural";
+        const voiceName = (lang === 'am-edge-female' || lang === 'am-yotor-warm-female' || lang === 'am-yotor-bright-female' || lang === 'am-openai-nova') ? "am-ET-MekdesNeural" : "am-ET-AmehaNeural";
         const tts = new EdgeTTS(safeText, voiceName);
         const result = await tts.synthesize();
         const combinedBuffer = Buffer.from(await result.audio.arrayBuffer());

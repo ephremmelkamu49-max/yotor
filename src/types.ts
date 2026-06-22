@@ -39,7 +39,7 @@ export interface ProjectConfig {
   voiceLanguage: string;  // gTTS accent / localization
   voiceType?: 'male' | 'female';
   subtitleStyle: SubtitleStyle;
-  transitionType: 'none' | 'crossfade' | 'slide' | 'wipe' | 'flicker';
+  transitionType: 'none' | 'crossfade' | 'slide' | 'wipe' | 'flicker' | 'morph';
   transitionDuration: number;
   isVoiceEnabled: boolean;
   syncToMusicBeats?: boolean;

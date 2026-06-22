@@ -1,10 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Scene, AspectRatio, ProjectConfig, AnimationStyle } from '../types';
-import { DEFAULT_MUSIC, DEFAULT_CATALOG, GOOGLE_TTS_LANGUAGES } from '../data';
-import { Language, translations } from '../translations';
-import { 
-  Play, Pause, SkipForward, SkipBack, Volume2, Maximize, RefreshCw, Layers, Check, Sparkles, Eye, EyeOff, Cpu
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from "react";
+import { Scene, AspectRatio, ProjectConfig, AnimationStyle } from "../types";
+import { DEFAULT_MUSIC, DEFAULT_CATALOG, GOOGLE_TTS_LANGUAGES } from "../data";
+import { Language, translations } from "../translations";
+import {
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Volume2,
+  Maximize,
+  RefreshCw,
+  Layers,
+  Check,
+  Sparkles,
+  Eye,
+  EyeOff,
+  Cpu,
+} from "lucide-react";
 
 interface VideoCanvasProps {
   scenes: Scene[];
@@ -37,7 +49,7 @@ export default function VideoCanvas({
   isRendering,
   canvasRef,
   renderTime,
-  language
+  language,
 }: VideoCanvasProps) {
   const t = translations[language];
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
@@ -51,23 +63,29 @@ export default function VideoCanvas({
   const currentSceneTimeRef = useRef<number>(0);
   const playbackIndexRef = useRef<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [showConfigTabs, setShowConfigTabs] = useState<'ratio' | 'subtitle' | 'music' | 'motion' | 'analyzer'>('ratio');
+  const [showConfigTabs, setShowConfigTabs] = useState<
+    "ratio" | "subtitle" | "music" | "motion" | "analyzer"
+  >("ratio");
   const [loadedTtsPercentage, setLoadedTtsPercentage] = useState<number>(0);
 
-  const [analysisResult, setAnalysisResult] = useState<string>('');
+  const [analysisResult, setAnalysisResult] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [analysisPrompt, setAnalysisPrompt] = useState<string>('Identify and describe all visible objects, color palette, pacing, and overall mood in this scene.');
-  const [analysisError, setAnalysisError] = useState<string>('');
+  const [analysisPrompt, setAnalysisPrompt] = useState<string>(
+    "Identify and describe all visible objects, color palette, pacing, and overall mood in this scene.",
+  );
+  const [analysisError, setAnalysisError] = useState<string>("");
 
   // AI Copilot States
-  const [aiSubTab, setAiSubTab] = useState<'copilot' | 'analyzer'>('copilot');
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>(() => [
+  const [aiSubTab, setAiSubTab] = useState<"copilot" | "analyzer">("copilot");
+  const [chatMessages, setChatMessages] = useState<
+    { role: "user" | "assistant"; text: string }[]
+  >(() => [
     {
-      role: 'assistant',
-      text: t.copilot_greeting
-    }
+      role: "assistant",
+      text: t.copilot_greeting,
+    },
   ]);
-  const [chatInput, setChatInput] = useState('');
+  const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   const handleSendCopilotMessage = async (customPrompt?: string) => {
@@ -75,37 +93,62 @@ export default function VideoCanvas({
     if (!promptToSend.trim() || isChatLoading) return;
 
     // Add user message
-    const updatedHistory = [...chatMessages, { role: 'user' as const, text: promptToSend }];
+    const updatedHistory = [
+      ...chatMessages,
+      { role: "user" as const, text: promptToSend },
+    ];
     setChatMessages(updatedHistory);
-    setChatInput('');
+    setChatInput("");
     setIsChatLoading(true);
 
     try {
-      const historyPayload = updatedHistory.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        text: m.text
+      const historyPayload = updatedHistory.map((m) => ({
+        role: m.role === "user" ? "user" : "model",
+        text: m.text,
       }));
 
-      const res = await fetch('/api/copilot', {
-        method: 'POST',
+      const safeScenes = scenes.map(s => ({
+        id: s.id,
+        text: s.text,
+        keywords: s.keywords,
+        duration: s.duration,
+        caption: s.caption,
+        videoUrl: s.videoUrl,
+        videoThumb: s.videoThumb,
+        voiceoverUrl: s.voiceoverUrl,
+        animationStyle: s.animationStyle,
+        transitionToNext: s.transitionToNext
+      }));
+
+      // In case projectConfig got mutated with DOM nodes
+      const safeConfig = JSON.parse(JSON.stringify(projectConfig, (key, value) => {
+        if (value instanceof Element || (value && typeof value === 'object' && value.current !== undefined)) return undefined;
+        return value;
+      }));
+
+      const res = await fetch("/api/copilot", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           message: promptToSend,
-          scenes,
-          projectConfig,
-          chatHistory: historyPayload
-        })
+          scenes: safeScenes,
+          projectConfig: safeConfig,
+          chatHistory: historyPayload,
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to communicate with Yotor AI.');
+        throw new Error(data.error || "Failed to communicate with Yotor AI.");
       }
 
       // Add AI reply
-      setChatMessages(prev => [...prev, { role: 'assistant', text: data.message }]);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: data.message },
+      ]);
 
       // Process Config edits
       if (data.updateConfig && Object.keys(data.updateConfig).length > 0) {
@@ -115,52 +158,59 @@ export default function VideoCanvas({
       // Process Scene operations
       if (data.updateScenes && setScenes) {
         const { action, scenesList } = data.updateScenes;
-        if (action === 'recreate' && Array.isArray(scenesList)) {
+        if (action === "recreate" && Array.isArray(scenesList)) {
           const mapped = scenesList.map((sc, i) => {
             const fallbackVid = DEFAULT_CATALOG[i % DEFAULT_CATALOG.length];
             return {
               id: `scene_${i}_${Date.now()}`,
               text: sc.text,
-              keywords: sc.keywords || 'cinematic epic visual slow mo',
+              keywords: sc.keywords || "cinematic epic visual slow mo",
               duration: sc.duration || 5,
               caption: sc.text,
               videoUrl: fallbackVid.url,
               videoThumb: fallbackVid.thumbnail,
               videoAuthor: fallbackVid.author,
-              videoAuthorUrl: '#',
+              videoAuthorUrl: "#",
               voiceoverUrl: null,
-              originalIndex: i
+              originalIndex: i,
             };
           });
           setScenes(mapped);
           setPlaybackIndex(0);
-        } else if (action === 'add' && Array.isArray(scenesList)) {
+        } else if (action === "add" && Array.isArray(scenesList)) {
           const startIdx = scenes.length;
           const mapped = scenesList.map((sc, i) => {
-            const fallbackVid = DEFAULT_CATALOG[(startIdx + i) % DEFAULT_CATALOG.length];
+            const fallbackVid =
+              DEFAULT_CATALOG[(startIdx + i) % DEFAULT_CATALOG.length];
             return {
               id: `scene_added_${i}_${Date.now()}`,
               text: sc.text,
-              keywords: sc.keywords || 'cinematic epic visual slow mo',
+              keywords: sc.keywords || "cinematic epic visual slow mo",
               duration: sc.duration || 5,
               caption: sc.text,
               videoUrl: fallbackVid.url,
               videoThumb: fallbackVid.thumbnail,
               videoAuthor: fallbackVid.author,
-              videoAuthorUrl: '#',
+              videoAuthorUrl: "#",
               voiceoverUrl: null,
-              originalIndex: startIdx + i
+              originalIndex: startIdx + i,
             };
           });
-          setScenes(prev => [...prev, ...mapped]);
+          setScenes((prev) => [...prev, ...mapped]);
         }
       }
     } catch (err: any) {
       console.error(err);
-      setChatMessages(prev => [...prev, {
-        role: 'assistant',
-        text: language === 'am' ? `⚠️ ስህተት ተፈጥሯል፡ ${err.message}` : `⚠️ An error occurred: ${err.message}`
-      }]);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text:
+            language === "am"
+              ? `⚠️ ስህተት ተፈጥሯል፡ ${err.message}`
+              : `⚠️ An error occurred: ${err.message}`,
+        },
+      ]);
     } finally {
       setIsChatLoading(false);
     }
@@ -169,25 +219,27 @@ export default function VideoCanvas({
   const handleAnalyzeVideo = async () => {
     if (!currentScene?.videoUrl) return;
     setIsAnalyzing(true);
-    setAnalysisError('');
-    setAnalysisResult('');
+    setAnalysisError("");
+    setAnalysisResult("");
     try {
-      const response = await fetch('/api/analyze-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/analyze-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoUrl: currentScene.videoUrl,
-          prompt: analysisPrompt
-        })
+          videoUrl: String(currentScene.videoUrl || ""),
+          prompt: String(analysisPrompt || ""),
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to analyze video clip.');
+        throw new Error(data.error || "Failed to analyze video clip.");
       }
       setAnalysisResult(data.analysis);
     } catch (err: any) {
       console.error(err);
-      setAnalysisError(err.message || 'An error occurred during video analysis.');
+      setAnalysisError(
+        err.message || "An error occurred during video analysis.",
+      );
     } finally {
       setIsAnalyzing(false);
     }
@@ -207,7 +259,7 @@ export default function VideoCanvas({
       // 1. Play and precise sync current active scene video
       if (currentScene) {
         const video = videoRefs.current[currentScene.id];
-        if (video) {
+        if (video && video instanceof HTMLVideoElement) {
           if (video.paused) {
             video.muted = true;
             video.play().catch(() => {});
@@ -225,14 +277,17 @@ export default function VideoCanvas({
       if (playbackIndex > 0 && renderTime < transitionDuration) {
         const prevScene = scenes[playbackIndex - 1];
         const prevVideo = prevScene ? videoRefs.current[prevScene.id] : null;
-        if (prevVideo) {
+        if (prevVideo && prevVideo instanceof HTMLVideoElement) {
           if (prevVideo.paused) {
             prevVideo.muted = true;
             prevVideo.play().catch(() => {});
           }
           // The previous video should be in its final segment
           const prevDuration = prevScene.duration || 4;
-          const targetPrevTime = Math.max(0, prevDuration - (transitionDuration - renderTime));
+          const targetPrevTime = Math.max(
+            0,
+            prevDuration - (transitionDuration - renderTime),
+          );
           const diff = Math.abs(prevVideo.currentTime - targetPrevTime);
           if (diff > 0.15) {
             prevVideo.currentTime = targetPrevTime;
@@ -240,7 +295,13 @@ export default function VideoCanvas({
         }
       }
     }
-  }, [renderTime, currentScene?.id, playbackIndex, projectConfig.transitionDuration, scenes]);
+  }, [
+    renderTime,
+    currentScene?.id,
+    playbackIndex,
+    projectConfig.transitionDuration,
+    scenes,
+  ]);
 
   // Initialize and keep background music sync
   useEffect(() => {
@@ -248,19 +309,29 @@ export default function VideoCanvas({
       musicAudioRef.current = new Audio();
     }
     const music = musicAudioRef.current;
-    
+
     if (projectConfig.musicTrack && projectConfig.isMusicEnabled !== false) {
       music.src = projectConfig.musicTrack;
       music.loop = true;
-      music.volume = (isMuted || !projectConfig.isMusicEnabled) ? 0 : projectConfig.musicVolume;
+      music.volume =
+        isMuted || !projectConfig.isMusicEnabled
+          ? 0
+          : projectConfig.musicVolume;
       if (isPlaying) {
-        music.play().catch(err => console.warn("Audio autoplay blocked or waiting user trigger:", err));
+        music
+          .play()
+          .catch((err) =>
+            console.warn(
+              "Audio autoplay blocked or waiting user trigger:",
+              err,
+            ),
+          );
       } else {
         music.pause();
       }
     } else {
       music.pause();
-      music.src = '';
+      music.src = "";
     }
 
     return () => {
@@ -282,7 +353,7 @@ export default function VideoCanvas({
     stopAllTtsAudios();
     setCurrentSceneTime(0);
     currentSceneTimeRef.current = 0;
-    
+
     playbackIndexRef.current = playbackIndex;
 
     if (isPlaying) {
@@ -295,15 +366,21 @@ export default function VideoCanvas({
     if (isPlaying) {
       // Start Video
       const video = currentScene ? videoRefs.current[currentScene.id] : null;
-      if (video) {
+      if (video && video instanceof HTMLVideoElement) {
         video.play().catch(() => {});
       }
       playActiveSceneTtsAndVideo();
       startTimelineTimer();
     } else {
       // Pause Video
-      (Object.values(videoRefs.current) as (HTMLVideoElement | null)[]).forEach(vid => {
-        if (vid) vid.pause();
+      (
+        Object.values(videoRefs.current) as (
+          | HTMLVideoElement
+          | HTMLImageElement
+          | null
+        )[]
+      ).forEach((vid) => {
+        if (vid && vid instanceof HTMLVideoElement) vid.pause();
       });
       if (musicAudioRef.current) {
         musicAudioRef.current.pause();
@@ -318,7 +395,7 @@ export default function VideoCanvas({
   }, [isPlaying, isRendering, currentScene?.id]);
 
   const stopAllTtsAudios = () => {
-    (Object.values(audioRefs.current) as HTMLAudioElement[]).forEach(aud => {
+    (Object.values(audioRefs.current) as HTMLAudioElement[]).forEach((aud) => {
       aud.pause();
       aud.currentTime = 0;
     });
@@ -328,47 +405,82 @@ export default function VideoCanvas({
     if (!currentScene) return;
 
     // Pause all other videos, play current
-    (Object.entries(videoRefs.current) as [string, HTMLVideoElement | null][]).forEach(([id, vid]) => {
+    (
+      Object.entries(videoRefs.current) as [
+        string,
+        HTMLVideoElement | HTMLImageElement | null,
+      ][]
+    ).forEach(([id, vid]) => {
       if (!vid) return;
-      if (id === currentScene.id) {
-        vid.play().catch(() => {});
-      } else {
-        // Keep previous video playing slightly for transition
-        const prevScene = playbackIndex > 0 ? scenes[playbackIndex - 1] : null;
-        if (prevScene && id === prevScene.id) {
-           setTimeout(() => { if (vid) vid.pause() }, 1000);
+      if (vid instanceof HTMLVideoElement) {
+        if (id === currentScene.id) {
+          vid.play().catch(() => {});
         } else {
-           vid.pause();
+          // Keep previous video playing slightly for transition
+          const prevScene =
+            playbackIndex > 0 ? scenes[playbackIndex - 1] : null;
+          if (prevScene && id === prevScene.id) {
+            setTimeout(() => {
+              if (vid && vid instanceof HTMLVideoElement) vid.pause();
+            }, 1000);
+          } else {
+            vid.pause();
+          }
         }
       }
     });
-    
+
+    // Preload next scene video
+    if (playbackIndex < scenes.length - 1) {
+      const nextVid = videoRefs.current[scenes[playbackIndex + 1].id];
+      // Preloading the next video silently handles the browser buffering delay
+      if (
+        nextVid &&
+        nextVid instanceof HTMLVideoElement &&
+        nextVid.readyState < 3
+      ) {
+        nextVid.load();
+      }
+    }
+
     // Play Narration Voiceover if enabled
     if (projectConfig.isVoiceEnabled) {
       const audio = audioRefs.current[currentScene.id];
       if (audio) {
-        console.log(`[TTS] Attempting playback for scene ${currentScene.id}, src: ${audio.src}`);
+        console.log(
+          `[TTS] Attempting playback for scene ${currentScene.id}, src: ${audio.src}`,
+        );
         audio.currentTime = currentSceneTimeRef.current;
         // Pause before play to reset state, avoiding "interrupted by pause" errors
         audio.pause();
-        
+
         // Small delay to ensure browser processed the pause
         setTimeout(() => {
           const playPromise = audio.play();
           if (playPromise !== undefined) {
-             playPromise.then(_ => {
-               console.log(`[TTS] Playback started for scene ${currentScene.id}`);
-             }).catch(err => {
-               console.error(`[TTS] Playback failed for scene ${currentScene.id}:`, err);
-               if (err.name !== 'AbortError') console.warn("TTS Playback blocked:", err);
-             });
+            playPromise
+              .then((_) => {
+                console.log(
+                  `[TTS] Playback started for scene ${currentScene.id}`,
+                );
+              })
+              .catch((err) => {
+                console.error(
+                  `[TTS] Playback failed for scene ${currentScene.id}:`,
+                  err,
+                );
+                if (err.name !== "AbortError")
+                  console.warn("TTS Playback blocked:", err);
+              });
           }
         }, 50);
       } else {
-         console.warn(`[TTS] Audio element not found for scene ${currentScene.id}`);
+        console.warn(
+          `[TTS] Audio element not found for scene ${currentScene.id}`,
+        );
       }
     }
-    
+
     // Handle music play if active
     if (musicAudioRef.current && projectConfig.musicTrack) {
       musicAudioRef.current.volume = isMuted ? 0 : projectConfig.musicVolume;
@@ -379,37 +491,43 @@ export default function VideoCanvas({
   // Timeline pacing ticking
   const startTimelineTimer = () => {
     clearTimelineTimer();
-    
+
     const intervalTime = 100; // Tick every 100ms
     progressTimerRef.current = setInterval(() => {
       let targetDuration = currentScene?.duration || 4;
-      const currentAudio = (currentScene && projectConfig.isVoiceEnabled) ? audioRefs.current[currentScene.id] : null;
-      
+      const currentAudio =
+        currentScene && projectConfig.isVoiceEnabled
+          ? audioRefs.current[currentScene.id]
+          : null;
+
       let nextTime;
       let hasEnded = false;
 
       if (currentAudio) {
         if (!isNaN(currentAudio.duration) && currentAudio.duration > 0) {
-          targetDuration = currentAudio.duration + 0.15;
-          nextTime = currentAudio.currentTime;
+          targetDuration = currentAudio.duration + 0.3;
           if (currentAudio.ended) {
-            hasEnded = true;
+            nextTime = currentSceneTimeRef.current + intervalTime / 1000;
+            if (nextTime >= targetDuration) hasEnded = true;
+          } else {
+            nextTime = currentAudio.currentTime;
           }
         } else {
           // Audio still loading or metadata pending
           const currentVal = currentSceneTimeRef.current;
-          nextTime = currentVal + (intervalTime / 1000);
+          nextTime = currentVal + intervalTime / 1000;
         }
       } else {
         const currentVal = currentSceneTimeRef.current;
-        nextTime = currentVal + (intervalTime / 1000);
+        nextTime = currentVal + intervalTime / 1000;
       }
-      
+
       // Auto Beat Sync Simulation Overrides
       if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
         // Assume roughly 120bpm for syncing cuts (0.5 seconds per beat)
         const BEAT_INTERVAL = 0.5;
-        targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
+        targetDuration =
+          Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
       }
 
       if (hasEnded || nextTime >= targetDuration) {
@@ -447,17 +565,17 @@ export default function VideoCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     // Define standard composition dims
     let width = 1280;
     let height = 720; // 16:9 widescreen default
 
-    if (projectConfig.aspectRatio === '9:16') {
+    if (projectConfig.aspectRatio === "9:16") {
       width = 720;
       height = 1280; // Shorts Vertical height
-    } else if (projectConfig.aspectRatio === '1:1') {
+    } else if (projectConfig.aspectRatio === "1:1") {
       width = 800;
       height = 800; // Instagram Square
     }
@@ -467,32 +585,57 @@ export default function VideoCanvas({
 
     const render = (timeMs?: DOMHighResTimeStamp) => {
       // Clear Canvas
-      ctx.fillStyle = '#090d16';
+      ctx.fillStyle = "#090d16";
       ctx.fillRect(0, 0, width, height);
 
       // Smooth cTime interpolation
-      const currentVideo = currentScene ? videoRefs.current[currentScene.id] : null;
+      const currentVideo = currentScene
+        ? videoRefs.current[currentScene.id]
+        : null;
       let smoothTime = currentSceneTimeRef.current;
-      
+
       // Use the actual underlying video's current time for ultra-smooth sync if it's playing
-      if (currentVideo && !currentVideo.paused && currentVideo.currentTime > 0) {
-          smoothTime = currentVideo.currentTime;
+      if (
+        currentVideo &&
+        currentVideo instanceof HTMLVideoElement &&
+        !currentVideo.paused &&
+        currentVideo.currentTime > 0
+      ) {
+        smoothTime = currentVideo.currentTime;
       } else if (renderTimePropRef.current !== undefined) {
-          smoothTime = renderTimePropRef.current;
+        smoothTime = renderTimePropRef.current;
       }
 
       // Helper to draw a video frame onto the staging canvas with scaling/panning support
       const drawVideoFrame = (
-        vid: HTMLVideoElement, 
-        alpha: number, 
+        vid: HTMLVideoElement | HTMLImageElement,
+        alpha: number,
         overrideAnimation?: AnimationStyle,
-        scale: number = 1.0, 
-        offsetX: number = 0, 
+        scale: number = 1.0,
+        offsetX: number = 0,
         offsetY: number = 0,
-        clipRect?: { x: number; y: number; width: number; height: number }
+        clipRect?: { x: number; y: number; width: number; height: number },
       ) => {
-        if (!vid || vid.readyState < 2) return;
-        
+        if (!vid) return;
+
+        let vWidth = 0;
+        let vHeight = 0;
+        let isReady = false;
+
+        if (vid instanceof HTMLVideoElement) {
+          isReady = vid.readyState >= 2;
+          vWidth = vid.videoWidth;
+          vHeight = vid.videoHeight;
+        } else {
+          isReady =
+            (vid as HTMLImageElement).complete &&
+            (vid as HTMLImageElement).naturalWidth > 0;
+          vWidth = (vid as HTMLImageElement).naturalWidth;
+          vHeight = (vid as HTMLImageElement).naturalHeight;
+        }
+
+        if (!isReady || vWidth === 0 || vHeight === 0) return;
+
         ctx.save();
         if (clipRect) {
           ctx.beginPath();
@@ -501,12 +644,13 @@ export default function VideoCanvas({
         }
 
         ctx.globalAlpha = alpha;
-        const vWidth = vid.videoWidth;
-        const vHeight = vid.videoHeight;
         const vRatio = vWidth / vHeight;
         const cRatio = width / height;
 
-        let sx = 0, sy = 0, sWidth = vWidth, sHeight = vHeight;
+        let sx = 0,
+          sy = 0,
+          sWidth = vWidth,
+          sHeight = vHeight;
 
         if (vRatio > cRatio) {
           sWidth = vHeight * cRatio;
@@ -517,57 +661,67 @@ export default function VideoCanvas({
         }
 
         // Apply Image Animation Style (Movement)
-        let animStyle = overrideAnimation || projectConfig.animationStyle || 'zoom-in';
-        
+        let animStyle =
+          overrideAnimation || projectConfig.animationStyle || "zoom-in";
+
         // Respect global enable flag
         if (projectConfig.isAnimationEnabled === false) {
-          animStyle = 'static';
+          animStyle = "static";
         }
-        
+
         // Handle "dynamic" by picking a random-ish stable style based on the video's ID
-        if (animStyle === 'dynamic' && vid.src) {
-          const charSum = vid.src.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-          const dynamicStyles: AnimationStyle[] = ['zoom-in', 'zoom-out', 'pan-lr', 'pan-rl', 'tilt-up', 'tilt-down'];
+        if (animStyle === "dynamic" && vid.src) {
+          const charSum = vid.src
+            .split("")
+            .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+          const dynamicStyles: AnimationStyle[] = [
+            "zoom-in",
+            "zoom-out",
+            "pan-lr",
+            "pan-rl",
+            "tilt-up",
+            "tilt-down",
+          ];
           animStyle = dynamicStyles[charSum % dynamicStyles.length];
         }
 
         const sceneDuration = currentScene?.duration || 4;
         const animProgress = Math.min(1, smoothTime / sceneDuration);
-        
+
         let dynamicScale = scale;
         let dynamicOffsetX = offsetX;
         let dynamicOffsetY = offsetY;
 
         // Cinematic Motion Library
         switch (animStyle) {
-          case 'zoom-in':
-            dynamicScale *= (1 + (0.12 * animProgress));
+          case "zoom-in":
+            dynamicScale *= 1 + 0.12 * animProgress;
             break;
-          case 'zoom-out':
-            dynamicScale *= (1.15 - (0.15 * animProgress));
+          case "zoom-out":
+            dynamicScale *= 1.15 - 0.15 * animProgress;
             break;
-          case 'pan-lr':
-            dynamicOffsetX += (width * 0.08 * (animProgress - 0.5));
+          case "pan-lr":
+            dynamicOffsetX += width * 0.08 * (animProgress - 0.5);
             break;
-          case 'pan-rl':
-            dynamicOffsetX -= (width * 0.08 * (animProgress - 0.5));
+          case "pan-rl":
+            dynamicOffsetX -= width * 0.08 * (animProgress - 0.5);
             break;
-          case 'tilt-up':
-            dynamicOffsetY += (height * 0.05 * (animProgress - 0.5));
+          case "tilt-up":
+            dynamicOffsetY += height * 0.05 * (animProgress - 0.5);
             dynamicScale *= 1.05;
             break;
-          case 'tilt-down':
-            dynamicOffsetY -= (height * 0.05 * (animProgress - 0.5));
+          case "tilt-down":
+            dynamicOffsetY -= height * 0.05 * (animProgress - 0.5);
             dynamicScale *= 1.05;
             break;
-          case 'diagonal-br':
-            dynamicOffsetX += (width * 0.04 * (animProgress - 0.5));
-            dynamicOffsetY += (height * 0.04 * (animProgress - 0.5));
+          case "diagonal-br":
+            dynamicOffsetX += width * 0.04 * (animProgress - 0.5);
+            dynamicOffsetY += height * 0.04 * (animProgress - 0.5);
             dynamicScale *= 1.1;
             break;
-          case 'diagonal-bl':
-            dynamicOffsetX -= (width * 0.04 * (animProgress - 0.5));
-            dynamicOffsetY += (height * 0.04 * (animProgress - 0.5));
+          case "diagonal-bl":
+            dynamicOffsetX -= width * 0.04 * (animProgress - 0.5);
+            dynamicOffsetY += height * 0.04 * (animProgress - 0.5);
             dynamicScale *= 1.1;
             break;
           default:
@@ -575,60 +729,130 @@ export default function VideoCanvas({
             break;
         }
 
-        ctx.translate(width/2, height/2);
+        ctx.translate(width / 2, height / 2);
         ctx.scale(dynamicScale, dynamicScale);
-        
-        ctx.drawImage(vid, sx, sy, sWidth, sHeight, -width/2 + dynamicOffsetX, -height/2 + dynamicOffsetY, width, height);
+
+        ctx.drawImage(
+          vid,
+          sx,
+          sy,
+          sWidth,
+          sHeight,
+          -width / 2 + dynamicOffsetX,
+          -height / 2 + dynamicOffsetY,
+          width,
+          height,
+        );
         ctx.restore();
-        
+
         ctx.globalAlpha = 1.0;
       };
 
       // 1. Draw Stock Video Frame with Cinematic Transitions
-      
-      const tSource = projectConfig.transitionType || 'crossfade';
+
+      const tSource = projectConfig.transitionType || "crossfade";
       const transitionDuration = projectConfig.transitionDuration || 0.5;
       const pIndex = playbackIndexRef.current;
 
-      const isTransitioning = projectConfig.isTransitionsEnabled !== false && pIndex > 0 && smoothTime < transitionDuration && tSource !== 'none';
+      const isTransitioning =
+        projectConfig.isTransitionsEnabled !== false &&
+        pIndex > 0 &&
+        smoothTime < transitionDuration &&
+        tSource !== "none";
 
       if (isTransitioning) {
         const prevScene = scenes[pIndex - 1];
         const prevVideo = prevScene ? videoRefs.current[prevScene.id] : null;
-        const progress = Math.max(0, Math.min(1, smoothTime / transitionDuration)); // 0 to 1
+        const progress = Math.max(
+          0,
+          Math.min(1, smoothTime / transitionDuration),
+        ); // 0 to 1
 
-        if (tSource === 'crossfade') {
-          if (prevVideo) drawVideoFrame(prevVideo, 1.0 - progress, prevScene?.animationStyle); 
-          if (currentVideo) drawVideoFrame(currentVideo, progress, currentScene?.animationStyle); 
-        } else if (tSource === 'slide') {
+        if (tSource === "crossfade") {
+          if (prevVideo)
+            drawVideoFrame(
+              prevVideo,
+              1.0 - progress,
+              prevScene?.animationStyle,
+            );
+          if (currentVideo)
+            drawVideoFrame(
+              currentVideo,
+              progress,
+              currentScene?.animationStyle,
+            );
+        } else if (tSource === "slide") {
           // Previous video slides LEFT out of bounds
           if (prevVideo) {
-            drawVideoFrame(prevVideo, 1.0, prevScene?.animationStyle, 1.0, -progress * width, 0);
+            drawVideoFrame(
+              prevVideo,
+              1.0,
+              prevScene?.animationStyle,
+              1.0,
+              -progress * width,
+              0,
+            );
           }
           // Current video slides LEFT in bounds
           if (currentVideo) {
-            drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle, 1.0, (1.0 - progress) * width, 0);
+            drawVideoFrame(
+              currentVideo,
+              1.0,
+              currentScene?.animationStyle,
+              1.0,
+              (1.0 - progress) * width,
+              0,
+            );
           }
-        } else if (tSource === 'wipe') {
+        } else if (tSource === "wipe") {
           // Base/Background layer is the previous video
           if (prevVideo) {
             drawVideoFrame(prevVideo, 1.0, prevScene?.animationStyle);
           }
           // Current video is wiped in (clipped left to right)
           if (currentVideo) {
-            drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle, 1.0, 0, 0, { x: 0, y: 0, width: progress * width, height: height });
+            drawVideoFrame(
+              currentVideo,
+              1.0,
+              currentScene?.animationStyle,
+              1.0,
+              0,
+              0,
+              { x: 0, y: 0, width: progress * width, height: height },
+            );
           }
-        } else if (tSource === 'flicker') {
+        } else if (tSource === "morph") {
+          // Morph: Crossfade with an intense blur + scale jump
+          const blurIntensity = Math.sin(progress * Math.PI) * 15;
+          const scaleBoost = Math.sin(progress * Math.PI) * 0.2;
+
+          ctx.filter = `blur(${blurIntensity}px) brightness(${100 + blurIntensity * 3}%)`;
+          if (prevVideo)
+            drawVideoFrame(
+              prevVideo,
+              1.0 - progress,
+              prevScene?.animationStyle,
+              1.0 + scaleBoost,
+            );
+          if (currentVideo)
+            drawVideoFrame(
+              currentVideo,
+              progress,
+              currentScene?.animationStyle,
+              1.0 + scaleBoost,
+            );
+          ctx.filter = "none";
+        } else if (tSource === "flicker") {
           // Flicker / Strobe transition
           const flickerRate = 0.1; // seconds
           const showPrev = Math.floor(smoothTime / flickerRate) % 2 === 0;
-          
+
           if (showPrev && prevVideo) {
             drawVideoFrame(prevVideo, 1.0, prevScene?.animationStyle);
           } else if (!showPrev && currentVideo) {
             drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle);
           }
-          
+
           // Add a brief white flash at the exact cut point
           if (progress < 0.2) {
             ctx.fillStyle = `rgba(255, 255, 255, ${1 - progress * 5})`;
@@ -636,163 +860,190 @@ export default function VideoCanvas({
           }
         } else {
           // Playback fallback
-          if (currentVideo) drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle);
+          if (currentVideo)
+            drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle);
         }
       } else {
-        if (currentVideo) drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle);
+        if (currentVideo)
+          drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle);
       }
 
       // 2. Cinematic shadow vignette backdrop filter
-      const grad = ctx.createRadialGradient(width/2, height/2, Math.min(width, height)*0.3, width/2, height/2, Math.max(width, height)*0.7);
-      grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      grad.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+      const grad = ctx.createRadialGradient(
+        width / 2,
+        height / 2,
+        Math.min(width, height) * 0.3,
+        width / 2,
+        height / 2,
+        Math.max(width, height) * 0.7,
+      );
+      grad.addColorStop(0, "rgba(0, 0, 0, 0)");
+      grad.addColorStop(1, "rgba(0, 0, 0, 0.5)");
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, width, height);
 
-        // 3. Draw Captions/Subtitles
-        if (currentScene && projectConfig.subtitleStyle.enabled) {
-          const fullText = projectConfig.subtitleStyle.uppercase 
-            ? currentScene.caption.toUpperCase()
-            : currentScene.caption;
+      // 3. Draw Captions/Subtitles
+      if (currentScene && projectConfig.subtitleStyle.enabled) {
+        const fullText = projectConfig.subtitleStyle.uppercase
+          ? currentScene.caption.toUpperCase()
+          : currentScene.caption;
 
-          const animType = projectConfig.subtitleStyle.animation || 'none';
-          const progress = currentScene.duration > 0 ? (smoothTime / currentScene.duration) : 1;
+        const animType = projectConfig.subtitleStyle.animation || "none";
+        const progress =
+          currentScene.duration > 0 ? smoothTime / currentScene.duration : 1;
 
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          
-          // Dynamic scaled font sizing relative to resolution
-          const baseFontSize = projectConfig.subtitleStyle.fontSize;
-          const scaleFactor = width / 1280;
-          const finalFontSize = Math.max(16, Math.floor(baseFontSize * scaleFactor));
-          
-          ctx.font = `600 ${finalFontSize}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
 
-          const allWords = fullText.split(' ');
-          const lines: string[] = [];
-          let currentLine = '';
-          const maxLineWidth = width * 0.85;
+        // Dynamic scaled font sizing relative to resolution
+        const baseFontSize = projectConfig.subtitleStyle.fontSize;
+        const scaleFactor = width / 1280;
+        const finalFontSize = Math.max(
+          16,
+          Math.floor(baseFontSize * scaleFactor),
+        );
 
-          // Wrap words to fit canvas width neatly
-          for (let n = 0; n < allWords.length; n++) {
-            const testLine = currentLine + allWords[n] + ' ';
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > maxLineWidth && n > 0) {
-              lines.push(currentLine.trim());
-              currentLine = allWords[n] + ' ';
-            } else {
-              currentLine = testLine;
-            }
+        ctx.font = `600 ${finalFontSize}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
+
+        const allWords = fullText.split(" ");
+        const lines: string[] = [];
+        let currentLine = "";
+        const maxLineWidth = width * 0.85;
+
+        // Wrap words to fit canvas width neatly
+        for (let n = 0; n < allWords.length; n++) {
+          const testLine = currentLine + allWords[n] + " ";
+          const metrics = ctx.measureText(testLine);
+          if (metrics.width > maxLineWidth && n > 0) {
+            lines.push(currentLine.trim());
+            currentLine = allWords[n] + " ";
+          } else {
+            currentLine = testLine;
           }
-          lines.push(currentLine.trim());
+        }
+        lines.push(currentLine.trim());
 
-          // Subtitle layout adjustments
-          const lineHeight = finalFontSize * 1.35;
-          const totalTextHeight = lines.length * lineHeight;
-          
-          let py = height * 0.82; // standard bottom
-          if (projectConfig.subtitleStyle.position === 'middle') {
-            py = height / 2;
-          } else if (projectConfig.subtitleStyle.position === 'top') {
-            py = height * 0.18;
-          }
+        // Subtitle layout adjustments
+        const lineHeight = finalFontSize * 1.35;
+        const totalTextHeight = lines.length * lineHeight;
 
-          const startY = py - (totalTextHeight / 2) + (lineHeight / 2);
-          
-          // Animation calculations
-          const visibleCharsTotal = animType === 'typewriter' 
-            ? Math.floor(fullText.length * Math.min(1, progress * 1.3)) 
+        let py = height * 0.82; // standard bottom
+        if (projectConfig.subtitleStyle.position === "middle") {
+          py = height / 2;
+        } else if (projectConfig.subtitleStyle.position === "top") {
+          py = height * 0.18;
+        }
+
+        const startY = py - totalTextHeight / 2 + lineHeight / 2;
+
+        // Animation calculations
+        const visibleCharsTotal =
+          animType === "typewriter"
+            ? Math.floor(fullText.length * Math.min(1, progress * 1.3))
             : fullText.length;
-          
-          const activeWordIndexTotal = animType === 'karaoke'
+
+        const activeWordIndexTotal =
+          animType === "karaoke"
             ? Math.floor(allWords.length * Math.min(0.99, progress))
             : -1;
 
-          let charCounter = 0;
-          let wordGlobalCounter = 0;
+        let charCounter = 0;
+        let wordGlobalCounter = 0;
 
-          // Draw backdrop and text
-          lines.forEach((line, index) => {
-            const ly = startY + (index * lineHeight);
-            const textWidth = ctx.measureText(line).width;
+        // Draw backdrop and text
+        lines.forEach((line, index) => {
+          const ly = startY + index * lineHeight;
+          const textWidth = ctx.measureText(line).width;
 
-            // Translucent padding capsule background box
-            if (projectConfig.subtitleStyle.backgroundColor) {
-              ctx.fillStyle = projectConfig.subtitleStyle.backgroundColor;
-              const px = 18 * scaleFactor;
-              const pyBox = 8 * scaleFactor;
-              ctx.beginPath();
-              ctx.roundRect(
-                width/2 - textWidth/2 - px,
-                ly - lineHeight/2 - pyBox + (finalFontSize * 0.08),
-                textWidth + px*2,
-                lineHeight + pyBox*2 - (finalFontSize * 0.16),
-                10 * scaleFactor
-              );
-              ctx.fill();
-            }
+          // Translucent padding capsule background box
+          if (projectConfig.subtitleStyle.backgroundColor) {
+            ctx.fillStyle = projectConfig.subtitleStyle.backgroundColor;
+            const px = 18 * scaleFactor;
+            const pyBox = 8 * scaleFactor;
+            ctx.beginPath();
+            ctx.roundRect(
+              width / 2 - textWidth / 2 - px,
+              ly - lineHeight / 2 - pyBox + finalFontSize * 0.08,
+              textWidth + px * 2,
+              lineHeight + pyBox * 2 - finalFontSize * 0.16,
+              10 * scaleFactor,
+            );
+            ctx.fill();
+          }
 
-            // Subtle text shadow effect
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-            ctx.shadowBlur = 8 * scaleFactor;
-            ctx.shadowOffsetX = 2 * scaleFactor;
-            ctx.shadowOffsetY = 2 * scaleFactor;
+          // Subtle text shadow effect
+          ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+          ctx.shadowBlur = 8 * scaleFactor;
+          ctx.shadowOffsetX = 2 * scaleFactor;
+          ctx.shadowOffsetY = 2 * scaleFactor;
 
-            if (animType === 'karaoke') {
-              // Draw word by word for karaoke highlight
-              const lineWords = line.split(' ');
-              let currentX = width / 2 - textWidth / 2;
-              
-              lineWords.forEach((word) => {
-                const isHighlighted = wordGlobalCounter === activeWordIndexTotal;
-                ctx.fillStyle = isHighlighted 
-                  ? projectConfig.subtitleStyle.highlightColor 
-                  : projectConfig.subtitleStyle.color;
-                
-                // Scale highlight for emphasize effect
-                if (isHighlighted) {
-                  ctx.font = `800 ${finalFontSize * 1.05}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
-                } else {
-                  ctx.font = `600 ${finalFontSize}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
-                }
+          if (animType === "karaoke") {
+            // Draw word by word for karaoke highlight
+            const lineWords = line.split(" ");
+            let currentX = width / 2 - textWidth / 2;
 
-                ctx.textAlign = 'left';
-                ctx.fillText(word, currentX, ly);
-                currentX += ctx.measureText(word + ' ').width;
-                wordGlobalCounter++;
-              });
-            } else if (animType === 'typewriter') {
-              // Typewriter slice
-              const lineVisibleChars = Math.max(0, visibleCharsTotal - charCounter);
-              const lineToDraw = line.slice(0, lineVisibleChars);
-              ctx.textAlign = 'center';
-              ctx.fillStyle = projectConfig.subtitleStyle.color;
-              ctx.fillText(lineToDraw, width / 2, ly);
-              charCounter += line.length + 1;
-            } else if (animType === 'bounce') {
-               // Soft bounce/scale in
-               const scale = 1 + Math.sin(progress * Math.PI) * 0.05;
-               ctx.save();
-               ctx.translate(width/2, ly);
-               ctx.scale(scale, scale);
-               ctx.textAlign = 'center';
-               ctx.fillStyle = projectConfig.subtitleStyle.color;
-               ctx.fillText(line, 0, 0);
-               ctx.restore();
-            } else {
-              // Normal static render
-              ctx.textAlign = 'center';
-              ctx.fillStyle = projectConfig.subtitleStyle.color;
-              ctx.fillText(line, width / 2, ly);
-            }
+            lineWords.forEach((word) => {
+              const isHighlighted = wordGlobalCounter === activeWordIndexTotal;
+              ctx.fillStyle = isHighlighted
+                ? projectConfig.subtitleStyle.highlightColor
+                : projectConfig.subtitleStyle.color;
 
-            // Reset shadows
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-          });
-        }
+              // Scale highlight for emphasize effect
+              if (isHighlighted) {
+                ctx.font = `800 ${finalFontSize * 1.05}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
+              } else {
+                ctx.font = `600 ${finalFontSize}px "${projectConfig.subtitleStyle.fontFamily}", system-ui, sans-serif`;
+              }
+
+              ctx.textAlign = "left";
+              ctx.fillText(word, currentX, ly);
+              currentX += ctx.measureText(word + " ").width;
+              wordGlobalCounter++;
+            });
+          } else if (animType === "typewriter") {
+            // Typewriter slice
+            const lineVisibleChars = Math.max(
+              0,
+              visibleCharsTotal - charCounter,
+            );
+            const lineToDraw = line.slice(0, lineVisibleChars);
+            ctx.textAlign = "center";
+            ctx.fillStyle = projectConfig.subtitleStyle.color;
+            ctx.fillText(lineToDraw, width / 2, ly);
+            charCounter += line.length + 1;
+          } else if (animType === "bounce") {
+            // Soft bounce/scale in
+            const scale = 1 + Math.sin(progress * Math.PI) * 0.05;
+            ctx.save();
+            ctx.translate(width / 2, ly);
+            ctx.scale(scale, scale);
+            ctx.textAlign = "center";
+            ctx.fillStyle = projectConfig.subtitleStyle.color;
+            ctx.fillText(line, 0, 0);
+            ctx.restore();
+          } else if (animType === "slide-up") {
+            const slideProgress = Math.min(1, progress * 4); // Quick slide up
+            const yOffset = (1 - slideProgress) * 20;
+            ctx.save();
+            ctx.globalAlpha = slideProgress;
+            ctx.textAlign = "center";
+            ctx.fillStyle = projectConfig.subtitleStyle.color;
+            ctx.fillText(line, width / 2, ly + yOffset);
+            ctx.restore();
+          } else {
+            // Normal static render
+            ctx.textAlign = "center";
+            ctx.fillStyle = projectConfig.subtitleStyle.color;
+            ctx.fillText(line, width / 2, ly);
+          }
+
+          // Reset shadows
+          ctx.shadowColor = "transparent";
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        });
+      }
 
       rafRef.current = requestAnimationFrame(render);
     };
@@ -808,7 +1059,7 @@ export default function VideoCanvas({
 
   const handleNext = () => {
     if (playbackIndex < scenes.length - 1) {
-      setPlaybackIndex(p => {
+      setPlaybackIndex((p) => {
         playbackIndexRef.current = p + 1;
         return p + 1;
       });
@@ -822,7 +1073,7 @@ export default function VideoCanvas({
 
   const handlePrev = () => {
     if (playbackIndex > 0) {
-      setPlaybackIndex(p => {
+      setPlaybackIndex((p) => {
         playbackIndexRef.current = p - 1;
         return p - 1;
       });
@@ -836,140 +1087,205 @@ export default function VideoCanvas({
 
   // Ratio dynamic aspect bounds utility
   const getAspectClass = (ratio: AspectRatio) => {
-    if (ratio === '9:16') return 'aspect-[9/16] max-h-[500px] w-auto mx-auto';
-    if (ratio === '1:1') return 'aspect-square max-h-[450px] w-auto mx-auto';
-    return 'aspect-video w-full';
+    if (ratio === "9:16") return "aspect-[9/16] max-h-[500px] w-auto mx-auto";
+    if (ratio === "1:1") return "aspect-square max-h-[450px] w-auto mx-auto";
+    return "aspect-video w-full";
   };
 
   return (
-    <div className="bg-[#0c0c0e]/95 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-5 flex flex-col h-full justify-between" id="visual-studio">
-      
+    <div
+      className="bg-[#0c0c0e]/95 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-5 flex flex-col h-full justify-between"
+      id="visual-studio"
+    >
       {/* Aspect Ratio and Configurations Head */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 text-xs text-indigo-400 font-bold bg-indigo-500/5 px-2.5 py-1 rounded-md border border-indigo-500/15">
               <Sparkles size={11} className="fill-current" />
-              {language === 'am' ? 'የቀጥታ ቅንብር (Live Compositor)' : 'Live Compositor'}
+              {language === "am"
+                ? "የቀጥታ ቅንብር (Live Compositor)"
+                : "Live Compositor"}
             </span>
           </div>
-          
+
           {/* Dynamic tabs */}
           <div className="flex items-center bg-zinc-950 p-1 border border-zinc-900 rounded-xl text-xs">
             <button
-              onClick={() => setShowConfigTabs('ratio')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === 'ratio' ? 'bg-indigo-650 text-white font-bold' : 'text-zinc-500 hover:text-zinc-300'}`}
+              onClick={() => setShowConfigTabs("ratio")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "ratio" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_size}
             </button>
             <button
-              onClick={() => setShowConfigTabs('subtitle')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === 'subtitle' ? 'bg-indigo-650 text-white font-bold' : 'text-zinc-500 hover:text-zinc-300'}`}
+              onClick={() => setShowConfigTabs("subtitle")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "subtitle" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_subtitles}
             </button>
             <button
-              onClick={() => setShowConfigTabs('music')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === 'music' ? 'bg-indigo-650 text-white font-bold' : 'text-zinc-500 hover:text-zinc-300'}`}
+              onClick={() => setShowConfigTabs("music")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "music" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_music}
             </button>
             <button
-              onClick={() => setShowConfigTabs('motion')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === 'motion' ? 'bg-indigo-650 text-white font-bold' : 'text-zinc-500 hover:text-zinc-300'}`}
+              onClick={() => setShowConfigTabs("motion")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "motion" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_motion}
             </button>
             <button
-              onClick={() => setShowConfigTabs('analyzer')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1 ${showConfigTabs === 'analyzer' ? 'bg-indigo-650 text-white font-bold' : 'text-indigo-400 hover:text-indigo-300'}`}
+              onClick={() => setShowConfigTabs("analyzer")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1 ${showConfigTabs === "analyzer" ? "bg-indigo-650 text-white font-bold" : "text-indigo-400 hover:text-indigo-300"}`}
               title="Analyze active video scene with Gemini 3.1 Pro"
             >
-              <Cpu size={12} className={showConfigTabs === 'analyzer' ? 'text-white' : 'text-indigo-400'} />
+              <Cpu
+                size={12}
+                className={
+                  showConfigTabs === "analyzer"
+                    ? "text-white"
+                    : "text-indigo-400"
+                }
+              />
               <span>{t.tab_analyzer}</span>
             </button>
-
           </div>
         </div>
 
         {/* Configurations Dynamic Sub Panels */}
         <div className="p-4 bg-[#050505] border border-zinc-900 rounded-xl text-xs min-h-[70px] flex items-center">
-          {showConfigTabs === 'ratio' && (
+          {showConfigTabs === "ratio" && (
             <div className="w-full grid grid-cols-3 gap-3">
-              {(['16:9', '9:16', '1:1'] as AspectRatio[]).map((ratio) => (
+              {(["16:9", "9:16", "1:1"] as AspectRatio[]).map((ratio) => (
                 <button
                   key={ratio}
                   onClick={() => onUpdateConfig({ aspectRatio: ratio })}
                   className={`py-2 px-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${
                     projectConfig.aspectRatio === ratio
-                      ? 'bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold'
-                      : 'border-zinc-900 hover:border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      ? "bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold"
+                      : "border-zinc-900 hover:border-zinc-800 text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
                   <span className="text-xs font-semibold">
-                    {ratio === '16:9' 
-                      ? (language === 'am' ? 'ባለሰፊ ስክሪን (Landscape)' : 'Landscape') 
-                      : ratio === '9:16' 
-                        ? (language === 'am' ? 'የሞባይል ቪዲዮ (Vertical)' : 'Vertical Shorts') 
-                        : (language === 'am' ? 'አራት ማዕዘን (Square)' : 'Square')}
+                    {ratio === "16:9"
+                      ? language === "am"
+                        ? "ባለሰፊ ስክሪን (Landscape)"
+                        : "Landscape"
+                      : ratio === "9:16"
+                        ? language === "am"
+                          ? "የሞባይል ቪዲዮ (Vertical)"
+                          : "Vertical Shorts"
+                        : language === "am"
+                          ? "አራት ማዕዘን (Square)"
+                          : "Square"}
                   </span>
-                  <span className="text-[10px] text-zinc-500 font-mono">{ratio}</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">
+                    {ratio}
+                  </span>
                 </button>
               ))}
             </div>
           )}
 
-          {showConfigTabs === 'subtitle' && (
+          {showConfigTabs === "subtitle" && (
             <div className="w-full space-y-4">
               <div className="flex items-center justify-between mb-1 pb-1 border-b border-zinc-900/50">
-                <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">{t.subtitle_style_title}</span>
+                <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">
+                  {t.subtitle_style_title}
+                </span>
                 <button
-                  onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, enabled: !projectConfig.subtitleStyle.enabled } })}
+                  onClick={() =>
+                    onUpdateConfig({
+                      subtitleStyle: {
+                        ...projectConfig.subtitleStyle,
+                        enabled: !projectConfig.subtitleStyle.enabled,
+                      },
+                    })
+                  }
                   className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold transition-all border ${
-                    projectConfig.subtitleStyle.enabled 
-                      ? 'bg-indigo-500/10 border-indigo-500/40 text-indigo-400' 
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-500'
+                    projectConfig.subtitleStyle.enabled
+                      ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-400"
+                      : "bg-zinc-900 border-zinc-800 text-zinc-500"
                   }`}
                 >
                   {projectConfig.subtitleStyle.enabled ? (
-                    <><Eye size={10} /> CAPTIONS ON</>
+                    <>
+                      <Eye size={10} /> CAPTIONS ON
+                    </>
                   ) : (
-                    <><EyeOff size={10} /> CAPTIONS OFF</>
+                    <>
+                      <EyeOff size={10} /> CAPTIONS OFF
+                    </>
                   )}
                 </button>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">{t.subtitle_animation}</label>
+                  <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">
+                    {t.subtitle_animation}
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {(['none', 'typewriter', 'karaoke', 'bounce'] as const).map(anim => (
+                    {(
+                      [
+                        "none",
+                        "typewriter",
+                        "karaoke",
+                        "bounce",
+                        "slide-up",
+                      ] as const
+                    ).map((anim) => (
                       <button
                         key={anim}
-                        onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, animation: anim } })}
+                        onClick={() =>
+                          onUpdateConfig({
+                            subtitleStyle: {
+                              ...projectConfig.subtitleStyle,
+                              animation: anim,
+                            },
+                          })
+                        }
                         className={`py-1.5 px-2 border rounded-lg text-[9px] font-bold transition-all ${
-                          projectConfig.subtitleStyle.animation === anim 
-                            ? 'bg-zinc-900 border-indigo-500 text-indigo-400' 
-                            : 'bg-black border-zinc-900 text-zinc-600 hover:text-zinc-400'
+                          projectConfig.subtitleStyle.animation === anim
+                            ? "bg-zinc-900 border-indigo-500 text-indigo-400"
+                            : "bg-black border-zinc-900 text-zinc-600 hover:text-zinc-400"
                         }`}
                       >
-                        {anim === 'none' ? t.anim_none : anim === 'typewriter' ? t.anim_typewriter : anim === 'karaoke' ? t.anim_karaoke : t.anim_bounce}
+                        {anim === "none"
+                          ? t.anim_none
+                          : anim === "typewriter"
+                            ? t.anim_typewriter
+                            : anim === "karaoke"
+                              ? t.anim_karaoke
+                              : anim === "bounce"
+                                ? t.anim_bounce
+                                : t.anim_slide_up}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">{t.text_position}</label>
+                  <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">
+                    {t.text_position}
+                  </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {(['top', 'middle', 'bottom'] as const).map(pos => (
+                    {(["top", "middle", "bottom"] as const).map((pos) => (
                       <button
                         key={pos}
-                        onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, position: pos } })}
+                        onClick={() =>
+                          onUpdateConfig({
+                            subtitleStyle: {
+                              ...projectConfig.subtitleStyle,
+                              position: pos,
+                            },
+                          })
+                        }
                         className={`py-1.5 border rounded-lg text-[9px] font-bold uppercase transition-all ${
-                          projectConfig.subtitleStyle.position === pos 
-                            ? 'bg-zinc-900 border-indigo-500 text-indigo-400' 
-                            : 'bg-black border-zinc-900 text-zinc-600 hover:text-zinc-400'
+                          projectConfig.subtitleStyle.position === pos
+                            ? "bg-zinc-900 border-indigo-500 text-indigo-400"
+                            : "bg-black border-zinc-900 text-zinc-600 hover:text-zinc-400"
                         }`}
                       >
                         {pos}
@@ -982,13 +1298,28 @@ export default function VideoCanvas({
               <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-zinc-900/40">
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">{t.text_color}</span>
+                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">
+                      {t.text_color}
+                    </span>
                     <div className="flex items-center gap-1.5">
-                      {['#FFFFFF', '#FACC15', '#4ADE80', '#F87171', '#60A5FA'].map(c => (
+                      {[
+                        "#FFFFFF",
+                        "#FACC15",
+                        "#4ADE80",
+                        "#F87171",
+                        "#60A5FA",
+                      ].map((c) => (
                         <button
                           key={c}
-                          onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, color: c } })}
-                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.color === c ? 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-black' : ''}`}
+                          onClick={() =>
+                            onUpdateConfig({
+                              subtitleStyle: {
+                                ...projectConfig.subtitleStyle,
+                                color: c,
+                              },
+                            })
+                          }
+                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.color === c ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-black" : ""}`}
                           style={{ backgroundColor: c }}
                         />
                       ))}
@@ -996,13 +1327,28 @@ export default function VideoCanvas({
                   </div>
 
                   <div className="flex flex-col gap-1 pl-3 border-l border-zinc-900">
-                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">{t.highlight_color}</span>
+                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">
+                      {t.highlight_color}
+                    </span>
                     <div className="flex items-center gap-1.5">
-                      {['#FBBF24', '#22D3EE', '#A855F7', '#FAFAFA', '#10B981'].map(c => (
+                      {[
+                        "#FBBF24",
+                        "#22D3EE",
+                        "#A855F7",
+                        "#FAFAFA",
+                        "#10B981",
+                      ].map((c) => (
                         <button
                           key={c}
-                          onClick={() => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, highlightColor: c } })}
-                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.highlightColor === c ? 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-black' : ''}`}
+                          onClick={() =>
+                            onUpdateConfig({
+                              subtitleStyle: {
+                                ...projectConfig.subtitleStyle,
+                                highlightColor: c,
+                              },
+                            })
+                          }
+                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.highlightColor === c ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-black" : ""}`}
                           style={{ backgroundColor: c }}
                         />
                       ))}
@@ -1012,10 +1358,19 @@ export default function VideoCanvas({
 
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">Font</span>
+                    <span className="text-zinc-500 font-mono uppercase text-[8px] tracking-wider">
+                      Font
+                    </span>
                     <select
                       value={projectConfig.subtitleStyle.fontFamily}
-                      onChange={(e) => onUpdateConfig({ subtitleStyle: { ...projectConfig.subtitleStyle, fontFamily: e.target.value as any } })}
+                      onChange={(e) =>
+                        onUpdateConfig({
+                          subtitleStyle: {
+                            ...projectConfig.subtitleStyle,
+                            fontFamily: e.target.value as any,
+                          },
+                        })
+                      }
                       className="bg-zinc-950 border border-zinc-850 rounded px-2 py-0.5 text-[10px] text-zinc-300"
                     >
                       <option value="Space Grotesk">Space Grotesk</option>
@@ -1027,21 +1382,23 @@ export default function VideoCanvas({
                       <option value="Outfit">Outfit</option>
                     </select>
                   </div>
-                  
+
                   <button
                     type="button"
-                    onClick={() => onUpdateConfig({
-                      aspectRatio: '9:16',
-                      subtitleStyle: {
-                        ...projectConfig.subtitleStyle,
-                        fontFamily: 'Anton',
-                        uppercase: true,
-                        fontSize: 45,
-                        position: 'middle',
-                        animation: 'karaoke',
-                        highlightColor: '#FBBF24'
-                      }
-                    })}
+                    onClick={() =>
+                      onUpdateConfig({
+                        aspectRatio: "9:16",
+                        subtitleStyle: {
+                          ...projectConfig.subtitleStyle,
+                          fontFamily: "Anton",
+                          uppercase: true,
+                          fontSize: 45,
+                          position: "middle",
+                          animation: "karaoke",
+                          highlightColor: "#FBBF24",
+                        },
+                      })
+                    }
                     className="px-2 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[8px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-500/20 transition-all shadow-sm"
                   >
                     🔥 SHORTS AUTO-TUNE
@@ -1051,7 +1408,7 @@ export default function VideoCanvas({
             </div>
           )}
 
-          {showConfigTabs === 'music' && (
+          {showConfigTabs === "music" && (
             <div className="w-full space-y-2.5">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {DEFAULT_MUSIC.map((track) => (
@@ -1060,25 +1417,31 @@ export default function VideoCanvas({
                     onClick={() => onUpdateConfig({ musicTrack: track.url })}
                     className={`p-1.5 border rounded-lg text-left truncate flex flex-col justify-center relative ${
                       projectConfig.musicTrack === track.url
-                        ? 'bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold'
-                        : 'border-[#0c0c0e] text-zinc-500 hover:text-zinc-300'
+                        ? "bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold"
+                        : "border-[#0c0c0e] text-zinc-500 hover:text-zinc-300"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1 w-full overflow-hidden">
                       <span className="font-semibold block truncate leading-tight flex-1">
-                        {language === 'am' && track.am ? track.am : track.title.split(' (')[0]}
+                        {language === "am" && track.am
+                          ? track.am
+                          : track.title.split(" (")[0]}
                       </span>
                       {track.category && (
-                        <span className={`text-[7px] px-1 rounded font-bold shrink-0 ${track.category === 'Short' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-400'}`}>
+                        <span
+                          className={`text-[7px] px-1 rounded font-bold shrink-0 ${track.category === "Short" ? "bg-amber-500/20 text-amber-500" : "bg-blue-500/20 text-blue-400"}`}
+                        >
                           {track.category}
                         </span>
                       )}
                     </div>
-                    <span className="text-[9px] text-zinc-650 block truncate">{track.vibe}</span>
+                    <span className="text-[9px] text-zinc-650 block truncate">
+                      {track.vibe}
+                    </span>
                   </button>
                 ))}
               </div>
-              
+
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-1.5 flex-1 max-w-[200px]">
                   <Volume2 size={13} className="text-zinc-500" />
@@ -1088,180 +1451,278 @@ export default function VideoCanvas({
                     max="0.5" // limit ambient max so narration is pristine
                     step="0.01"
                     value={projectConfig.musicVolume}
-                    onChange={(e) => onUpdateConfig({ musicVolume: parseFloat(e.target.value) })}
+                    onChange={(e) =>
+                      onUpdateConfig({
+                        musicVolume: parseFloat(e.target.value),
+                      })
+                    }
                     className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                   />
-                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">{Math.round(projectConfig.musicVolume * 200)}%</span>
+                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                    {Math.round(projectConfig.musicVolume * 200)}%
+                  </span>
                 </div>
-                
+
                 {/* Auto Beat Sync Toggle */}
                 <div className="flex items-center gap-2 pr-2 border-l border-zinc-900 pl-4 ml-2">
-                  <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">Auto Beat Sync</span>
+                  <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">
+                    Auto Beat Sync
+                  </span>
                   <button
-                      onClick={() => onUpdateConfig({ syncToMusicBeats: !projectConfig.syncToMusicBeats })}
-                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
-                        projectConfig.syncToMusicBeats ? 'bg-indigo-500' : 'bg-zinc-800'
+                    onClick={() =>
+                      onUpdateConfig({
+                        syncToMusicBeats: !projectConfig.syncToMusicBeats,
+                      })
+                    }
+                    className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
+                      projectConfig.syncToMusicBeats
+                        ? "bg-indigo-500"
+                        : "bg-zinc-800"
+                    }`}
+                    role="switch"
+                    aria-checked={projectConfig.syncToMusicBeats}
+                  >
+                    <span className="sr-only">Use setting</span>
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                        projectConfig.syncToMusicBeats
+                          ? "translate-x-3.5"
+                          : "translate-x-0.5"
                       }`}
-                      role="switch"
-                      aria-checked={projectConfig.syncToMusicBeats}
-                    >
-                      <span className="sr-only">Use setting</span>
-                      <span
-                        aria-hidden="true"
-                        className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
-                          projectConfig.syncToMusicBeats ? 'translate-x-3.5' : 'translate-x-0.5'
-                        }`}
-                      />
+                    />
                   </button>
                 </div>
 
                 {/* Global Music Toggle */}
                 <div className="flex items-center gap-2 pr-2 border-l border-zinc-900 pl-4 ml-2">
-                  <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">ENABLE BGM</span>
+                  <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">
+                    ENABLE BGM
+                  </span>
                   <button
-                      onClick={() => onUpdateConfig({ isMusicEnabled: !projectConfig.isMusicEnabled })}
-                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
-                        projectConfig.isMusicEnabled ? 'bg-indigo-500' : 'bg-zinc-800'
+                    onClick={() =>
+                      onUpdateConfig({
+                        isMusicEnabled: !projectConfig.isMusicEnabled,
+                      })
+                    }
+                    className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
+                      projectConfig.isMusicEnabled
+                        ? "bg-indigo-500"
+                        : "bg-zinc-800"
+                    }`}
+                    role="switch"
+                    aria-checked={projectConfig.isMusicEnabled}
+                  >
+                    <span className="sr-only">Use setting</span>
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                        projectConfig.isMusicEnabled
+                          ? "translate-x-3.5"
+                          : "translate-x-0.5"
                       }`}
-                      role="switch"
-                      aria-checked={projectConfig.isMusicEnabled}
-                    >
-                      <span className="sr-only">Use setting</span>
-                      <span
-                        aria-hidden="true"
-                        className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
-                          projectConfig.isMusicEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
-                        }`}
-                      />
+                    />
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {showConfigTabs === 'motion' && (
+          {showConfigTabs === "motion" && (
             <div className="w-full space-y-3">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">Animations</span>
+                    <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">
+                      Animations
+                    </span>
                     <button
-                        onClick={() => onUpdateConfig({ isAnimationEnabled: !projectConfig.isAnimationEnabled })}
-                        className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
-                          projectConfig.isAnimationEnabled ? 'bg-indigo-500' : 'bg-zinc-800'
+                      onClick={() =>
+                        onUpdateConfig({
+                          isAnimationEnabled: !projectConfig.isAnimationEnabled,
+                        })
+                      }
+                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
+                        projectConfig.isAnimationEnabled
+                          ? "bg-indigo-500"
+                          : "bg-zinc-800"
+                      }`}
+                      role="switch"
+                      aria-checked={projectConfig.isAnimationEnabled}
+                    >
+                      <span className="sr-only">Use setting</span>
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                          projectConfig.isAnimationEnabled
+                            ? "translate-x-3.5"
+                            : "translate-x-0.5"
                         }`}
-                        role="switch"
-                        aria-checked={projectConfig.isAnimationEnabled}
-                      >
-                        <span className="sr-only">Use setting</span>
-                        <span
-                          aria-hidden="true"
-                          className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
-                            projectConfig.isAnimationEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
-                          }`}
-                        />
+                      />
                     </button>
                   </div>
                   <div className="flex items-center gap-2 border-l border-zinc-900 pl-4">
-                    <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">Transitions</span>
+                    <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">
+                      Transitions
+                    </span>
                     <button
-                        onClick={() => onUpdateConfig({ isTransitionsEnabled: !projectConfig.isTransitionsEnabled })}
-                        className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
-                          projectConfig.isTransitionsEnabled ? 'bg-indigo-500' : 'bg-zinc-800'
+                      onClick={() =>
+                        onUpdateConfig({
+                          isTransitionsEnabled:
+                            !projectConfig.isTransitionsEnabled,
+                        })
+                      }
+                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
+                        projectConfig.isTransitionsEnabled
+                          ? "bg-indigo-500"
+                          : "bg-zinc-800"
+                      }`}
+                      role="switch"
+                      aria-checked={projectConfig.isTransitionsEnabled}
+                    >
+                      <span className="sr-only">Use setting</span>
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                          projectConfig.isTransitionsEnabled
+                            ? "translate-x-3.5"
+                            : "translate-x-0.5"
                         }`}
-                        role="switch"
-                        aria-checked={projectConfig.isTransitionsEnabled}
-                      >
-                        <span className="sr-only">Use setting</span>
-                        <span
-                          aria-hidden="true"
-                          className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
-                            projectConfig.isTransitionsEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
-                          }`}
-                        />
+                      />
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-5 gap-2 text-[10px] opacity-80" 
-                   style={{ pointerEvents: projectConfig.isTransitionsEnabled ? 'auto' : 'none', opacity: projectConfig.isTransitionsEnabled ? 1 : 0.4 }}>
+              <div
+                className="grid grid-cols-3 gap-2 text-[10px] opacity-80"
+                style={{
+                  pointerEvents: projectConfig.isTransitionsEnabled
+                    ? "auto"
+                    : "none",
+                  opacity: projectConfig.isTransitionsEnabled ? 1 : 0.4,
+                }}
+              >
                 <button
                   type="button"
-                  onClick={() => onUpdateConfig({ transitionType: 'none' })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === 'none' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900/60 text-zinc-500'}`}
+                  onClick={() => onUpdateConfig({ transitionType: "none" })}
+                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "none" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
                 >
                   Hard Cut
                 </button>
                 <button
                   type="button"
-                  onClick={() => onUpdateConfig({ transitionType: 'crossfade' })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === 'crossfade' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900/60 text-zinc-500'}`}
+                  onClick={() =>
+                    onUpdateConfig({ transitionType: "crossfade" })
+                  }
+                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "crossfade" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
                 >
                   Crossfade
                 </button>
                 <button
                   type="button"
-                  onClick={() => onUpdateConfig({ transitionType: 'slide' })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === 'slide' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900/60 text-zinc-500'}`}
+                  onClick={() => onUpdateConfig({ transitionType: "slide" })}
+                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "slide" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
                 >
                   Slide
                 </button>
                 <button
                   type="button"
-                  onClick={() => onUpdateConfig({ transitionType: 'wipe' })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === 'wipe' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900/60 text-zinc-500'}`}
+                  onClick={() => onUpdateConfig({ transitionType: "wipe" })}
+                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "wipe" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
                 >
                   Wipe
                 </button>
                 <button
                   type="button"
-                  onClick={() => onUpdateConfig({ transitionType: 'flicker' })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === 'flicker' ? 'bg-zinc-900 border-indigo-500 text-indigo-400 font-bold' : 'border-zinc-900/60 text-zinc-500'}`}
+                  onClick={() => onUpdateConfig({ transitionType: "flicker" })}
+                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "flicker" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
                 >
                   ⚡ Flicker
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onUpdateConfig({ transitionType: "morph" })}
+                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "morph" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
+                >
+                  🧬 Morph
                 </button>
               </div>
 
               {/* Animation Styles */}
-              <div className="space-y-1.5" style={{ pointerEvents: projectConfig.isAnimationEnabled ? 'auto' : 'none', opacity: projectConfig.isAnimationEnabled ? 1 : 0.4 }}>
+              <div
+                className="space-y-1.5"
+                style={{
+                  pointerEvents: projectConfig.isAnimationEnabled
+                    ? "auto"
+                    : "none",
+                  opacity: projectConfig.isAnimationEnabled ? 1 : 0.4,
+                }}
+              >
                 <div className="flex justify-between items-center px-1">
-                  <span className="text-[9px] uppercase tracking-tighter text-zinc-600 font-bold">Image Animation Style (እንቅስቃሴ)</span>
-                  <span className="text-[8px] text-zinc-500 font-serif italic">Ken Burns Effects</span>
+                  <span className="text-[9px] uppercase tracking-tighter text-zinc-600 font-bold">
+                    Image Animation Style (እንቅስቃሴ)
+                  </span>
+                  <span className="text-[8px] text-zinc-500 font-serif italic">
+                    Ken Burns Effects
+                  </span>
                 </div>
                 <div className="grid grid-cols-5 gap-1.5">
-                  {(['zoom-in', 'zoom-out', 'pan-lr', 'pan-rl', 'tilt-up', 'tilt-down', 'diagonal-br', 'diagonal-bl', 'static', 'dynamic'] as const).map((style) => (
+                  {(
+                    [
+                      "zoom-in",
+                      "zoom-out",
+                      "pan-lr",
+                      "pan-rl",
+                      "tilt-up",
+                      "tilt-down",
+                      "diagonal-br",
+                      "diagonal-bl",
+                      "static",
+                      "dynamic",
+                    ] as const
+                  ).map((style) => (
                     <button
                       key={style}
                       onClick={() => onUpdateConfig({ animationStyle: style })}
                       className={`py-1.5 rounded-md text-[9px] border transition-all uppercase tracking-tight ${
-                        (projectConfig.animationStyle || 'zoom-in') === style
-                          ? 'bg-indigo-500/15 border-indigo-500 text-indigo-400 font-bold ring-1 ring-indigo-500/20'
-                          : 'border-zinc-900 text-zinc-650 hover:text-zinc-500 hover:border-zinc-800'
+                        (projectConfig.animationStyle || "zoom-in") === style
+                          ? "bg-indigo-500/15 border-indigo-500 text-indigo-400 font-bold ring-1 ring-indigo-500/20"
+                          : "border-zinc-900 text-zinc-650 hover:text-zinc-500 hover:border-zinc-800"
                       }`}
                     >
-                      {style === 'dynamic' ? '✨ Dynamic' : style.replace('-', ' ')}
+                      {style === "dynamic"
+                        ? "✨ Dynamic"
+                        : style.replace("-", " ")}
                     </button>
                   ))}
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                <span className="text-zinc-500 font-mono text-[10px]">Duration (s)</span>
+                <span className="text-zinc-500 font-mono text-[10px]">
+                  Duration (s)
+                </span>
                 <input
                   type="range"
                   min="0"
                   max="2.0"
                   step="0.1"
                   value={projectConfig.transitionDuration}
-                  onChange={(e) => onUpdateConfig({ transitionDuration: parseFloat(e.target.value) })}
+                  onChange={(e) =>
+                    onUpdateConfig({
+                      transitionDuration: parseFloat(e.target.value),
+                    })
+                  }
                   className="w-48 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                 />
-                <span className="text-[10px] font-mono text-indigo-400">{projectConfig.transitionDuration}s</span>
+                <span className="text-[10px] font-mono text-indigo-400">
+                  {projectConfig.transitionDuration}s
+                </span>
               </div>
             </div>
           )}
 
-          {showConfigTabs === 'analyzer' && (
+          {showConfigTabs === "analyzer" && (
             <div className="w-full space-y-3.5 animate-fadeIn">
               {/* Main Tab Label */}
               <div className="flex items-center justify-between border-b border-zinc-900 pb-2 mb-1">
@@ -1282,47 +1743,57 @@ export default function VideoCanvas({
               <div className="grid grid-cols-2 gap-1 px-1.5 py-1 bg-[#09090b] rounded-xl border border-zinc-850/60">
                 <button
                   type="button"
-                  onClick={() => setAiSubTab('copilot')}
+                  onClick={() => setAiSubTab("copilot")}
                   className={`py-1.5 rounded-lg text-[10.5px] font-semibold tracking-wide transition-all ${
-                    aiSubTab === 'copilot'
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'text-zinc-550 hover:text-zinc-300'
+                    aiSubTab === "copilot"
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "text-zinc-550 hover:text-zinc-300"
                   }`}
                 >
-                  💬 {language === 'am' ? 'የግል ረዳት አይ (Copilot)' : 'Personal AI Copilot'}
+                  💬{" "}
+                  {language === "am"
+                    ? "የግል ረዳት አይ (Copilot)"
+                    : "Personal AI Copilot"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAiSubTab('analyzer')}
+                  onClick={() => setAiSubTab("analyzer")}
                   className={`py-1.5 rounded-lg text-[10.5px] font-semibold tracking-wide transition-all ${
-                    aiSubTab === 'analyzer'
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'text-zinc-550 hover:text-zinc-300'
+                    aiSubTab === "analyzer"
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "text-zinc-550 hover:text-zinc-300"
                   }`}
                 >
-                  🔍 {language === 'am' ? 'ምስል መርማሪ (Analyzer)' : 'Video Analyzer'}
+                  🔍{" "}
+                  {language === "am" ? "ምስል መርማሪ (Analyzer)" : "Video Analyzer"}
                 </button>
               </div>
 
               {/* Tab 1: AI Copilot & Controller */}
-              {aiSubTab === 'copilot' && (
+              {aiSubTab === "copilot" && (
                 <div className="space-y-3">
                   <div className="h-[210px] overflow-y-auto p-3.5 bg-[#050505] border border-zinc-900 rounded-2xl flex flex-col gap-3 custom-scrollbar">
                     {chatMessages.map((msg, index) => (
                       <div
                         key={index}
                         className={`flex flex-col max-w-[85%] ${
-                          msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'
+                          msg.role === "user"
+                            ? "self-end items-end"
+                            : "self-start items-start"
                         }`}
                       >
                         <div className="text-[9px] font-mono mb-1 text-zinc-550 uppercase tracking-widest">
-                          {msg.role === 'user' ? (language === 'am' ? 'እርስዎ' : 'You') : 'Yotor Copilot'}
+                          {msg.role === "user"
+                            ? language === "am"
+                              ? "እርስዎ"
+                              : "You"
+                            : "Yotor Copilot"}
                         </div>
                         <div
                           className={`p-3 rounded-2xl text-[11px] leading-relaxed whitespace-pre-wrap ${
-                            msg.role === 'user'
-                              ? 'bg-indigo-650 text-white rounded-tr-none font-sans font-medium'
-                              : 'bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-tl-none font-sans'
+                            msg.role === "user"
+                              ? "bg-indigo-650 text-white rounded-tr-none font-sans font-medium"
+                              : "bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-tl-none font-sans"
                           }`}
                         >
                           {msg.text}
@@ -1341,29 +1812,35 @@ export default function VideoCanvas({
 
                   {/* Contextual Smart Helper Chips */}
                   <div className="space-y-1">
-                    <span className="text-[9px] font-mono text-zinc-650 uppercase tracking-wider block">Suggested Directives / ፈጣን ትዕዛዞች</span>
+                    <span className="text-[9px] font-mono text-zinc-650 uppercase tracking-wider block">
+                      Suggested Directives / ፈጣን ትዕዛዞች
+                    </span>
                     <div className="flex flex-wrap gap-1.5">
                       {[
                         {
                           am: "🎬 ታሪኩን ወደ አማርኛ ቀይር",
                           en: "🎬 Translate into Amharic",
-                          prompt: "Translate all cinematic scene narration script values into Amharic language perfectly verbatim, but keep keywords in English"
+                          prompt:
+                            "Translate all cinematic scene narration script values into Amharic language perfectly verbatim, but keep keywords in English",
                         },
                         {
                           am: "📏 የ9:16 መጠን አድርግ",
                           en: "📏 Shift to Tall 9:16",
-                          prompt: "Change video project aspect ratio to vertical tall 9:16 screen format"
+                          prompt:
+                            "Change video project aspect ratio to vertical tall 9:16 screen format",
                         },
                         {
                           am: "🔊 የድምፅ ንባብ አግብር",
                           en: "🔊 Turn On TTS Narration",
-                          prompt: "Enable text to speech narrator option on project"
+                          prompt:
+                            "Enable text to speech narrator option on project",
                         },
                         {
                           am: "🎵 ማጀቢያ ሙዚቃ ክፈት",
                           en: "🎵 Spark Backing Soundtrack",
-                          prompt: "Turn on atmosphere background music tracks with volume at 0.25"
-                        }
+                          prompt:
+                            "Turn on atmosphere background music tracks with volume at 0.25",
+                        },
                       ].map((sugg, i) => (
                         <button
                           key={i}
@@ -1371,7 +1848,7 @@ export default function VideoCanvas({
                           onClick={() => handleSendCopilotMessage(sugg.prompt)}
                           className="text-[9px] font-sans px-2.5 py-1.5 bg-[#09090b] border border-zinc-850 hover:border-indigo-500/30 text-zinc-400 hover:text-indigo-300 rounded-lg transition-all"
                         >
-                          {language === 'am' ? sugg.am : sugg.en}
+                          {language === "am" ? sugg.am : sugg.en}
                         </button>
                       ))}
                     </div>
@@ -1390,7 +1867,7 @@ export default function VideoCanvas({
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       placeholder={
-                        language === 'am'
+                        language === "am"
                           ? "ረዳት አይ-ን እዚህ ያዙት (ለምሳሌ 'ቪዲዮውን 9:16 አድርግ')..."
                           : "Obedient AI (e.g. 'Make aspect ratio 9:16', 'write a short Amharic story')..."
                       }
@@ -1401,36 +1878,51 @@ export default function VideoCanvas({
                       disabled={isChatLoading || !chatInput.trim()}
                       className="px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-650/10 active:scale-[0.98]"
                     >
-                      {language === 'am' ? 'እዘዝ' : 'Send'}
+                      {language === "am" ? "እዘዝ" : "Send"}
                     </button>
                   </form>
                 </div>
               )}
 
               {/* Tab 2: Classic Video Analyzer (Multimodal) */}
-              {aiSubTab === 'analyzer' && (
+              {aiSubTab === "analyzer" && (
                 <div className="space-y-3">
                   {currentScene?.videoUrl ? (
                     <div className="space-y-3 animate-fadeIn">
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <label className="text-[10px] text-zinc-500 font-mono uppercase">Preset Analysis Tasks / ፈጣን ምርመራዎች</label>
-                          <span className="text-[9px] text-indigo-400 font-bold font-mono">SCENE WORKSPACE</span>
+                          <label className="text-[10px] text-zinc-500 font-mono uppercase">
+                            Preset Analysis Tasks / ፈጣን ምርመራዎች
+                          </label>
+                          <span className="text-[9px] text-indigo-400 font-bold font-mono">
+                            SCENE WORKSPACE
+                          </span>
                         </div>
                         <select
                           onChange={(e) => setAnalysisPrompt(e.target.value)}
                           className="w-full bg-[#050505] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-350 text-xs focus:outline-none focus:border-indigo-500/50"
                           defaultValue="Identify and describe all visible elements, key actions, visual pacing, color grading palette, and lighting style of this video clip."
                         >
-                          <option value="Identify and describe all visible elements, key actions, visual pacing, color grading palette, and lighting style of this video clip.">🔍 Identify objects, actions, palette & lighting styles</option>
-                          <option value="Compare the raw visual elements in this scenery with the narrated script text: &quot;${currentScene.text}&quot;. Do they contextually match? Does it enhance the theme? Propose alternative keywords if not alignment perfectly.">🎬 Evaluate video alignment with narration script</option>
-                          <option value="Draft an alternative, highly detailed, visually stunning english search prompt (keywords) to query stock clip databases for this scene's message.">💡 Suggest alternative premium footage keywords</option>
-                          <option value="Identify the mood, tempo, and atmosphere of this clip and suggest what style of music/sound fx would make a cinematic ambient soundscape for it.">🎵 Propose advanced cinematic soundscapes</option>
+                          <option value="Identify and describe all visible elements, key actions, visual pacing, color grading palette, and lighting style of this video clip.">
+                            🔍 Identify objects, actions, palette & lighting
+                            styles
+                          </option>
+                          <option value='Compare the raw visual elements in this scenery with the narrated script text: "${currentScene.text}". Do they contextually match? Does it enhance the theme? Propose alternative keywords if not alignment perfectly.'>
+                            🎬 Evaluate video alignment with narration script
+                          </option>
+                          <option value="Draft an alternative, highly detailed, visually stunning english search prompt (keywords) to query stock clip databases for this scene's message.">
+                            💡 Suggest alternative premium footage keywords
+                          </option>
+                          <option value="Identify the mood, tempo, and atmosphere of this clip and suggest what style of music/sound fx would make a cinematic ambient soundscape for it.">
+                            🎵 Propose advanced cinematic soundscapes
+                          </option>
                         </select>
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] text-zinc-500 font-mono uppercase">Fine-Tune Prompt or Ask Anything / የራስዎን ጥያቄ ያክሉ</label>
+                        <label className="text-[10px] text-zinc-500 font-mono uppercase">
+                          Fine-Tune Prompt or Ask Anything / የራስዎን ጥያቄ ያክሉ
+                        </label>
                         <textarea
                           value={analysisPrompt}
                           onChange={(e) => setAnalysisPrompt(e.target.value)}
@@ -1448,13 +1940,21 @@ export default function VideoCanvas({
                       >
                         {isAnalyzing ? (
                           <>
-                            <RefreshCw size={13} className="animate-spin text-white" />
-                            <span className="animate-pulse">Deep Multi-Modal Analyzing... (እባክዎ ይጠብቁ - up to 20s)</span>
+                            <RefreshCw
+                              size={13}
+                              className="animate-spin text-white"
+                            />
+                            <span className="animate-pulse">
+                              Deep Multi-Modal Analyzing... (እባክዎ ይጠብቁ - up to
+                              20s)
+                            </span>
                           </>
                         ) : (
                           <>
                             <Cpu size={13} className="text-white" />
-                            <span>Analyze Active Clip in Gemini Pro / ቪዲዮውን መርምር</span>
+                            <span>
+                              Analyze Active Clip in Gemini Pro / ቪዲዮውን መርምር
+                            </span>
                           </>
                         )}
                       </button>
@@ -1480,22 +1980,31 @@ export default function VideoCanvas({
                               Copy Report
                             </button>
                           </div>
-                          <p className="text-zinc-300 font-sans text-[11px] leading-relaxed whitespace-pre-wrap">{analysisResult}</p>
+                          <p className="text-zinc-300 font-sans text-[11px] leading-relaxed whitespace-pre-wrap">
+                            {analysisResult}
+                          </p>
                         </div>
                       )}
                     </div>
                   ) : (
                     <div className="p-4 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center text-center text-zinc-500 py-6">
-                      <Cpu size={24} className="text-zinc-650 mb-2 animate-pulse" />
-                      <p className="text-xs font-semibold text-zinc-400">No scene is currently loaded or selected.</p>
-                      <p className="text-[10px] text-zinc-500 mt-1">Please enter a story script on the left side and generate some visual scenes first.</p>
+                      <Cpu
+                        size={24}
+                        className="text-zinc-650 mb-2 animate-pulse"
+                      />
+                      <p className="text-xs font-semibold text-zinc-400">
+                        No scene is currently loaded or selected.
+                      </p>
+                      <p className="text-[10px] text-zinc-500 mt-1">
+                        Please enter a story script on the left side and
+                        generate some visual scenes first.
+                      </p>
                     </div>
                   )}
                 </div>
               )}
             </div>
           )}
-
         </div>
       </div>
 
@@ -1503,7 +2012,7 @@ export default function VideoCanvas({
       <div className="relative flex-1 flex items-center justify-center p-3 bg-[#050505] rounded-3xl border border-zinc-900 overflow-hidden my-4">
         {/* Transparent grid backing */}
         <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px]" />
-        
+
         {/* The canvas target */}
         <div className="relative shadow-2xl rounded-2xl overflow-hidden border border-zinc-900 max-w-full">
           <canvas
@@ -1513,36 +2022,67 @@ export default function VideoCanvas({
           />
         </div>
 
-        {/* Hidden active videos for crossfade rendering */}
-        {scenes.map(s => (
-          <video
-            key={s.id}
-            ref={el => { videoRefs.current[s.id] = el; }}
-            src={s.videoUrl}
-            loop
-            muted
-            playsInline
-            crossOrigin="anonymous"
-            className="absolute pointer-events-none opacity-0 w-1 h-1"
-            preload="auto"
-          />
-        ))}
+        {/* Hidden active videos/images for crossfade rendering */}
+        {scenes.map((s) => {
+          const isImage =
+            s.videoUrl &&
+            (s.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) ||
+              s.videoUrl.includes("pollinations.ai"));
+
+          if (isImage) {
+            return (
+              <img
+                key={s.id}
+                ref={(el) => {
+                  videoRefs.current[s.id] = el as any;
+                }}
+                src={s.videoUrl}
+                crossOrigin="anonymous"
+                className="absolute pointer-events-none opacity-0 w-1 h-1"
+                alt="scene frame"
+              />
+            );
+          }
+
+          return (
+            <video
+              key={s.id}
+              ref={(el) => {
+                videoRefs.current[s.id] = el;
+              }}
+              src={s.videoUrl}
+              loop
+              muted
+              playsInline
+              crossOrigin="anonymous"
+              className="absolute pointer-events-none opacity-0 w-1 h-1"
+              preload="auto"
+            />
+          );
+        })}
 
         {/* Hidden active audio for Preloading TTS Voiceovers */}
-        {scenes.map(s => (
+        {scenes.map((s) => (
           <audio
             key={`audio_${s.id}`}
-            ref={el => { if (el) audioRefs.current[s.id] = el; }}
-            src={s.voiceoverUrl || `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}`}
+            ref={(el) => {
+              if (el) audioRefs.current[s.id] = el;
+            }}
+            src={
+              s.voiceoverUrl ||
+              `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`
+            }
             className="hidden"
             crossOrigin="anonymous"
-            onError={(e) => console.error(`[TTS] Error loading audio for scene ${s.id}:`, e)}
+            onError={(e) =>
+              console.error(`[TTS] Error loading audio for scene ${s.id}:`, e)
+            }
             onLoadedMetadata={(e) => {
-               // Update scene duration if audio is longer than estimated
-               const aud = e.currentTarget;
-               if (aud.duration && aud.duration > 2) {
-                 // We don't update the state here to avoid re-renders, but we use it for timeline logic
-               }
+              // Update scene duration if audio is longer than estimated
+              const aud = e.currentTarget;
+              if (aud.duration && aud.duration > 2) {
+                // We don't update the state here to avoid re-renders, but we use it for timeline logic
+              }
             }}
           />
         ))}
@@ -1550,15 +2090,18 @@ export default function VideoCanvas({
 
       {/* Mechanical Playback Control Deck */}
       <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 space-y-3.5">
-        
         {/* Cumulative Timeline Scroll */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
-            <span>Scene {playbackIndex + 1} of {scenes.length}</span>
-            <span className="text-indigo-400 font-bold font-mono">{currentSceneTime.toFixed(1)}s / {currentScene?.duration || 4}s</span>
+            <span>
+              Scene {playbackIndex + 1} of {scenes.length}
+            </span>
+            <span className="text-indigo-400 font-bold font-mono">
+              {currentSceneTime.toFixed(1)}s / {currentScene?.duration || 4}s
+            </span>
           </div>
 
-          <div 
+          <div
             className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden cursor-pointer border border-zinc-850"
             onClick={(e) => {
               // Click to skip scenes instantly
@@ -1571,10 +2114,10 @@ export default function VideoCanvas({
               }
             }}
           >
-            <div 
+            <div
               className="h-full bg-indigo-500 rounded-full transition-all duration-100"
-              style={{ 
-                width: `${((playbackIndex + (currentSceneTime / (currentScene?.duration || 4))) / scenes.length) * 100}%` 
+              style={{
+                width: `${((playbackIndex + currentSceneTime / (currentScene?.duration || 4)) / scenes.length) * 100}%`,
               }}
             />
           </div>
@@ -1602,7 +2145,11 @@ export default function VideoCanvas({
               className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full transform transition-all active:scale-95 shadow-md shadow-indigo-505/20"
               id="compositor-play-btn"
             >
-              {isPlaying ? <Pause size={18} className="fill-current text-white" /> : <Play size={18} className="fill-current text-white" />}
+              {isPlaying ? (
+                <Pause size={18} className="fill-current text-white" />
+              ) : (
+                <Play size={18} className="fill-current text-white" />
+              )}
             </button>
             <button
               onClick={handleNext}
@@ -1615,7 +2162,9 @@ export default function VideoCanvas({
           </div>
 
           <div className="text-[11px] text-zinc-400 max-w-[200px] truncate text-right">
-            <span className="block font-semibold text-zinc-300 truncate">S-{playbackIndex+1}: {currentScene?.keywords.split(' ')[0]} clip</span>
+            <span className="block font-semibold text-zinc-300 truncate">
+              S-{playbackIndex + 1}: {currentScene?.keywords.split(" ")[0]} clip
+            </span>
           </div>
         </div>
       </div>
