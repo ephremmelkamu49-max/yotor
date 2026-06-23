@@ -36,6 +36,7 @@ import {
   Image as ImageIcon,
   Languages,
   Settings,
+  RefreshCw,
 } from "lucide-react";
 
 export default function App() {
@@ -196,7 +197,14 @@ export default function App() {
           setScript(parsed.script ?? "");
           setScenes(parsed.scenes);
           if (parsed.projectConfig) {
-            setProjectConfig(parsed.projectConfig);
+            setProjectConfig(prev => ({
+              ...prev,
+              ...parsed.projectConfig,
+              subtitleStyle: {
+                ...prev.subtitleStyle,
+                ...(parsed.projectConfig.subtitleStyle || {})
+              }
+            }));
           }
           setPlaybackIndex(0);
           return;
@@ -653,9 +661,18 @@ export default function App() {
 
   const handleUpdateConfig = useCallback(
     (updated: Partial<ProjectConfig>) => {
-      setProjectConfig((prev) => ({ ...prev, ...updated }));
+      setProjectConfig((prev) => {
+        const nextConfig = { ...prev, ...updated };
+        if (updated.subtitleStyle) {
+          nextConfig.subtitleStyle = {
+            ...prev.subtitleStyle,
+            ...updated.subtitleStyle
+          };
+        }
+        return nextConfig;
+      });
     },
-    [setProjectConfig],
+    [setProjectConfig]
   );
 
   const handleLoadSavedProject = (project: SavedProject) => {
@@ -739,6 +756,21 @@ export default function App() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
               )}
+            </button>
+
+            {/* Application Refresh / Hard Reset */}
+            <button
+              type="button"
+              onClick={() => {
+                const activeDraft = { script, scenes, projectConfig };
+                localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft));
+                window.location.reload();
+              }}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white hover:border-zinc-700 text-[10px] uppercase tracking-widest font-bold rounded-xl transition-all"
+              title="Refresh / Reload Application"
+            >
+              <RefreshCw size={14} />
+              <span className="hidden sm:inline">Refresh App</span>
             </button>
 
             <a

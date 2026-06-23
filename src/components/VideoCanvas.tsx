@@ -245,10 +245,12 @@ export default function VideoCanvas({
     }
   };
 
-  const renderTimePropRef = useRef<number | undefined>(undefined);
+  const renderTimePropRef = useRef<number | undefined>(renderTime);
+  const isRenderingRef = useRef<boolean>(!!isRendering);
   useEffect(() => {
     renderTimePropRef.current = renderTime;
-  }, [renderTime]);
+    isRenderingRef.current = !!isRendering;
+  }, [renderTime, isRendering]);
 
   // Active scene accessor
   const currentScene = scenes[playbackIndex] || null;
@@ -596,7 +598,7 @@ export default function VideoCanvas({
 
       // Use the actual underlying video's current time for ultra-smooth sync if it's playing
       if (
-        !isRendering &&
+        !isRenderingRef.current &&
         currentVideo &&
         currentVideo instanceof HTMLVideoElement &&
         !currentVideo.paused &&
@@ -1359,7 +1361,7 @@ export default function VideoCanvas({
                               },
                             })
                           }
-                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.color === c ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-black" : ""}`}
+                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${(projectConfig.subtitleStyle.color || '').toUpperCase() === c.toUpperCase() ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-black" : ""}`}
                           style={{ backgroundColor: c }}
                         />
                       ))}
@@ -1388,7 +1390,7 @@ export default function VideoCanvas({
                               },
                             })
                           }
-                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${projectConfig.subtitleStyle.highlightColor === c ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-black" : ""}`}
+                          className={`w-4 h-4 rounded-full border border-black transition-transform hover:scale-110 ${(projectConfig.subtitleStyle.highlightColor || '').toUpperCase() === c.toUpperCase() ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-black" : ""}`}
                           style={{ backgroundColor: c }}
                         />
                       ))}
