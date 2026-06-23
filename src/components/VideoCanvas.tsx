@@ -883,6 +883,45 @@ export default function VideoCanvas({
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, width, height);
 
+      // 2b. Cinematic Color Grading Harmonizer (unifies stock video colors)
+      const visualStyle = projectConfig.visualStyle || "realistic";
+      ctx.save();
+      if (visualStyle === "realistic") {
+        // Warm cinematic golden amber grading layer
+        ctx.globalCompositeOperation = "color-burn";
+        ctx.fillStyle = "rgba(251, 191, 36, 0.04)"; // very subtle warm amber
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.globalCompositeOperation = "soft-light";
+        ctx.fillStyle = "rgba(13, 148, 136, 0.05)"; // subtle teal-orange tint shadow
+        ctx.fillRect(0, 0, width, height);
+      } else if (visualStyle === "cyberpunk") {
+        // Neon cyberpunk purple-blue electric grading filter
+        ctx.globalCompositeOperation = "color";
+        ctx.fillStyle = "rgba(168, 85, 247, 0.06)"; // purple bloom tint
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.globalCompositeOperation = "soft-light";
+        ctx.fillStyle = "rgba(6, 182, 212, 0.10)"; // cyan electric shadows
+        ctx.fillRect(0, 0, width, height);
+      } else if (visualStyle === "3d-animation") {
+        // Bright Pixar vibrance grading filter
+        ctx.globalCompositeOperation = "overlay";
+        ctx.fillStyle = "rgba(250, 150, 10, 0.04)";
+        ctx.fillRect(0, 0, width, height);
+      } else if (visualStyle === "watercolor") {
+        // Soft vintage wash
+        ctx.globalCompositeOperation = "multiply";
+        ctx.fillStyle = "rgba(254, 243, 199, 0.08)"; // soft warm cream vintage wash
+        ctx.fillRect(0, 0, width, height);
+      } else if (visualStyle === "anime") {
+        // Vibrant dreamy pastel filter
+        ctx.globalCompositeOperation = "soft-light";
+        ctx.fillStyle = "rgba(244, 63, 94, 0.06)"; // pastel rose sky bloom
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.restore();
+
       // 3. Draw Captions/Subtitles
       if (currentScene && projectConfig.subtitleStyle.enabled) {
         const fullText = projectConfig.subtitleStyle.uppercase

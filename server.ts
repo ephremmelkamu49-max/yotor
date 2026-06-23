@@ -84,9 +84,8 @@ async function generateContentWithFallback(
 ): Promise<any> {
   const modelFallbackList = [
     options.model,
-    "gemini-3.1-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash"
+    "gemini-3.5-flash",
+    "gemini-3.1-pro-preview"
   ];
   const uniqueModels = Array.from(new Set(modelFallbackList));
   
@@ -262,7 +261,7 @@ app.post("/api/analyze-script", async (req, res) => {
     try {
       if (!ai) throw new Error("AI not configured");
       const result = await ai.models.generateContent({
-        model: "gemini-3.1-flash",
+        model: "gemini-3.5-flash",
         contents: [{ role: "user", parts: [{ text: reelPrompt + " \nONLY return JSON." }] }]
       });
       const responseText = result.text.trim();
@@ -427,7 +426,7 @@ ${script}
     }
 
     const response = await generateContentWithFallback(ai, {
-      model: "gemini-1.5-pro",
+      model: "gemini-3.1-pro-preview",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -687,9 +686,9 @@ app.post("/api/analyze-video", async (req, res) => {
 
     const geminiPrompt = prompt || "Analyze this video clip and describe what happens, identify objects, color scheme, visual pacing, and key informational details.";
 
-    console.log(`[Video Analyzer] Requesting video understanding from gemini-3.1-flash...`);
+    console.log(`[Video Analyzer] Requesting video understanding from gemini-3.5-flash...`);
     const result = await ai.models.generateContent({
-      model: "gemini-3.1-flash",
+      model: "gemini-3.5-flash",
       contents: [
         {
           inlineData: {

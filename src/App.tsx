@@ -327,73 +327,101 @@ export default function App() {
               videoThumb = videoUrl;
               author = "Pollinations Model";
             } else {
-              if (providedPexelsKey) {
-                try {
-                  const controller = new AbortController();
-                  const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout for Pexels
-                  const pexelsResponse = await fetch(
-                    `/api/pexels/search?query=${encodeURIComponent(searchQuery)}`,
-                    {
-                      headers: { "x-pexels-key": providedPexelsKey },
-                      signal: controller.signal,
-                    },
-                  );
-                  clearTimeout(timeout);
-                  const pexelsData = await pexelsResponse.json();
-                  if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
-                    const bestClip = pexelsData.videos[0];
-                    const files = bestClip.video_files || [];
-                    const mp4Files = files.filter(
-                      (f: any) =>
-                        f.file_type === "video/mp4" || f.link.includes(".mp4"),
-                    );
-                    const hd = mp4Files.find(
-                      (f: any) => f.width >= 1280 && f.width <= 1920,
-                    );
-                    const sd = mp4Files.find((f: any) => f.width < 1280);
-                    videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || "";
-                    videoThumb = bestClip.video_pictures?.[0]?.picture || "";
-                    author = bestClip.user?.name || "Stock Creator";
-                  }
-                } catch (e) {
-                  console.warn("Pexels fetch error/timeout:", e);
-                }
-              }
+              // Stock mode: Clean and formulate adaptive fallback queries
+              // Stock search engines do not understand long styles, so we try multiple levels of specificity
+              const cleanWords = (scene.keywords || "")
+                .replace(/cinematic|professional|movement|high depth of field|hd|4k|photorealistic|ultra|3d pixar style animation|cute expressive characters|vibrant volumetric lighting|disney style 3d render|2d handdrawn animation|flat colors|expressive line art|illustrative style|studio ghibli aesthetic|anime style background|detailed characters|japanese animation|soft watercolor painting|artistic bleeding colors|paper texture|impressionist|cyberpunk aesthetic|neon colored lights|futuristic cityscape|rainy night|high tech|silhouette|handdrawn pencil sketch|charcoal texture|artistic line work/gi, "")
+                .replace(/[^a-zA-Z0-9\s]/g, "")
+                .replace(/\s+/g, " ")
+                .trim();
 
-              if (!videoUrl && providedPixabayKey) {
-                try {
-                  const controller = new AbortController();
-                  const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout for Pixabay
-                  const pixabayResponse = await fetch(
-                    `/api/pixabay/search?query=${encodeURIComponent(searchQuery)}`,
-                    {
-                      headers: { "x-pixabay-key": providedPixabayKey },
-                      signal: controller.signal,
-                    },
-                  );
-                  clearTimeout(timeout);
-                  const pixabayData = await pixabayResponse.json();
-                  if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
-                    const bestClip = pixabayData.hits[0];
-                    const videos = bestClip.videos || {};
-                    const selectedVid =
-                      videos.large ||
-                      videos.medium ||
-                      videos.small ||
-                      videos.tiny;
-                    if (selectedVid) {
-                      videoUrl = selectedVid.url;
-                      videoThumb = bestClip.picture_id
-                        ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
-                        : "";
-                      author = bestClip.user || "Pixabay Creator";
+              const queriesToTry = [
+                cleanWords, // 1: Perfect cleaned words (e.g., "coffee ceremonies", "sunset over beach")
+                cleanWords.split(" ").slice(0, 3).join(" "), // 2: First 3 words (e.g. "sunset over")
+                cleanWords.split(" ")[0], // 3: Single primary word (e.g., "sunset")
+              ].filter(q => q && q.trim().length > 1);
+
+              // Put original query at front just in case they targeted specific terms
+              queriesToTry.unshift(searchQuery);
+
+              // Distinct values
+              const uniqueQueries = Array.from(new Set(queriesToTry));
+
+              // Attempt each query until success
+              for (const query of uniqueQueries) {
+                if (videoUrl) break;
+
+                // Try Pexels first
+                if (providedPexelsKey || !providedPixabayKey) {
+                  try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 6000);
+                    const pexelsResponse = await fetch(
+                      `/api/pexels/search?query=${encodeURIComponent(query)}`,
+                      {
+                        headers: { "x-pexels-key": providedPexelsKey || "" },
+                        signal: controller.signal,
+                      },
+                    );
+                    clearTimeout(timeout);
+                    const pexelsData = await pexelsResponse.json();
+                    if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
+                      const bestClip = pexelsData.videos[0];
+                      const files = bestClip.video_files || [];
+                      const mp4Files = files.filter(
+                        (f: any) =>
+                          f.file_type === "video/mp4" || f.link.includes(".mp4"),
+                      );
+                      const hd = mp4Files.find(
+                        (f: any) => f.width >= 1280 && f.width <= 1920,
+                      );
+                      const sd = mp4Files.find((f: any) => f.width < 1280);
+                      videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || "";
+                      videoThumb = bestClip.video_pictures?.[0]?.picture || "";
+                      author = bestClip.user?.name || "Stock Creator";
                     }
+                  } catch (e) {
+                    console.warn(`Pexels try for "${query}" failed/timed out:`, e);
                   }
-                } catch (e) {
-                  console.warn("Pixabay fetch error/timeout:", e);
+                }
+
+                // If Pexels fails, try Pixabay
+                if (!videoUrl && (providedPixabayKey || !providedPexelsKey)) {
+                  try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 6000);
+                    const pixabayResponse = await fetch(
+                      `/api/pixabay/search?query=${encodeURIComponent(query)}`,
+                      {
+                        headers: { "x-pixabay-key": providedPixabayKey || "" },
+                        signal: controller.signal,
+                      },
+                    );
+                    clearTimeout(timeout);
+                    const pixabayData = await pixabayResponse.json();
+                    if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
+                      const bestClip = pixabayData.hits[0];
+                      const videos = bestClip.videos || {};
+                      const selectedVid =
+                        videos.large ||
+                        videos.medium ||
+                        videos.small ||
+                        videos.tiny;
+                      if (selectedVid) {
+                        videoUrl = selectedVid.url;
+                        videoThumb = bestClip.picture_id
+                          ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
+                          : "";
+                        author = bestClip.user || "Pixabay Creator";
+                      }
+                    }
+                  } catch (e) {
+                    console.warn(`Pixabay try for "${query}" failed/timed out:`, e);
+                  }
                 }
               }
 
+              // Fallback to stock catalog if both APIs returned zero
               if (!videoUrl) {
                 const fallbackVid = DEFAULT_CATALOG[i % DEFAULT_CATALOG.length];
                 videoUrl = fallbackVid.url;
@@ -401,7 +429,7 @@ export default function App() {
                 author = fallbackVid.author;
               }
 
-              // Ultimate safety failover if even catalog fails
+              // Ultimate security failover
               if (!videoUrl) {
                 videoUrl =
                   "https://samplelib.com/lib/preview/mp4/sample-5s.mp4";
