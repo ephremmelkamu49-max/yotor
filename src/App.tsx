@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Scene, ProjectConfig, AspectRatio } from "./types";
+import { Scene, ProjectConfig, AspectRatio, SavedProject } from "./types";
 import {
   DEFAULT_CATALOG,
   DEFAULT_MUSIC,
@@ -11,6 +11,7 @@ import Timeline from "./components/Timeline";
 import VideoCanvas from "./components/VideoCanvas";
 import RenderModal from "./components/RenderModal";
 import AccessGate from "./components/AccessGate";
+import ProjectLibrary from "./components/ProjectLibrary";
 import { Language, translations } from "./translations";
 import {
   Sparkles,
@@ -173,7 +174,38 @@ export default function App() {
     audio.play().catch((e) => console.error("Voice test failed:", e));
   };
 
+  // Autosave active draft to localStorage
+  useEffect(() => {
+    if (scenes.length > 0) {
+      const activeDraft = {
+        script,
+        scenes,
+        projectConfig
+      };
+      localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft));
+    }
+  }, [script, scenes, projectConfig]);
+
   const loadStartupCosmicTemplate = () => {
+    // Attempt to load active draft from localStorage
+    const savedDraft = localStorage.getItem("yotor_active_draft");
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed.scenes && parsed.scenes.length > 0) {
+          setScript(parsed.script ?? "");
+          setScenes(parsed.scenes);
+          if (parsed.projectConfig) {
+            setProjectConfig(parsed.projectConfig);
+          }
+          setPlaybackIndex(0);
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to load active draft from storage:", e);
+      }
+    }
+
     const defaultSentences = [
       {
         text: "We stand on the edge of a new cosmos.",
@@ -222,7 +254,7 @@ export default function App() {
     providedPixabayKey: string,
     providedCoverrKey: string,
     providedOpenaiKey: string,
-    videoMode: "stock" | "veo" = "stock",
+    videoMode: "stock" | "veo" | "pollinations" = "stock",
     inputMode: "script" | "keywords" = "script",
   ) => {
     setIsLoading(true);
@@ -598,6 +630,14 @@ export default function App() {
     [setProjectConfig],
   );
 
+  const handleLoadSavedProject = (project: SavedProject) => {
+    setScript(project.script);
+    setScenes(project.scenes);
+    setProjectConfig(project.projectConfig);
+    setPlaybackIndex(0);
+    setIsPlaying(false);
+  };
+
   return (
     <AccessGate>
       <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans antialiased pb-12 selection:bg-indigo-500/30 selection:text-indigo-200">
@@ -703,6 +743,14 @@ export default function App() {
               onAnalyze={handleAnalyzeScript}
               isLoading={isLoading}
               loadingStage={loadingStage}
+              language={language}
+            />
+
+            <ProjectLibrary
+              currentScript={script}
+              currentScenes={scenes}
+              currentConfig={projectConfig}
+              onLoadProject={handleLoadSavedProject}
               language={language}
             />
 

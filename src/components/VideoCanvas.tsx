@@ -596,6 +596,7 @@ export default function VideoCanvas({
 
       // Use the actual underlying video's current time for ultra-smooth sync if it's playing
       if (
+        !isRendering &&
         currentVideo &&
         currentVideo instanceof HTMLVideoElement &&
         !currentVideo.paused &&
@@ -2033,6 +2034,7 @@ export default function VideoCanvas({
             return (
               <img
                 key={s.id}
+                id={`video-scene-${s.id}`}
                 ref={(el) => {
                   videoRefs.current[s.id] = el as any;
                 }}
@@ -2047,6 +2049,7 @@ export default function VideoCanvas({
           return (
             <video
               key={s.id}
+              id={`video-scene-${s.id}`}
               ref={(el) => {
                 videoRefs.current[s.id] = el;
               }}

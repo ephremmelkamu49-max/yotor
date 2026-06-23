@@ -307,6 +307,41 @@ export default function RenderModal({
       mediaRecorder.start();
       addLog("Master stitch recording initialized successfully.");
 
+      // Helper to wait until a media element is fully ready to draw
+      const waitForMediaReady = (el: HTMLElement, maxWaitMs = 3000): Promise<boolean> => {
+        return new Promise((resolve) => {
+          if (!el) {
+            resolve(false);
+            return;
+          }
+          const startTime = Date.now();
+          const checkReady = () => {
+            if (el instanceof HTMLVideoElement) {
+              if (el.readyState >= 2) {
+                resolve(true);
+                return;
+              }
+            } else if (el instanceof HTMLImageElement) {
+              if (el.complete && el.naturalWidth > 0) {
+                resolve(true);
+                return;
+              }
+            } else {
+              resolve(true);
+              return;
+            }
+
+            if (Date.now() - startTime > maxWaitMs) {
+              addLog(`⚠️ Buffering notification: Proceeding with active frame streams.`);
+              resolve(false);
+            } else {
+              setTimeout(checkReady, 50);
+            }
+          };
+          checkReady();
+        });
+      };
+
       // Scene-by-scene timing workflow
       const renderSceneStep = async (index: number) => {
         if (index >= scenesToRender.length) {
@@ -346,16 +381,32 @@ export default function RenderModal({
           }
         }
 
-        // Small 300ms sleep to allow the scene state to propagate and the correct background video element to seek/load
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Retrieve the exact media element for this scene using its unique ID
+        const mediaEl = document.getElementById(`video-scene-${scene.id}`);
+        if (mediaEl) {
+          addLog(`Synchronizing hardware buffer and content layers for Scene ${index + 1}...`);
+          await waitForMediaReady(mediaEl, 2500);
 
-        // Delay slightly to let the video source mount and load, then play it!
-        // This ensures the recorded WebM composition stream features dynamic flowing video motion!
-        const videoEl = (canvasElement?.parentElement?.parentElement?.querySelector('video') || document.querySelector('video')) as HTMLVideoElement;
-        if (videoEl) {
-          videoEl.muted = true;
-          videoEl.play().catch(() => {});
+          if (mediaEl instanceof HTMLVideoElement) {
+            mediaEl.muted = true;
+            mediaEl.currentTime = 0; // Reset to start
+            try {
+              await mediaEl.play();
+            } catch (pErr) {
+              console.warn("Failed to invoke play() on active segment video:", pErr);
+            }
+          }
+        } else {
+          // Robust universal backup query
+          const videoEl = (canvasElement?.parentElement?.parentElement?.querySelector('video') || document.querySelector('video')) as HTMLVideoElement;
+          if (videoEl) {
+            videoEl.muted = true;
+            videoEl.play().catch(() => {});
+          }
         }
+
+        // Tiny 100ms pause to guarantee perfect frame sync registration before beginning the clock
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         try {
           await new Promise((resolve) => {

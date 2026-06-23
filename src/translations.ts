@@ -184,7 +184,21 @@ export const translations = {
     anim_bounce: "ጫወታ (Bounce)",
     anim_slide_up: "ወደ ላይ (Slide Up)",
     highlight_color: "መለያ ቀለም (Highlight)",
-    text_color: "የፅሁፍ ቀለም (Color)"
+    text_color: "የፅሁፍ ቀለም (Color)",
+    project_library: "የተቀመጡ ቪዲዮዎችና ታሪኮች ማህደር (Library)",
+    project_library_desc: "የፈጠሯቸው ሙሉ ታሪኮች፣ ክፍሎች እና የቪዲዮ ዲዛይኖች ማህደር",
+    save_current_project: "አሁን ያለውን ስራ በማህደር አስቀምጥ",
+    save_dialog_title: "የፕሮጀክት ማህደር ማስቀመጫ",
+    project_name_placeholder: "ለቪዲዮው ርዕስ ስም ይስጡት (ለምሳሌ፡ የጠፈር ታሪክ)...",
+    no_saved_projects: "ማህደርዎ ባዶ ነው። አሁን የሰሩትን ቪዲዮ ለማስቀመጥ 'አሁን ያለውን ስራ አስቀምጥ' የሚለውን ይጫኑ!",
+    load_project_btn: "ክፈት / ጫን",
+    delete_project_btn: "ማህደር ሰርዝ",
+    project_saved_success: "ስራዎ በተሳካ ሁኔታ በማህደር ተቀምጧል!",
+    project_loaded_success: "ስራዎ በተሳካ ሁኔታ ተጭኗል!",
+    project_deleted_success: "ፕሮጀክቱ ከማህደር ተሰርዟል።",
+    unnamed_project: "ስም ያልተሰጠው ፕሮጀክት",
+    confirm_load_project: "እርግጠኛ ነዎት ይህንን ስራ መጫን ይፈልጋሉ? አሁን እየሰሩበት ያለውን ይተካዋል።",
+    confirm_delete_project: "እርግጠኛ ነዎት ይህንን ስራ ከማህደር መሰረዝ ይፈልጋሉ?"
   },
   en: {
     // Header
@@ -369,6 +383,20 @@ export const translations = {
     anim_bounce: "Dynamic Bounce",
     anim_slide_up: "Slide Up",
     highlight_color: "Highlight Color",
-    text_color: "Text Color"
+    text_color: "Text Color",
+    project_library: "Project Library & Archives",
+    project_library_desc: "Saved stories, custom scenes, and finished video blueprints",
+    save_current_project: "Save Current Project to Library",
+    save_dialog_title: "Save Project Blueprint",
+    project_name_placeholder: "Enter project title (e.g. History of Space)...",
+    no_saved_projects: "Your library is empty. Save your active project to keep it safe!",
+    load_project_btn: "Load / Open",
+    delete_project_btn: "Remove",
+    project_saved_success: "Project saved successfully to local library!",
+    project_loaded_success: "Project successfully loaded!",
+    project_deleted_success: "Project deleted from library.",
+    unnamed_project: "Unnamed Project",
+    confirm_load_project: "Are you sure you want to load this project? It will overwrite your active timeline work.",
+    confirm_delete_project: "Are you sure you want to delete this project from your library?"
   }
 };
