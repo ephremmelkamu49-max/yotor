@@ -395,9 +395,12 @@ export default function RenderModal({
             // Bridge video audio to audioCtx if enabled & supported
             if (projectConfig.isVideoSoundEnabled && audioCtx && audioDest) {
               try {
-                const videoSrc = audioCtx.createMediaElementSource(mediaEl);
-                videoSrc.connect(audioDest);
-                videoSrc.connect(audioCtx.destination);
+                if (!(mediaEl as any).__audioConnected) {
+                  const videoSrc = audioCtx.createMediaElementSource(mediaEl);
+                  videoSrc.connect(audioDest);
+                  videoSrc.connect(audioCtx.destination);
+                  (mediaEl as any).__audioConnected = true;
+                }
               } catch (e) {
                 console.warn("Could not connect video element to AudioContext:", e);
               }
@@ -419,9 +422,12 @@ export default function RenderModal({
             // Bridge backup video audio to audioCtx if enabled
             if (projectConfig.isVideoSoundEnabled && audioCtx && audioDest) {
               try {
-                const srcNode = audioCtx.createMediaElementSource(videoEl);
-                srcNode.connect(audioDest);
-                srcNode.connect(audioCtx.destination);
+                if (!(videoEl as any).__audioConnected) {
+                  const srcNode = audioCtx.createMediaElementSource(videoEl);
+                  srcNode.connect(audioDest);
+                  srcNode.connect(audioCtx.destination);
+                  (videoEl as any).__audioConnected = true;
+                }
               } catch (e) {
                 console.warn("Could not connect backup video to AudioContext:", e);
               }
@@ -436,17 +442,25 @@ export default function RenderModal({
 
         try {
           await new Promise((resolve) => {
-            // We run this scene for the calculated duration
-            let remainingTime = scene.duration;
+            // We run this scene dynamically matching TTS or min duration
+            let elapsed = 0;
             const clockTick = 100;
               
             const stepTimer = setInterval(() => {
-              remainingTime -= (clockTick / 1000);
-                
-              const elapsed = scene.duration - remainingTime;
+              elapsed += (clockTick / 1000);
+              
+              let targetDuration = scene.duration;
+              if (sceneTts && !isNaN(sceneTts.duration) && sceneTts.duration > 0) {
+                targetDuration = sceneTts.duration + 0.3;
+              }
+
+              if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
+                const BEAT_INTERVAL = 0.5;
+                targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
+              }
                 
               // Track progress linearly
-              const completedSeconds = scenesToRender.slice(0, index).reduce((s, sc) => s + sc.duration, 0) + elapsed;
+              const completedSeconds = scenesToRender.slice(0, index).reduce((s, sc) => s + sc.duration, 0) + Math.min(elapsed, targetDuration);
               setProgress(Math.min(99, Math.round((completedSeconds / totalSecondsToRender) * 100)));
 
               // Propagate high-fidelity elapsed time for smooth animations
@@ -454,7 +468,7 @@ export default function RenderModal({
                 onRenderFrameChange(index, elapsed);
               }
 
-              if (remainingTime <= 0) {
+              if (elapsed >= targetDuration) {
                 clearInterval(stepTimer);
                 if (sceneTts) {
                   sceneTts.pause();
