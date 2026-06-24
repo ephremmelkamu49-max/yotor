@@ -66,6 +66,9 @@ export const translations = {
     music_enabled_lbl: "ማጀቢያ ሙዚቃ ይኑር (Play Audio)",
     music_track_lbl: "የማጀቢያ ትራክ መምረጫ",
     music_volume: "የማጀቢያ ድምፅ መጠን",
+    video_sound_title: "የቪዲዮው የራሱ ድምፅ (Original Video Sound)",
+    video_sound_enabled: "የቪዲዮው ራሱ ድምፅ ይኑር (Play Video Audio)",
+    video_sound_volume: "የቪዲዮው የራሱ ድምፅ መጠን (Video Audio Volume)",
 
     // Motion Controls
     motion_setup_title: "የሲኒማቲክ እንቅስቃሴ መቆጣጠሪያ",
@@ -265,6 +268,9 @@ export const translations = {
     music_enabled_lbl: "Play Atmosphere Tracks",
     music_track_lbl: "Selected Musical Loop",
     music_volume: "Background Musics Volume",
+    video_sound_title: "Original Video sound",
+    video_sound_enabled: "Play original clip audio",
+    video_sound_volume: "Video Clip Audio Volume",
 
     // Motion Controls
     motion_setup_title: "Cinematic Motion Control (Ken Burns)",

@@ -37,6 +37,7 @@ import {
   Languages,
   Settings,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 export default function App() {
@@ -110,6 +111,9 @@ export default function App() {
     isSubtitlesEnabled: true,
     isMusicEnabled: true,
     visualStyle: "realistic",
+    isVideoSoundEnabled: true,
+    videoVolume: 0.5,
+    videoFilter: "none",
   });
 
   // Load spectacular cosmic startup template
@@ -248,6 +252,7 @@ export default function App() {
         videoAuthorUrl: "#",
         voiceoverUrl: null,
         originalIndex: index,
+        transitionToNext: "random" as any,
       };
     });
 
@@ -374,7 +379,7 @@ export default function App() {
                     clearTimeout(timeout);
                     const pexelsData = await pexelsResponse.json();
                     if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
-                      const bestClip = pexelsData.videos[0];
+                      const bestClip = pexelsData.videos[i % pexelsData.videos.length];
                       const files = bestClip.video_files || [];
                       const mp4Files = files.filter(
                         (f: any) =>
@@ -408,7 +413,7 @@ export default function App() {
                     clearTimeout(timeout);
                     const pixabayData = await pixabayResponse.json();
                     if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
-                      const bestClip = pixabayData.hits[0];
+                      const bestClip = pixabayData.hits[i % pixabayData.hits.length];
                       const videos = bestClip.videos || {};
                       const selectedVid =
                         videos.large ||
@@ -456,6 +461,7 @@ export default function App() {
               videoAuthorUrl: "#",
               voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`,
               originalIndex: i,
+              transitionToNext: "random" as any,
             };
           }),
         );
@@ -523,6 +529,7 @@ export default function App() {
                 videoAuthorUrl: "#",
                 voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`,
                 originalIndex: i,
+                transitionToNext: "random" as any,
               };
             } catch (e) {
               console.warn("Veo scene failed, using stock fallback:", e);
@@ -539,6 +546,7 @@ export default function App() {
                 videoAuthorUrl: "#",
                 voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`,
                 originalIndex: i,
+                transitionToNext: "random" as any,
               };
             }
           }),
@@ -570,6 +578,7 @@ export default function App() {
           videoAuthorUrl: "#",
           voiceoverUrl: null,
           originalIndex: index,
+          transitionToNext: "random" as any,
         };
       });
 
@@ -615,6 +624,7 @@ export default function App() {
       videoAuthorUrl: "#",
       voiceoverUrl: null,
       originalIndex: scenes.length,
+      transitionToNext: "random" as any,
     };
 
     setScenes([...scenes, newScene]);
@@ -685,29 +695,29 @@ export default function App() {
 
   return (
     <AccessGate>
-      <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans antialiased pb-12 selection:bg-indigo-500/30 selection:text-indigo-200">
+      <div className="min-h-screen bg-[#020617] text-slate-100 font-sans antialiased pb-12 selection:bg-cyan-500/30 selection:text-cyan-200">
         {/* Absolute visual space sparks */}
-        <div className="fixed top-0 left-0 right-0 h-[400px] bg-gradient-to-b from-indigo-950/10 via-zinc-900/5 to-transparent blur-[120px] pointer-events-none" />
-        <div className="absolute top-4 left-6 py-1 px-3 bg-indigo-500/5 border border-indigo-500/15 text-[10px] uppercase font-mono tracking-widest text-indigo-400 rounded-full flex items-center gap-1.5 shadow">
-          <Sparkles size={11} className="fill-current text-indigo-500" />
-          YOTOR STUDIO PRO
+        <div className="fixed top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-cyan-950/20 via-blue-900/10 to-transparent blur-[120px] pointer-events-none" />
+        <div className="absolute top-4 left-6 py-1 px-3 bg-cyan-500/10 border border-cyan-500/20 text-[10px] uppercase font-mono tracking-widest text-cyan-400 rounded-full flex items-center gap-1.5 shadow-lg shadow-cyan-500/5">
+          <Sparkles size={11} className="fill-current text-cyan-500" />
+          YOTOR STUDIO NEXUS
         </div>
 
         {/* Main Container Head */}
-        <header className="max-w-7xl mx-auto px-6 pt-12 pb-6 border-b border-zinc-900 flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+        <header className="max-w-[90rem] mx-auto px-6 pt-16 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10 border-b border-white/5">
           <div>
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/20">
-                <Video size={24} className="text-white" />
+            <div className="flex items-center gap-4">
+              <div className="p-3.5 bg-gradient-to-br from-cyan-400 to-blue-600 text-white rounded-2xl shadow-xl shadow-cyan-500/20 ring-1 ring-white/10">
+                <Video size={26} className="text-white drop-shadow-md" />
               </div>
               <div>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="w-2 h-2 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.6)] animate-pulse"></span>
-                  <span className="text-[10px] uppercase tracking-[0.2em] font-black text-indigo-400">
-                    {t.logo_sub}
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_12px_rgba(34,211,238,0.8)] animate-pulse"></span>
+                  <span className="text-[10px] uppercase tracking-[0.25em] font-black text-cyan-400">
+                    {t.logo_sub || "CINEMATIC ENGINE"}
                   </span>
                 </div>
-                <h1 className="text-3xl font-black text-white font-sans tracking-tighter uppercase">
+                <h1 className="text-4xl font-black text-white font-sans tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
                   {t.studio_title}
                 </h1>
               </div>
@@ -716,15 +726,15 @@ export default function App() {
 
           <div className="flex items-center flex-wrap gap-3">
             {/* Elegant Language Selector Toggles */}
-            <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-1.5 shadow-inner">
-              <Languages size={14} className="text-zinc-500 ml-1 mr-1" />
+            <div className="flex items-center gap-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-2xl p-1.5 shadow-inner">
+              <Languages size={14} className="text-slate-500 ml-2 mr-1" />
               <button
                 type="button"
                 onClick={() => handleLanguageChange("am")}
-                className={`px-3 py-1 text-xs font-black rounded-lg transition-all ${
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
                   language === "am"
-                    ? "bg-indigo-600 text-white shadow"
-                    : "text-zinc-400 hover:text-white"
+                    ? "bg-slate-800 text-cyan-300 shadow-md ring-1 ring-white/5"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
                 አማርኛ 🇪🇹
@@ -732,10 +742,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => handleLanguageChange("en")}
-                className={`px-3 py-1 text-xs font-black rounded-lg transition-all ${
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
                   language === "en"
-                    ? "bg-indigo-600 text-white shadow"
-                    : "text-zinc-400 hover:text-white"
+                    ? "bg-slate-800 text-cyan-300 shadow-md ring-1 ring-white/5"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
                 EN 🇬🇧
@@ -746,14 +756,14 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white text-[10px] uppercase tracking-widest font-bold rounded-xl transition-all relative"
+              className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-900/80 backdrop-blur-md border border-white/10 hover:border-white/20 hover:bg-slate-800 text-slate-300 hover:text-white text-[10px] uppercase tracking-widest font-bold rounded-2xl transition-all relative"
             >
-              <Settings size={14} className="text-zinc-400" />
+              <Settings size={14} className="text-slate-400" />
               <span>{t.settings}</span>
               {deferredPrompt && (
-                <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500 ring-2 ring-[#020617]"></span>
                 </span>
               )}
             </button>
@@ -766,7 +776,7 @@ export default function App() {
                 localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft));
                 window.location.reload();
               }}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white hover:border-zinc-700 text-[10px] uppercase tracking-widest font-bold rounded-xl transition-all"
+              className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-900/80 backdrop-blur-md border border-white/10 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-white/20 text-[10px] uppercase tracking-widest font-bold rounded-2xl transition-all"
               title="Refresh / Reload Application"
             >
               <RefreshCw size={14} />
@@ -777,26 +787,26 @@ export default function App() {
               href={window.location.href}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 text-[10px] uppercase tracking-widest font-bold rounded-xl transition-all"
+              className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-900/80 backdrop-blur-md border border-white/10 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-white/20 text-[10px] uppercase tracking-widest font-bold rounded-2xl transition-all"
             >
               🌐 {t.full_web_view}
             </a>
             <button
               onClick={() => setIsRenderOpen(true)}
               disabled={scenes.length === 0}
-              className="group relative flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-30 disabled:pointer-events-none active:scale-[0.98]"
+              className="group relative flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-[11px] uppercase tracking-widest rounded-2xl transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] disabled:opacity-30 disabled:pointer-events-none active:scale-[0.98] ring-1 ring-white/20"
               id="bake-video-btn"
             >
-              <Download size={14} className="stroke-[2.5px]" />
+              <Download size={16} className="stroke-[2.5px] drop-shadow-md" />
               {t.ready_to_export}
             </button>
           </div>
         </header>
 
         {/* Primary Layout Grid */}
-        <main className="max-w-7xl mx-auto px-6 pt-8 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
+        <main className="max-w-[90rem] mx-auto px-6 pt-10 grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
           {/* Left Column: Inputs & Scenarios Sequence (Grids 7) */}
-          <div className="lg:col-span-7 space-y-6 flex flex-col">
+          <div className="lg:col-span-7 space-y-8 flex flex-col">
             <ScriptInput
               script={script}
               setScript={setScript}
@@ -1051,175 +1061,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 2. PWA Mobile Installer Option */}
-                <div className="space-y-3 pt-1">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-mono font-bold text-indigo-400 rounded uppercase tracking-wider">
-                      ዮቶር መተግበሪያ (YOTOR APP)
-                    </span>
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
-                  </div>
 
-                  <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-tight">
-                    📱{" "}
-                    {language === "am"
-                      ? "የChrome ምልክት የሌለበት እውነተኛ መተግበሪያ ማድረግ"
-                      : "Install Yotor as a Badgeless App"}
-                  </h4>
-
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    {language === "am" ? (
-                      <>
-                        ያለ ምንም የብሮውዘር/Chrome ምልክት እንደ እውነተኛ የስልክ መተግበሪያ ለመጫን
-                        በቅድሚያ አፕሊኬሽኑን በስልክዎ መደበኛ የ{" "}
-                        <strong className="text-zinc-200">Chrome</strong> ወይም{" "}
-                        <strong className="text-zinc-200">Safari</strong> ብሮውዘር
-                        ላይ በቀጥታ ይክፈቱት (ይህንን የ AI Studio iframe በማለፍ)።
-                      </>
-                    ) : (
-                      <>
-                        To install this as a pristine native-feeling app without
-                        any Chrome/browser shortcut badge on your phone's home
-                        screen, first open the link directly in your phone's
-                        browser (outside AI Studio).
-                      </>
-                    )}
-                  </p>
-
-                  <div className="flex items-center gap-2 mt-2">
-                    {deferredPrompt ? (
-                      <button
-                        type="button"
-                        onClick={triggerPwaInstall}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-[0.98]"
-                      >
-                        🚀{" "}
-                        {language === "am"
-                          ? "አሁንኑ ስልክ ላይ ጫን"
-                          : "Install Yotor App"}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const copyUrl =
-                            "https://ais-pre-oh5hl4vhkopsdnvzowkkjm-458221665777.europe-west2.run.app";
-                          navigator.clipboard.writeText(copyUrl);
-                          alert(
-                            language === "am"
-                              ? "የመተግበሪያው ሊንክ ተገልብጧል! በስልክዎ Chrome ወይም Safari ላይ ይክፈቱት።"
-                              : "URL copied! Open it on Chrome or Safari.",
-                          );
-                        }}
-                        className="w-full py-3 bg-zinc-900 hover:bg-zinc-850 text-zinc-350 font-bold text-xs uppercase tracking-wider rounded-xl transition-all border border-zinc-800"
-                      >
-                        🔗{" "}
-                        {language === "am"
-                          ? "የመተግበሪያ ሊንክ ገልብጥ (Copy Link)"
-                          : "Copy App Link"}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Manual Walkthrough Instructions Accordion-Style */}
-                  <div className="space-y-2 mt-4 pt-4 border-t border-zinc-900/60">
-                    {/* Android Instruction */}
-                    <div className="p-3 bg-zinc-950/60 border border-zinc-900 rounded-xl text-[10.5px]">
-                      <span className="font-mono text-zinc-400 font-bold tracking-wider block uppercase mb-1">
-                        🤖{" "}
-                        {language === "am" ? "የአንድሮይድ ተጠቃሚዎች" : "Android Guide"}
-                      </span>
-                      <ul className="list-decimal list-inside space-y-1 text-zinc-400 font-sans leading-relaxed">
-                        <li>
-                          {language === "am"
-                            ? "ሊንኩን በ Chrome ብሮውዘር ላይ ይክፈቱት።"
-                            : "Open in standard Chrome browser."}
-                        </li>
-                        <li>
-                          {language === "am"
-                            ? "ባለ ሦስት ነጥብ (...) የሜኑ ምልክት ይጫኑ።"
-                            : "Tap on the 3-dot menu."}
-                        </li>
-                        <li>
-                          {language === "am" ? (
-                            <>
-                              <strong className="text-zinc-300">
-                                "መተግበሪያውን ጫን" (Install app)
-                              </strong>{" "}
-                              ወይም{" "}
-                              <strong className="text-zinc-300">
-                                "Add to Home"
-                              </strong>{" "}
-                              ይጫኑ።
-                            </>
-                          ) : (
-                            <>
-                              Select{" "}
-                              <strong className="text-zinc-300">
-                                "Install app"
-                              </strong>{" "}
-                              or{" "}
-                              <strong className="text-zinc-305">
-                                "Add to Home"
-                              </strong>
-                              .
-                            </>
-                          )}
-                        </li>
-                        <li className="text-emerald-400">
-                          {language === "am"
-                            ? "✨ የChrome ምልክት የሌለበት እውነተኛ መተግበሪያ ይፈጠራል!"
-                            : "✨ Disappears browser bars & installs as a real app!"}
-                        </li>
-                      </ul>
-                    </div>
-
-                    {/* iOS Instruction */}
-                    <div className="p-3 bg-zinc-950/60 border border-zinc-900 rounded-xl text-[10.5px]">
-                      <span className="font-mono text-zinc-400 font-bold tracking-wider block uppercase mb-1">
-                        🍏{" "}
-                        {language === "am"
-                          ? "የአይፎን ተጠቃሚዎች"
-                          : "iPhone Safari Guide"}
-                      </span>
-                      <ul className="list-decimal list-inside space-y-1 text-zinc-400 font-sans leading-relaxed">
-                        <li>
-                          {language === "am"
-                            ? "መተግበሪያውን በ Safari ብሮውዘር ላይ ይክፈቱት።"
-                            : "Open in Safari browser."}
-                        </li>
-                        <li>
-                          {language === "am"
-                            ? 'ከታች የ "Share" (ማጋሪያ) ሳጥን ምልክቱን ይጫኑ።'
-                            : 'Tap the "Share" button.'}
-                        </li>
-                        <li>
-                          {language === "am" ? (
-                            <>
-                              <strong className="text-zinc-300">
-                                "Add to Home Screen"
-                              </strong>{" "}
-                              (ወደ ማሳያ ገጽ አክል) የሚለውን ይምረጡ።
-                            </>
-                          ) : (
-                            <>
-                              Scroll down and tap{" "}
-                              <strong className="text-zinc-303">
-                                "Add to Home Screen"
-                              </strong>
-                              .
-                            </>
-                          )}
-                        </li>
-                        <li className="text-emerald-400">
-                          {language === "am"
-                            ? "✨ በሙሉ ስክሪን ያለ ብሮውዘር አድራሻ እንደ እውነተኛ መተግበሪያ ይከፈታል!"
-                            : "✨ Opens completely full-screen as a badgeless stand-alone app!"}
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Close Button Bottom Area */}

@@ -319,13 +319,27 @@ app.post("/api/analyze-script", async (req, res) => {
       groupedSentences.push(currentGroup);
     }
 
+    const fallbackKeywordsList = [
+      "breathtaking nature mountains",
+      "cinematic city streets neon",
+      "beautiful abstract flowing lights",
+      "epic ocean waves aerial",
+      "warm golden hour forest",
+      "futuristic tech data flow",
+      "peaceful morning sunrise mist",
+      "dynamic people walking blur",
+      "space stars galaxy nebula",
+      "traditional cultural historical"
+    ];
+
     const scenes = groupedSentences.map((seg, idx) => {
       const segWords = seg.split(/\s+/).length;
       // speaking speed estimated at 2.2 words per second (slightly slower for Amharic clarity)
       const duration = Math.max(4.0, Number((segWords / 2.2).toFixed(1))); 
       // Enhanced visual keyword guess including more Amharic-relevant roots
-      const nouns = seg.toLowerCase().match(/\b(forest|sunset|technology|people|ocean|city|space|nature|abstract|cyberpunk|office|coding|data|future|workspace|ethiopia|mountains|landscape|flower|human|animal|addis|coffee|culture|history|traditional|luxury|peaceful|wildlife)\b/g) || ["breathtaking cinematic landscape"];
-      const keywords = `${nouns[0]} ${styleMapping[visualStyle || 'realistic']} motion 16:9 cinematic`;
+      const matchedNouns = seg.toLowerCase().match(/\b(forest|sunset|technology|people|ocean|city|space|nature|abstract|cyberpunk|office|coding|data|future|workspace|ethiopia|mountains|landscape|flower|human|animal|addis|coffee|culture|history|traditional|luxury|peaceful|wildlife)\b/g);
+      const baseKeyword = matchedNouns ? matchedNouns[0] : fallbackKeywordsList[idx % fallbackKeywordsList.length];
+      const keywords = `${baseKeyword} ${styleMapping[visualStyle || 'realistic']} motion 16:9 cinematic`;
       return {
         id: `scene_${idx}_${Date.now()}`,
         text: seg,
@@ -502,13 +516,39 @@ ${script}
       groupedSentences.push(currentGroup);
     }
 
+    const styleMapping: Record<string, string> = {
+      'realistic': 'Cinematic realistic 4k, professional lighting, photorealistic textures',
+      '3d-animation': '3D Pixar style animation, cute expressive characters, vibrant volumetric lighting, Disney style 3D render',
+      '2d-animation': '2D hand-drawn animation, flat colors, expressive line art, illustrative style',
+      'anime': 'Studio Ghibli aesthetic, anime style background, detailed characters, Japanese animation',
+      'watercolor': 'Soft watercolor painting, artistic bleeding colors, paper texture, impressionist',
+      'cyberpunk': 'Cyberpunk aesthetic, neon colored lights, futuristic cityscape, rainy night, high tech',
+      'sketch': 'Hand-drawn pencil sketch, charcoal texture, artistic line work'
+    };
+
+    const fallbackKeywordsList = [
+      "breathtaking nature mountains",
+      "cinematic city streets neon",
+      "beautiful abstract flowing lights",
+      "epic ocean waves aerial",
+      "warm golden hour forest",
+      "futuristic tech data flow",
+      "peaceful morning sunrise mist",
+      "dynamic people walking blur",
+      "space stars galaxy nebula",
+      "traditional cultural historical"
+    ];
+
     const fallbackScenes = groupedSentences.map((seg, idx) => {
       const segWords = seg.split(/\s+/).length;
       const duration = Math.max(4.0, Number((segWords / 2.4).toFixed(1)));
+      const baseKeyword = fallbackKeywordsList[idx % fallbackKeywordsList.length];
+      const styleDesc = styleMapping[visualStyle || 'realistic'] || "cinematic";
+      
       return {
         id: `scene_${idx}_fallback_${Date.now()}`,
         text: seg,
-        keywords: "ambient cinematic visual landscape 4k",
+        keywords: `${baseKeyword} ${styleDesc}`,
         caption: seg,
         duration,
         originalIndex: idx

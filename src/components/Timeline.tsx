@@ -354,12 +354,13 @@ export default function Timeline({
         {scenes.map((scene, idx) => {
           const isActive = scene.id === activeSceneId;
           const showTransition = idx < scenes.length - 1;
-          const transitionTypes: ('none' | 'crossfade' | 'slide' | 'wipe' | 'flicker')[] = ['none', 'crossfade', 'slide', 'wipe', 'flicker'];
+          const transitionTypes: ('none' | 'crossfade' | 'slide' | 'wipe' | 'zoom' | 'spin' | 'blur' | 'flicker' | 'glitch' | 'pixelate' | 'random')[] = ['none', 'crossfade', 'slide', 'wipe', 'zoom', 'spin', 'blur', 'flicker', 'glitch', 'pixelate', 'random'];
           
           const handleCycleTransition = (e: React.MouseEvent) => {
             e.stopPropagation();
             const current = scene.transitionToNext || 'none';
-            const nextIndex = (transitionTypes.indexOf(current) + 1) % transitionTypes.length;
+            let nextIndex = transitionTypes.indexOf(current) + 1;
+            if (nextIndex >= transitionTypes.length) nextIndex = 0;
             onUpdateScene(scene.id, { transitionToNext: transitionTypes[nextIndex] });
           };
 
@@ -367,21 +368,21 @@ export default function Timeline({
             <React.Fragment key={scene.id}>
               <div
                 onClick={() => onSelectScene(scene.id)}
-                className={`group border rounded-xl p-4 transition-all duration-300 relative cursor-pointer ${
+                className={`group border rounded-2xl p-5 transition-all duration-300 relative cursor-pointer ${
                   isActive
-                    ? 'bg-indigo-500/5 border-indigo-500/50 shadow-lg shadow-indigo-500/5'
-                    : 'bg-zinc-950/40 border-zinc-900/60 hover:border-zinc-800'
+                    ? 'bg-cyan-500/10 border-cyan-500/50 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/20'
+                    : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                 }`}
               >
                 {/* Controls floating top right */}
-                <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                <div className="absolute top-4 right-4 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity z-10">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onMoveScene(idx, 'up');
                     }}
                     disabled={idx === 0}
-                    className="p-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-200 disabled:opacity-30 disabled:pointer-events-none"
+                    className="p-1.5 bg-slate-900/80 backdrop-blur-sm hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none transition-colors"
                     title="Move Up"
                   >
                     <ChevronUp size={14} />
@@ -392,7 +393,7 @@ export default function Timeline({
                       onMoveScene(idx, 'down');
                     }}
                     disabled={idx === scenes.length - 1}
-                    className="p-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded text-zinc-400 hover:text-zinc-200 disabled:opacity-30 disabled:pointer-events-none"
+                    className="p-1.5 bg-slate-900/80 backdrop-blur-sm hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none transition-colors"
                     title="Move Down"
                   >
                     <ChevronDown size={14} />
@@ -403,34 +404,34 @@ export default function Timeline({
                       onDeleteScene(scene.id);
                     }}
                     disabled={scenes.length <= 1}
-                    className="p-1 bg-red-950/40 hover:bg-red-900/60 border border-red-900/30 rounded text-red-400 hover:text-red-200 disabled:opacity-30 disabled:pointer-events-none ml-1"
+                    className="p-1.5 bg-slate-900/80 backdrop-blur-sm hover:bg-red-500/20 border border-slate-800 hover:border-red-500/50 rounded-lg text-slate-400 hover:text-red-400 disabled:opacity-30 disabled:pointer-events-none transition-colors ml-1"
                     title="Delete Scene"
                   >
                     <Trash2 size={14} />
                   </button>
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-5">
                   {/* Visual Video Thumbnail box */}
-                  <div className="relative shrink-0 w-28 h-20 bg-[#050505] border border-zinc-800 rounded-lg overflow-hidden group">
+                  <div className="relative shrink-0 w-36 h-24 sm:w-44 sm:h-28 bg-[#030712] border border-slate-800 rounded-xl overflow-hidden group">
                     {scene.videoThumb ? (
                       <img 
                         src={scene.videoThumb} 
                         alt="Thumbnail" 
-                        className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"
+                        className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500 opacity-90 group-hover:opacity-100"
                       />
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-zinc-650">
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 bg-slate-950">
                         <Film size={20} />
                         <span className="text-[9px] mt-1">{t.no_visual}</span>
                       </div>
                     )}
-                    <div className="absolute left-1.5 bottom-1.5 bg-[#050505]/90 backdrop-blur-sm text-[9px] font-mono text-indigo-400 px-1.5 py-0.5 rounded border border-zinc-800">
+                    <div className="absolute left-1.5 bottom-1.5 bg-slate-900/90 backdrop-blur-md text-[10px] font-mono text-cyan-400 px-2 py-0.5 rounded shadow border border-slate-800/50 font-bold">
                       S-{idx + 1}
                     </div>
 
                     {visualStyle && visualStyle !== 'realistic' && (
-                      <div className="absolute right-1.5 bottom-1.5 bg-indigo-600/90 backdrop-blur-sm text-[8px] font-bold text-white px-1.5 py-0.5 rounded shadow-lg uppercase tracking-tighter">
+                      <div className="absolute right-1.5 bottom-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-[8px] font-bold text-white px-1.5 py-0.5 rounded shadow-lg uppercase tracking-tighter">
                         {visualStyle.replace('-', ' ')}
                       </div>
                     )}
@@ -443,18 +444,18 @@ export default function Timeline({
                       }}
                       className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all"
                     >
-                      <div className="bg-indigo-600 text-white p-1.5 rounded-full transition-transform hover:scale-110">
-                        <Search size={14} />
+                      <div className="bg-cyan-500 text-white p-2 rounded-full transition-transform hover:scale-110 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
+                        <Search size={16} />
                       </div>
                     </button>
                   </div>
 
                   {/* Content details inputs */}
-                  <div className="flex-1 space-y-2.5">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="flex-1 space-y-3 pt-1">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {/* Caption Editing */}
-                      <div className="md:col-span-2 space-y-1">
-                        <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
+                      <div className="md:col-span-2 space-y-1.5">
+                        <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block font-mono">
                           {language === 'am' ? 'የትርጉም ጽሑፍ የግርጌ መግቢያ (Caption)' : 'Subtitles Caption'}
                         </label>
                         <input
@@ -462,18 +463,18 @@ export default function Timeline({
                           value={scene.text}
                           onChange={(e) => onUpdateScene(scene.id, { text: e.target.value, caption: e.target.value })}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500/50 font-sans"
+                          className="w-full bg-[#030712] border border-slate-800 text-slate-200 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-cyan-500/50 font-sans shadow-inner transition-colors"
                         />
                       </div>
 
                       {/* Duration and Animation inputs */}
-                      <div className="flex gap-2">
-                        <div className="flex-1 space-y-1">
-                          <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
+                      <div className="flex gap-3">
+                        <div className="flex-1 space-y-1.5">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block font-mono">
                             {language === 'am' ? 'ቆይታ በሰከንድ' : 'Duration (sec)'}
                           </label>
-                          <div className="flex items-center gap-1.5">
-                            <Clock size={12} className="text-zinc-500" />
+                          <div className="flex items-center gap-1.5 relative">
+                            <Clock size={12} className="text-slate-500 absolute left-2.5" />
                             <input
                               type="number"
                               step="0.5"
@@ -482,20 +483,20 @@ export default function Timeline({
                               value={scene.duration}
                               onChange={(e) => onUpdateScene(scene.id, { duration: Math.max(1, parseFloat(e.target.value) || 3) })}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-xs font-mono rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500/50"
+                              className="w-full bg-[#030712] border border-slate-800 text-slate-200 text-xs font-mono rounded-lg pl-7 pr-2.5 py-2 focus:outline-none focus:border-cyan-500/50 shadow-inner transition-colors"
                             />
                           </div>
                         </div>
 
-                        <div className="flex-1 space-y-1">
-                          <label className="text-[9px] font-semibold text-zinc-550 uppercase tracking-widest block font-mono">
+                        <div className="flex-1 space-y-1.5">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block font-mono">
                             {language === 'am' ? 'እንቅስቃሴ' : 'Animation'}
                           </label>
                           <select
                             value={scene.animationStyle || 'default'}
                             onChange={(e) => onUpdateScene(scene.id, { animationStyle: e.target.value === 'default' ? undefined : (e.target.value as any) })}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-full bg-[#050505] border border-zinc-800 text-zinc-200 text-[10px] rounded px-2.5 py-2.5 focus:outline-none focus:border-indigo-500/50 appearance-none uppercase tracking-tighter"
+                            className="w-full bg-[#030712] border border-slate-800 text-slate-200 text-[10px] rounded-lg px-2.5 py-[9px] focus:outline-none focus:border-cyan-500/50 appearance-none uppercase tracking-tighter shadow-inner transition-colors font-bold"
                           >
                             <option value="default">{language === 'am' ? '— ራስ-ሰር —' : '— Auto —'}</option>
                             <option value="zoom-in">{language === 'am' ? 'Zoom In (ማቅረቢያ)' : 'Zoom In'}</option>
@@ -512,12 +513,29 @@ export default function Timeline({
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-400">
-                      <span className="flex items-center gap-1.5 text-xs text-zinc-300">
-                        <span className="font-semibold text-indigo-400 font-mono text-[10px] uppercase">Keywords / ፍለጋ:</span> {scene.keywords}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 text-[11px] text-slate-400 border-t border-slate-800/60 pt-3">
+                      <span className="flex items-center gap-1.5 text-xs text-slate-300">
+                        <span className="font-semibold text-cyan-400 font-mono text-[10px] uppercase">Keywords / ፍለጋ:</span> {scene.keywords}
                       </span>
+                      
+                      <label className="flex items-center gap-1 cursor-pointer hover:text-cyan-400 transition-colors ml-auto border border-slate-800 rounded-lg px-2.5 py-1 bg-slate-900 shadow-sm" onClick={(e) => e.stopPropagation()}>
+                        <input 
+                          type="file" 
+                          accept="audio/*" 
+                          className="hidden" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const url = URL.createObjectURL(file);
+                              onUpdateScene(scene.id, { voiceoverUrl: url });
+                            }
+                          }}
+                        />
+                        <span className="text-[9px] uppercase tracking-wider font-bold">{scene.voiceoverUrl && scene.voiceoverUrl.startsWith('blob:') ? '🎵 Custom Audio Set' : '🎵 Add Audio'}</span>
+                      </label>
+
                       {scene.videoAuthor && (
-                        <span className="text-[10px] italic text-zinc-500 font-sans">
+                        <span className="text-[10px] italic text-slate-500 font-sans">
                           Clip by: {scene.videoAuthor}
                         </span>
                       )}
@@ -530,7 +548,7 @@ export default function Timeline({
                 <div className="flex justify-center -my-2 z-20">
                   <button
                     onClick={handleCycleTransition}
-                    className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 border border-zinc-700 rounded-full text-[10px] text-zinc-400 hover:border-indigo-500 hover:text-indigo-400 transition-all shadow-md"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-full text-[10px] text-slate-400 hover:border-cyan-500 hover:text-cyan-400 transition-all shadow-md font-bold"
                   >
                     <RefreshCw size={10} />
                     {scene.transitionToNext || 'none'}
@@ -578,6 +596,27 @@ export default function Timeline({
                 {isSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
                 {t.active_search_btn}
               </button>
+              
+              <label className="flex items-center gap-2 px-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-bold text-xs uppercase tracking-widest rounded-lg cursor-pointer transition-colors shadow-sm">
+                <input 
+                  type="file" 
+                  accept="video/*" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && searchSceneId) {
+                      const url = URL.createObjectURL(file);
+                      onUpdateScene(searchSceneId, {
+                        videoUrl: url,
+                        videoThumb: url, // Not a perfect thumb, but works as placeholder
+                        videoAuthor: "Local Upload"
+                      });
+                      setSearchSceneId(null);
+                    }
+                  }}
+                />
+                Upload
+              </label>
             </div>
 
             {searchError && (

@@ -64,7 +64,7 @@ export default function VideoCanvas({
   const playbackIndexRef = useRef<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [showConfigTabs, setShowConfigTabs] = useState<
-    "ratio" | "subtitle" | "music" | "motion" | "analyzer"
+    "ratio" | "subtitle" | "music" | "motion" | "filters" | "analyzer"
   >("ratio");
   const [loadedTtsPercentage, setLoadedTtsPercentage] = useState<number>(0);
 
@@ -262,8 +262,9 @@ export default function VideoCanvas({
       if (currentScene) {
         const video = videoRefs.current[currentScene.id];
         if (video && video instanceof HTMLVideoElement) {
+          video.muted = isMuted || !projectConfig.isVideoSoundEnabled;
+          video.volume = projectConfig.videoVolume ?? 0.5;
           if (video.paused) {
-            video.muted = true;
             video.play().catch(() => {});
           }
           // Precision Sync: keep video's currentTime in tight step with renderTime
@@ -280,8 +281,9 @@ export default function VideoCanvas({
         const prevScene = scenes[playbackIndex - 1];
         const prevVideo = prevScene ? videoRefs.current[prevScene.id] : null;
         if (prevVideo && prevVideo instanceof HTMLVideoElement) {
+          prevVideo.muted = isMuted || !projectConfig.isVideoSoundEnabled;
+          prevVideo.volume = projectConfig.videoVolume ?? 0.5;
           if (prevVideo.paused) {
-            prevVideo.muted = true;
             prevVideo.play().catch(() => {});
           }
           // The previous video should be in its final segment
@@ -303,6 +305,8 @@ export default function VideoCanvas({
     playbackIndex,
     projectConfig.transitionDuration,
     scenes,
+    projectConfig.isVideoSoundEnabled,
+    projectConfig.videoVolume,
   ]);
 
   // Initialize and keep background music sync
@@ -347,6 +351,25 @@ export default function VideoCanvas({
       musicAudioRef.current.volume = isMuted ? 0 : projectConfig.musicVolume;
     }
   }, [projectConfig.musicVolume, isMuted]);
+
+  // Synchronize muted / volume of all scene videos according to projectConfig
+  useEffect(() => {
+    Object.values(videoRefs.current).forEach((vid) => {
+      if (vid && vid instanceof HTMLVideoElement) {
+        vid.muted = isMuted || !projectConfig.isVideoSoundEnabled;
+        vid.volume = projectConfig.videoVolume ?? 0.5;
+      }
+    });
+  }, [projectConfig.isVideoSoundEnabled, projectConfig.videoVolume, scenes, isMuted]);
+
+  // Synchronize muted state for TTS voiceovers
+  useEffect(() => {
+    Object.values(audioRefs.current).forEach((aud) => {
+      if (aud && aud instanceof HTMLAudioElement) {
+        aud.muted = isMuted;
+      }
+    });
+  }, [isMuted, scenes]);
 
   // Handle active scene changes (audio & timer)
   useEffect(() => {
@@ -735,6 +758,27 @@ export default function VideoCanvas({
         ctx.translate(width / 2, height / 2);
         ctx.scale(dynamicScale, dynamicScale);
 
+        const baseFilter = ctx.filter === "none" ? "" : ctx.filter;
+        let currentFilter = baseFilter;
+
+        if (projectConfig.videoFilter) {
+          switch (projectConfig.videoFilter) {
+            case "sepia":
+              currentFilter += " sepia(100%)";
+              break;
+            case "grayscale":
+              currentFilter += " grayscale(100%)";
+              break;
+            case "contrast":
+              currentFilter += " contrast(150%) brightness(95%)";
+              break;
+            case "vintage":
+              currentFilter += " sepia(40%) contrast(120%) brightness(90%) saturate(80%)";
+              break;
+          }
+        }
+        ctx.filter = currentFilter.trim() || "none";
+
         ctx.drawImage(
           vid,
           sx,
@@ -746,6 +790,8 @@ export default function VideoCanvas({
           width,
           height,
         );
+        
+        // The context is restored via ctx.restore() right after this
         ctx.restore();
 
         ctx.globalAlpha = 1.0;
@@ -753,9 +799,19 @@ export default function VideoCanvas({
 
       // 1. Draw Stock Video Frame with Cinematic Transitions
 
-      const tSource = projectConfig.transitionType || "crossfade";
-      const transitionDuration = projectConfig.transitionDuration || 0.5;
       const pIndex = playbackIndexRef.current;
+      const prevSceneForTransition = pIndex > 0 ? scenes[pIndex - 1] : null;
+
+      let tSource = prevSceneForTransition?.transitionToNext && prevSceneForTransition.transitionToNext !== "none" 
+        ? prevSceneForTransition.transitionToNext 
+        : (projectConfig.transitionType || "crossfade");
+
+      const transitionDuration = projectConfig.transitionDuration || 0.5;
+
+      if (tSource === "random") {
+        const tList = ["crossfade", "slide", "wipe", "flicker", "morph", "zoom", "spin", "blur", "glitch", "pixelate"];
+        tSource = tList[(pIndex * 7 + 13) % tList.length] as any;
+      }
 
       const isTransitioning =
         projectConfig.isTransitionsEnabled !== false &&
@@ -860,6 +916,77 @@ export default function VideoCanvas({
           if (progress < 0.2) {
             ctx.fillStyle = `rgba(255, 255, 255, ${1 - progress * 5})`;
             ctx.fillRect(0, 0, width, height);
+          }
+        } else if (tSource === "zoom") {
+          if (prevVideo)
+            drawVideoFrame(
+              prevVideo,
+              1.0 - progress,
+              prevScene?.animationStyle,
+              1.0 + progress * 1.5,
+            );
+          if (currentVideo)
+            drawVideoFrame(
+              currentVideo,
+              progress,
+              currentScene?.animationStyle,
+              0.5 + progress * 0.5,
+            );
+        } else if (tSource === "spin") {
+          if (prevVideo) {
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.rotate(progress * Math.PI);
+            ctx.translate(-width / 2, -height / 2);
+            drawVideoFrame(prevVideo, 1.0 - progress, prevScene?.animationStyle, 1.0 - progress * 0.5);
+            ctx.restore();
+          }
+          if (currentVideo) {
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.rotate((progress - 1) * Math.PI);
+            ctx.translate(-width / 2, -height / 2);
+            drawVideoFrame(currentVideo, progress, currentScene?.animationStyle, 0.5 + progress * 0.5);
+            ctx.restore();
+          }
+        } else if (tSource === "blur") {
+          const blurAmt = Math.sin(progress * Math.PI) * 20;
+          ctx.filter = `blur(${blurAmt}px)`;
+          if (prevVideo)
+            drawVideoFrame(prevVideo, 1.0 - progress, prevScene?.animationStyle);
+          if (currentVideo)
+            drawVideoFrame(currentVideo, progress, currentScene?.animationStyle);
+          ctx.filter = "none";
+        } else if (tSource === "glitch") {
+          if (prevVideo && progress < 0.5) {
+            drawVideoFrame(prevVideo, 1.0, prevScene?.animationStyle);
+            if (Math.random() > 0.5) {
+              ctx.fillStyle = `rgba(0, 255, 0, 0.3)`;
+              ctx.fillRect(0, Math.random() * height, width, Math.random() * 50);
+              ctx.fillStyle = `rgba(255, 0, 255, 0.3)`;
+              ctx.fillRect(0, Math.random() * height, width, Math.random() * 50);
+            }
+          }
+          if (currentVideo && progress >= 0.5) {
+            drawVideoFrame(currentVideo, 1.0, currentScene?.animationStyle);
+            if (Math.random() > 0.5) {
+              ctx.fillStyle = `rgba(0, 255, 255, 0.3)`;
+              ctx.fillRect(Math.random() * width, 0, Math.random() * 50, height);
+            }
+          }
+        } else if (tSource === "pixelate") {
+          // Pixelate effect by scaling down and up without smoothing (simulated with standard draw)
+          if (prevVideo) drawVideoFrame(prevVideo, 1.0 - progress, prevScene?.animationStyle);
+          if (currentVideo) drawVideoFrame(currentVideo, progress, currentScene?.animationStyle);
+          // Blocky overlay
+          const blockSize = 10 + Math.sin(progress * Math.PI) * 50;
+          if (blockSize > 11) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${Math.sin(progress * Math.PI) * 0.5})`;
+            for (let y = 0; y < height; y += blockSize) {
+              for (let x = 0; x < width; x += blockSize) {
+                if ((x + y) % 2 === 0) ctx.fillRect(x, y, blockSize, blockSize);
+              }
+            }
           }
         } else {
           // Playback fallback
@@ -1152,10 +1279,10 @@ export default function VideoCanvas({
           </div>
 
           {/* Dynamic tabs */}
-          <div className="flex items-center bg-zinc-950 p-1 border border-zinc-900 rounded-xl text-xs">
+          <div className="flex items-center bg-slate-900/80 p-1 border border-slate-800 rounded-xl text-xs">
             <button
               onClick={() => setShowConfigTabs("ratio")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "ratio" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "ratio" ? "bg-cyan-600 text-white font-bold shadow" : "text-slate-500 hover:text-slate-300"}`}
             >
               {t.tab_size}
             </button>
@@ -1176,6 +1303,12 @@ export default function VideoCanvas({
               className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "motion" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_motion}
+            </button>
+            <button
+              onClick={() => setShowConfigTabs("filters")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "filters" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+            >
+              Filters
             </button>
             <button
               onClick={() => setShowConfigTabs("analyzer")}
@@ -1567,6 +1700,70 @@ export default function VideoCanvas({
                   </button>
                 </div>
               </div>
+
+              {/* Original Video Audio Controls */}
+              <div className="pt-2.5 border-t border-zinc-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] text-zinc-300 font-bold uppercase tracking-wider">
+                    🔊 {t.video_sound_title}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-4 flex-1">
+                  {/* Volume Slider */}
+                  <div className="flex items-center gap-1.5 flex-1 max-w-[200px]">
+                    <Volume2 size={13} className="text-zinc-500" />
+                    <input
+                      type="range"
+                      min="0"
+                      max="1.0"
+                      step="0.05"
+                      disabled={!projectConfig.isVideoSoundEnabled}
+                      value={projectConfig.videoVolume !== undefined ? projectConfig.videoVolume : 0.5}
+                      onChange={(e) =>
+                        onUpdateConfig({
+                          videoVolume: parseFloat(e.target.value),
+                        })
+                      }
+                      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 disabled:opacity-40"
+                    />
+                    <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                      {Math.round((projectConfig.videoVolume !== undefined ? projectConfig.videoVolume : 0.5) * 100)}%
+                    </span>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <div className="flex items-center gap-2 pl-4 border-l border-zinc-900 shrink-0">
+                    <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">
+                      PLAY AUDIO
+                    </span>
+                    <button
+                      onClick={() =>
+                        onUpdateConfig({
+                          isVideoSoundEnabled: !projectConfig.isVideoSoundEnabled,
+                        })
+                      }
+                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
+                        projectConfig.isVideoSoundEnabled
+                          ? "bg-indigo-500"
+                          : "bg-zinc-800"
+                      }`}
+                      role="switch"
+                      aria-checked={projectConfig.isVideoSoundEnabled}
+                    >
+                      <span className="sr-only">Use setting</span>
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                          projectConfig.isVideoSoundEnabled
+                            ? "translate-x-3.5"
+                            : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1637,7 +1834,7 @@ export default function VideoCanvas({
               </div>
 
               <div
-                className="grid grid-cols-3 gap-2 text-[10px] opacity-80"
+                className="grid grid-cols-3 sm:grid-cols-4 gap-2 text-[10px] opacity-80"
                 style={{
                   pointerEvents: projectConfig.isTransitionsEnabled
                     ? "auto"
@@ -1645,50 +1842,33 @@ export default function VideoCanvas({
                   opacity: projectConfig.isTransitionsEnabled ? 1 : 0.4,
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => onUpdateConfig({ transitionType: "none" })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "none" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
-                >
-                  Hard Cut
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdateConfig({ transitionType: "crossfade" })
-                  }
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "crossfade" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
-                >
-                  Crossfade
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onUpdateConfig({ transitionType: "slide" })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "slide" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
-                >
-                  Slide
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onUpdateConfig({ transitionType: "wipe" })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "wipe" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
-                >
-                  Wipe
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onUpdateConfig({ transitionType: "flicker" })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "flicker" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
-                >
-                  ⚡ Flicker
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onUpdateConfig({ transitionType: "morph" })}
-                  className={`py-1.5 border rounded-lg ${projectConfig.transitionType === "morph" ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500"}`}
-                >
-                  🧬 Morph
-                </button>
+                {(
+                  [
+                    { id: "none", label: "Hard Cut" },
+                    { id: "random", label: "🎲 Random" },
+                    { id: "crossfade", label: "Crossfade" },
+                    { id: "slide", label: "Slide" },
+                    { id: "wipe", label: "Wipe" },
+                    { id: "zoom", label: "Zoom" },
+                    { id: "spin", label: "Spin" },
+                    { id: "blur", label: "Blur" },
+                    { id: "flicker", label: "⚡ Flicker" },
+                    { id: "morph", label: "🧬 Morph" },
+                    { id: "glitch", label: "👾 Glitch" },
+                    { id: "pixelate", label: "Pixelate" },
+                  ] as const
+                ).map((tOpt) => (
+                  <button
+                    key={tOpt.id}
+                    type="button"
+                    onClick={() =>
+                      onUpdateConfig({ transitionType: tOpt.id as any })
+                    }
+                    className={`py-1.5 border rounded-lg ${projectConfig.transitionType === tOpt.id ? "bg-zinc-900 border-indigo-500 text-indigo-400 font-bold" : "border-zinc-900/60 text-zinc-500 hover:bg-zinc-800"}`}
+                  >
+                    {tOpt.label}
+                  </button>
+                ))}
               </div>
 
               {/* Animation Styles */}
@@ -1760,6 +1940,37 @@ export default function VideoCanvas({
                 <span className="text-[10px] font-mono text-indigo-400">
                   {projectConfig.transitionDuration}s
                 </span>
+              </div>
+            </div>
+          )}
+
+          {showConfigTabs === "filters" && (
+            <div className="w-full space-y-4">
+              <div className="flex items-center gap-4 px-1">
+                <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest">
+                  Video CSS Filters
+                </span>
+                <div className="h-px bg-zinc-900 flex-1"></div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {(["none", "sepia", "grayscale", "contrast", "vintage"] as const).map(
+                  (filter) => (
+                    <button
+                      key={filter}
+                      onClick={() =>
+                        onUpdateConfig({ videoFilter: filter })
+                      }
+                      className={`py-3 rounded-lg text-xs font-semibold tracking-wider transition-all uppercase border ${
+                        (projectConfig.videoFilter || "none") === filter
+                          ? "bg-indigo-500/10 border-indigo-500 text-indigo-400 ring-1 ring-indigo-500/20"
+                          : "border-zinc-900 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  )
+                )}
               </div>
             </div>
           )}
@@ -2096,7 +2307,7 @@ export default function VideoCanvas({
               }}
               src={s.videoUrl}
               loop
-              muted
+              muted={isMuted || !projectConfig.isVideoSoundEnabled}
               playsInline
               crossOrigin="anonymous"
               className="absolute pointer-events-none opacity-0 w-1 h-1"
@@ -2116,6 +2327,7 @@ export default function VideoCanvas({
               s.voiceoverUrl ||
               `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`
             }
+            muted={isMuted}
             className="hidden"
             crossOrigin="anonymous"
             onError={(e) =>
@@ -2133,10 +2345,10 @@ export default function VideoCanvas({
       </div>
 
       {/* Mechanical Playback Control Deck */}
-      <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 space-y-3.5">
+      <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
         {/* Cumulative Timeline Scroll */}
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
             <span>
               Scene {playbackIndex + 1} of {scenes.length}
             </span>
@@ -2186,7 +2398,7 @@ export default function VideoCanvas({
                 setIsPlaying(!isPlaying);
               }}
               type="button"
-              className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full transform transition-all active:scale-95 shadow-md shadow-indigo-505/20"
+              className="p-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-full transform transition-all active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.4)]"
               id="compositor-play-btn"
             >
               {isPlaying ? (

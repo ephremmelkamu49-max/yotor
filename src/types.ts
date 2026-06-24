@@ -11,7 +11,7 @@ export interface Scene {
   voiceoverUrl: string | null; // Google Translate TTS url
   originalIndex: number; // Keep track of chronological order
   animationStyle?: AnimationStyle;
-  transitionToNext?: "none" | "crossfade" | "slide" | "wipe" | "flicker";
+  transitionToNext?: "none" | "crossfade" | "slide" | "wipe" | "flicker" | "zoom" | "spin" | "blur" | "glitch" | "pixelate" | "random";
 }
 
 export type AnimationStyle =
@@ -63,7 +63,7 @@ export interface ProjectConfig {
   voiceLanguage: string; // gTTS accent / localization
   voiceType?: "male" | "female";
   subtitleStyle: SubtitleStyle;
-  transitionType: "none" | "crossfade" | "slide" | "wipe" | "flicker" | "morph";
+  transitionType: "none" | "crossfade" | "slide" | "wipe" | "flicker" | "morph" | "zoom" | "spin" | "blur" | "glitch" | "pixelate" | "random";
   transitionDuration: number;
   isVoiceEnabled: boolean;
   syncToMusicBeats?: boolean;
@@ -73,6 +73,9 @@ export interface ProjectConfig {
   isSubtitlesEnabled?: boolean;
   isMusicEnabled?: boolean;
   visualStyle?: VisualStyle;
+  isVideoSoundEnabled?: boolean;
+  videoVolume?: number;
+  videoFilter?: "none" | "sepia" | "grayscale" | "contrast" | "vintage";
 }
 
 export interface VideoClip {

@@ -388,8 +388,21 @@ export default function RenderModal({
           await waitForMediaReady(mediaEl, 2500);
 
           if (mediaEl instanceof HTMLVideoElement) {
-            mediaEl.muted = true;
+            mediaEl.muted = !projectConfig.isVideoSoundEnabled;
+            mediaEl.volume = projectConfig.videoVolume !== undefined ? projectConfig.videoVolume : 0.5;
             mediaEl.currentTime = 0; // Reset to start
+
+            // Bridge video audio to audioCtx if enabled & supported
+            if (projectConfig.isVideoSoundEnabled && audioCtx && audioDest) {
+              try {
+                const videoSrc = audioCtx.createMediaElementSource(mediaEl);
+                videoSrc.connect(audioDest);
+                videoSrc.connect(audioCtx.destination);
+              } catch (e) {
+                console.warn("Could not connect video element to AudioContext:", e);
+              }
+            }
+
             try {
               await mediaEl.play();
             } catch (pErr) {
@@ -400,7 +413,20 @@ export default function RenderModal({
           // Robust universal backup query
           const videoEl = (canvasElement?.parentElement?.parentElement?.querySelector('video') || document.querySelector('video')) as HTMLVideoElement;
           if (videoEl) {
-            videoEl.muted = true;
+            videoEl.muted = !projectConfig.isVideoSoundEnabled;
+            videoEl.volume = projectConfig.videoVolume !== undefined ? projectConfig.videoVolume : 0.5;
+
+            // Bridge backup video audio to audioCtx if enabled
+            if (projectConfig.isVideoSoundEnabled && audioCtx && audioDest) {
+              try {
+                const srcNode = audioCtx.createMediaElementSource(videoEl);
+                srcNode.connect(audioDest);
+                srcNode.connect(audioCtx.destination);
+              } catch (e) {
+                console.warn("Could not connect backup video to AudioContext:", e);
+              }
+            }
+
             videoEl.play().catch(() => {});
           }
         }
