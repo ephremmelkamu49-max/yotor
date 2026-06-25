@@ -13,6 +13,25 @@ import RenderModal from "./components/RenderModal";
 import AccessGate from "./components/AccessGate";
 import ProjectLibrary from "./components/ProjectLibrary";
 import { Language, translations } from "./translations";
+
+// --- DEBUG PATCH ---
+const originalStringify = JSON.stringify;
+JSON.stringify = function (value: any, replacer?: any, space?: string | number): string {
+  try {
+    return originalStringify(value, replacer, space);
+  } catch (err: any) {
+    if (err.message && err.message.includes('circular structure')) {
+       console.error("CIRCULAR STRINGIFY DETECTED. Value keys:", value ? Object.keys(value) : value);
+       fetch('/api/diagnose', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: originalStringify({ errorLog: "CIRCULAR CAUGHT! Keys: " + (value ? Object.keys(value).join(",") : "null") })
+       }).catch(()=>{});
+    }
+    throw err;
+  }
+};
+// -------------------
 import {
   Sparkles,
   Download,
@@ -42,7 +61,7 @@ import {
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem("app_language") as Language) || "am";
+    return (localStorage.getItem("app_language") as Language) || "en";
   });
 
   const handleLanguageChange = (lang: Language) => {
@@ -54,7 +73,7 @@ export default function App() {
 
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [script, setScript] = useState<string>(
-    "We stand on the edge of a new cosmos. Stars flicker in the endless fabric of space, calling us to explore what lies beyond. For generations, we have looked up and wondered. Now, we build the engines of discovery. We journey through deep nebulae, seeking new horizons and celestial wonders. This is the story of our infinite horizon, and the endless search for knowledge.",
+    "Here are 3 mind-blowing facts that will leave you speechless! Number one, honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old! Number two, water can boil and freeze at the same time. And number three, bananas are berries, but strawberries aren't. Follow for more crazy facts!",
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStage, setLoadingStage] = useState<string>(
@@ -86,20 +105,20 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [projectConfig, setProjectConfig] = useState<ProjectConfig>({
-    aspectRatio: "16:9",
+    aspectRatio: "9:16",
     musicTrack: DEFAULT_MUSIC[1].url, // Meditative pad default
     musicVolume: 0.12,
-    voiceLanguage: "am-yotor-epic-male",
+    voiceLanguage: "en-US-Standard-D",
     voiceType: "male",
     subtitleStyle: {
       enabled: true,
-      fontSize: 32,
+      fontSize: 48,
       color: "#FFFFFF",
-      backgroundColor: "rgba(0, 0, 0, 0.45)",
-      position: "bottom",
+      backgroundColor: "transparent",
+      position: "center",
       fontFamily: "Space Grotesk",
       uppercase: true,
-      animation: "none",
+      animation: "karaoke",
       highlightColor: "#FBBF24",
     },
     transitionType: "crossfade",
@@ -187,7 +206,22 @@ export default function App() {
         scenes,
         projectConfig
       };
-      localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft));
+      
+      const replacer = (key: string, value: any) => {
+        if (value instanceof Element || (value && typeof value === 'object' && value.current !== undefined)) {
+          return undefined;
+        }
+        if (value && typeof value === 'object' && value.toString && value.toString() === '[object HTMLAudioElement]') {
+          return undefined;
+        }
+        return value;
+      };
+
+      try {
+        localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft, replacer));
+      } catch (err) {
+        console.error("Failed to save draft:", err);
+      }
     }
   }, [script, scenes, projectConfig]);
 
@@ -725,33 +759,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center flex-wrap gap-3">
-            {/* Elegant Language Selector Toggles */}
-            <div className="flex items-center gap-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-2xl p-1.5 shadow-inner">
-              <Languages size={14} className="text-slate-500 ml-2 mr-1" />
-              <button
-                type="button"
-                onClick={() => handleLanguageChange("am")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                  language === "am"
-                    ? "bg-slate-800 text-cyan-300 shadow-md ring-1 ring-white/5"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                አማርኛ 🇪🇹
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLanguageChange("en")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                  language === "en"
-                    ? "bg-slate-800 text-cyan-300 shadow-md ring-1 ring-white/5"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                EN 🇬🇧
-              </button>
-            </div>
-
             {/* Elegant Settings Toggle Button */}
             <button
               type="button"
@@ -772,8 +779,13 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
+                const replacer = (key: string, value: any) => {
+                  if (value instanceof Element || (value && typeof value === 'object' && value.current !== undefined)) return undefined;
+                  if (value && typeof value === 'object' && value.toString && value.toString() === '[object HTMLAudioElement]') return undefined;
+                  return value;
+                };
                 const activeDraft = { script, scenes, projectConfig };
-                localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft));
+                localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft, replacer));
                 window.location.reload();
               }}
               className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-900/80 backdrop-blur-md border border-white/10 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-white/20 text-[10px] uppercase tracking-widest font-bold rounded-2xl transition-all"

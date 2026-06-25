@@ -2325,7 +2325,7 @@ export default function VideoCanvas({
             }}
             src={
               s.voiceoverUrl ||
-              `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`
+              (s.text && s.text.trim().length > 0 ? `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}` : undefined)
             }
             muted={isMuted}
             className="hidden"

@@ -136,6 +136,9 @@ export default function RenderModal({
       if (projectConfig.isVoiceEnabled) {
         addLog("Pre-calculating scene narration durations for perfect video synchronization...");
         const scenesWithExactDuration = await Promise.all(scenesToRender.map(async (scene) => {
+          if (!scene.voiceoverUrl && (!scene.text || scene.text.trim().length === 0)) {
+            return scene; // No TTS for this scene
+          }
           const ttsUrl = scene.voiceoverUrl || `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`;
           const tempAudio = new Audio(ttsUrl);
           tempAudio.crossOrigin = "anonymous";
@@ -366,18 +369,20 @@ export default function RenderModal({
         // Start TTS Audio for this scene if enabled
         let sceneTts: HTMLAudioElement | null = null;
         if (projectConfig.isVoiceEnabled && audioCtx && audioDest) {
-          const ttsUrl = scene.voiceoverUrl || `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`;
-          sceneTts = new Audio(ttsUrl);
-          sceneTts.crossOrigin = "anonymous";
-          
-          try {
-            const ttsSrc = audioCtx.createMediaElementSource(sceneTts);
-            ttsSrc.connect(audioDest);
-            ttsSrc.connect(audioCtx.destination);
-            sceneTts.play().catch(e => console.warn("Render TTS error:", e));
-          } catch (e) {
-            console.warn("Could not connect TTS to AudioContext:", e);
-            sceneTts.play().catch(e => {}); // Play anyway if context fails
+          if (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0)) {
+            const ttsUrl = scene.voiceoverUrl || `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`;
+            sceneTts = new Audio(ttsUrl);
+            sceneTts.crossOrigin = "anonymous";
+            
+            try {
+              const ttsSrc = audioCtx.createMediaElementSource(sceneTts);
+              ttsSrc.connect(audioDest);
+              ttsSrc.connect(audioCtx.destination);
+              sceneTts.play().catch(e => console.warn("Render TTS error:", e));
+            } catch (e) {
+              console.warn("Could not connect TTS to AudioContext:", e);
+              sceneTts.play().catch(e => {}); // Play anyway if context fails
+            }
           }
         }
 

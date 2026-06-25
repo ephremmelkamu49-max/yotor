@@ -260,12 +260,35 @@ app.post("/api/analyze-script", async (req, res) => {
 
     try {
       if (!ai) throw new Error("AI not configured");
-      const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: [{ role: "user", parts: [{ text: reelPrompt + " \nONLY return JSON." }] }]
+      const result = await generateContentWithFallback(ai, {
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: reelPrompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              scenes: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    text: { type: Type.STRING },
+                    keywords: { type: Type.STRING },
+                    caption: { type: Type.STRING },
+                    duration: { type: Type.NUMBER }
+                  },
+                  required: ["text", "keywords", "caption", "duration"]
+                }
+              }
+            },
+            required: ["scenes"]
+          }
+        }
       });
-      const responseText = result.text.trim();
-      const parsed = JSON.parse(responseText);
+      const responseText = result.text?.trim() || "{}";
+      const cleanedText = responseText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleanedText);
       const processed = parsed.scenes.map((s: any, idx: number) => ({
         id: `sc_reel_${idx}`,
         ...s,
@@ -273,12 +296,22 @@ app.post("/api/analyze-script", async (req, res) => {
       }));
       return res.json({ scenes: processed, info: 'AI Reel Dreamer' });
     } catch (e) {
-      const mockScenes = Array.from({ length: 5 }).map((_, i) => ({
+      console.error("Reel Dreamer AI failed:", e);
+      const sentences = script
+        .split(/(?<=[.!?።፤፧])\s+/)
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 0);
+        
+      if (sentences.length === 0) {
+        sentences.push(script);
+      }
+      
+      const mockScenes = sentences.slice(0, 5).map((sentence: string, i: number) => ({
         id: `scene_kw_${i}`,
-        text: i === 0 ? `Video topic: ${script}` : "",
-        keywords: i === 0 ? script : `${script} cinematic ${i}`,
-        caption: i === 0 ? script : "",
-        duration: 3,
+        text: sentence,
+        keywords: `${script.substring(0, 50)} cinematic ${i}`,
+        caption: sentence.substring(0, 30),
+        duration: 4,
         originalIndex: i
       }));
       return res.json({ scenes: mockScenes, info: 'Baseline Reels' });
@@ -772,6 +805,14 @@ app.get("/api/diagnose", async (req, res) => {
   res.json(diagnostics);
 });
 
+app.post("/api/diagnose", express.json(), (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  const fs = require('fs');
+  fs.writeFileSync('error_log.txt', req.body.errorLog || "No error log sent");
+  console.log("Error log written to error_log.txt");
+  res.json({ success: true });
+});
+
 // 2. TTS Proxy API - plays a google tts mp3 stream for the text
 app.get("/api/tts", async (req, res) => {
   const text = req.query.text as string;
@@ -840,9 +881,25 @@ app.get("/api/tts", async (req, res) => {
     // ---------------------------------------------------------
     // MICROSOFT EDGE TTS (Unlimited, Neural Free Voices)
     // ---------------------------------------------------------
-    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male' || lang.startsWith('am-yotor-') || lang.startsWith('am-openai-')) {
+    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male' || lang.startsWith('am-yotor-') || lang.startsWith('am-openai-') || lang.startsWith('en') || lang === 'es' || lang === 'fr') {
       try {
-        const voiceName = (lang === 'am-edge-female' || lang === 'am-yotor-warm-female' || lang === 'am-yotor-bright-female' || lang === 'am-openai-nova') ? "am-ET-MekdesNeural" : "am-ET-AmehaNeural";
+        let voiceName = "am-ET-AmehaNeural"; // Default Amharic male
+        if (lang === 'am-edge-female' || lang === 'am-yotor-warm-female' || lang === 'am-yotor-bright-female' || lang === 'am-openai-nova') {
+          voiceName = "am-ET-MekdesNeural";
+        } else if (lang === 'en-US-Standard-D') {
+          voiceName = "en-US-GuyNeural"; // Deep Male
+        } else if (lang === 'en-US-Standard-F') {
+          voiceName = "en-US-AriaNeural"; // Bright Female
+        } else if (lang === 'en-gb') {
+          voiceName = "en-GB-RyanNeural"; // British
+        } else if (lang === 'en') {
+          voiceName = "en-US-ChristopherNeural"; // Standard Neutral Male
+        } else if (lang === 'es') {
+          voiceName = "es-ES-AlvaroNeural"; // Spanish
+        } else if (lang === 'fr') {
+          voiceName = "fr-FR-HenriNeural"; // French
+        }
+        
         const tts = new EdgeTTS(safeText, voiceName);
         const result = await tts.synthesize();
         const combinedBuffer = Buffer.from(await result.audio.arrayBuffer());
@@ -952,7 +1009,9 @@ app.get("/api/tts", async (req, res) => {
     // ---------------------------------------------------------
     // GOOGLE TRANSLATE TTS (Fallback, Free Unlimited, Standard Quality)
     // ---------------------------------------------------------
-    let fallbackLang = 'am';
+    let fallbackLang = lang.includes('-') ? lang.split('-')[0] : lang;
+    if (fallbackLang.startsWith('am')) fallbackLang = 'am';
+    else if (fallbackLang.startsWith('en')) fallbackLang = 'en';
 
     // For Google TTS, we must split long text into chunks of ~200 chars to avoid "413 Request Entity Too Large"
     const chunks: string[] = [];
@@ -977,10 +1036,16 @@ app.get("/api/tts", async (req, res) => {
     const audioBuffers: Buffer[] = [];
     for (const segment of chunks) {
       const url = `https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${fallbackLang}&q=${encodeURIComponent(segment)}`;
-      const ttsRes = await fetch(url);
+      const ttsRes = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+      });
       if (ttsRes.ok) {
         const buf = await ttsRes.arrayBuffer();
         audioBuffers.push(Buffer.from(buf));
+      } else {
+        console.warn(`[TTS] Google Translate chunk failed with status ${ttsRes.status}`);
       }
     }
 

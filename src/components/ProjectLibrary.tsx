@@ -68,8 +68,8 @@ export default function ProjectLibrary({
       id: `proj_${Date.now()}`,
       name: finalName,
       script: currentScript,
-      scenes: JSON.parse(JSON.stringify(currentScenes)), // Deep copy to prevent mutations
-      projectConfig: JSON.parse(JSON.stringify(currentConfig)),
+      scenes: JSON.parse(JSON.stringify(currentScenes, (k, v) => (v instanceof Element || (v && typeof v === 'object' && v.toString && v.toString() === '[object HTMLAudioElement]')) ? undefined : v)),
+      projectConfig: JSON.parse(JSON.stringify(currentConfig, (k, v) => (v instanceof Element || (v && typeof v === 'object' && v.toString && v.toString() === '[object HTMLAudioElement]')) ? undefined : v)),
       createdAt: new Date().toISOString(),
     };
 

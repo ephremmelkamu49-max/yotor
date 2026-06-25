@@ -110,32 +110,24 @@ export const DEFAULT_MUSIC: AudioTrack[] = [
     am: "ሙዚቃ አያስፈልግም"
   },
   {
-    id: "ethio_jazz_vibe",
-    title: "Ethio-Jazz Night (Ambient)",
-    vibe: "Smooth & Cultural",
-    url: "/api/music?id=ethio_jazz_vibe",
-    category: "Long",
-    am: "የኢትዮ-ጃዝ ድባብ"
-  },
-  {
-    id: "habesha_modern_upbeat",
-    title: "Modern Habesha Pop (Trending)",
-    vibe: "Energetic & Modern",
-    url: "/api/music?id=habesha_modern_upbeat",
-    category: "Short",
-    am: "ዘመናዊ የሀበሻ ዜማ"
-  },
-  {
-    id: "lofi_addis",
-    title: "Lofi Addis (Study & Relax)",
+    id: "lofi_chill",
+    title: "Lofi Chill Beats (Facts/Stories)",
     vibe: "Relaxed & Lo-Fi",
     url: "/api/music?id=lofi_addis",
     category: "Short",
     am: "አዲስ ሎፋይ"
   },
   {
-    id: "uplifting_cinematic",
-    title: "Heroic Destiny (Cinematic)",
+    id: "epic_motivation",
+    title: "Epic Motivation (Trending)",
+    vibe: "Energetic & Modern",
+    url: "/api/music?id=habesha_modern_upbeat",
+    category: "Short",
+    am: "ዘመናዊ የሀበሻ ዜማ"
+  },
+  {
+    id: "suspense_dark",
+    title: "Dark Suspense (Creepy/Mystery)",
     vibe: "Epic & Uplifting",
     url: "/api/music?id=uplifting_cinematic",
     category: "Long",
@@ -146,42 +138,32 @@ export const DEFAULT_MUSIC: AudioTrack[] = [
 export const VIDEO_TEMPLATES = [
   { 
     id: 'trending-shorts', 
-    name: 'አጭር ወቅታዊ ዜና (Shorts)', 
-    am: 'አጭር ወቅታዊ ዜና (Shorts)', 
-    prompt: 'የዛሬው ዋነኛ ዜናችን፤ ከተማዋ በአዲሱ የቴክኖሎጂ ኤክስፖ በደስታ እየተናወጠች ነው። ባለሙያዎች ለክልሉ ትልቅ ለውጥ የሚያመጣ መሆኑን ተናግረዋል። በጣም አስገራሚ የሆኑ አዳዲስ ፈጠራዎችን ለማየት እስከ መጨረሻው ይከታተሉ።'
-  },
-  { 
-    id: 'documentary-long', 
-    name: 'ታሪካዊ ዘጋቢ ፊልም (Documentary)', 
-    am: 'ታሪካዊ ዘጋቢ ፊልም (Documentary)', 
-    prompt: 'የአክሱም ስርወ መንግስት በጥንታዊው አለም ውስጥ ካሉት እጅግ ሀያል መንግስታት አንዱ ነበር። በታላላቅ ሀውልቶቹና ዘመናዊ የንግድ መስመሮቹ የሚታወቀው ይህ ስርወ መንግስት፤ የቀደመው አፍሪካ ስልጣኔ ምስክር ሆኖ ይኖራል። የአክሱምን ሚስጥሮች ስንመረምር አብረውን ይቆዩ።'
+    name: 'Top 3 Mind-Blowing Facts', 
+    am: 'Top 3 Mind-Blowing Facts', 
+    prompt: 'Here are 3 mind-blowing facts that will leave you speechless! Number one, honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old! Number two, water can boil and freeze at the same time. And number three, bananas are berries, but strawberries aren\'t. Follow for more crazy facts!'
   },
   { 
     id: 'motivational-tiktok', 
-    name: 'አነቃቂ የህይወት ጥበብ (Motivation)', 
-    am: 'አነቃቂ የህይወት ጥበብ (Motivation)', 
-    prompt: 'ጥንካሬ ከማሸነፍ አይመጣም። መሰናክሎች ጥንካሬህን ያዳብራሉ። በችግር ውስጥ ስታልፍና ላለመሸነፍ ስትወስን ያ ጥንካሬ ነው።'
+    name: 'Morning Motivation', 
+    am: 'Morning Motivation', 
+    prompt: 'Strength doesn\'t come from winning. Your struggles develop your strengths. When you go through hardships and decide not to surrender, that is strength. Wake up every day and choose to be unstoppable.'
+  },
+  { 
+    id: 'scary-story', 
+    name: 'Creepy Story', 
+    am: 'Creepy Story', 
+    prompt: 'I was home alone when I heard a knock at the door. I looked through the peephole, but no one was there. Then, my phone buzzed with a text message from an unknown number: "I can see you through the peephole." My blood ran cold.'
   }
 ];
 
 export const GOOGLE_TTS_LANGUAGES = [
-  { code: "am-yotor-epic-male", name: "ይቶር (Yotor) - አነቃቂ የተረካ ድምፅ ወንድ (Inspiring Narrator)" },
-  { code: "am-yotor-warm-female", name: "እሌኒ (Eleni) - ማራኪ የተረካ ድምፅ (Warm Female Narrator)" },
-  { code: "am-openai-onyx", name: "ኦኒክስ (Onyx) - ጥርት ያለ የሰው ወንድ ድምፅ (Clear Human Male)" },
-  { code: "am-openai-nova", name: "ኖቫ (Nova) - ጥርት ያለ የሰው ሴት ድምፅ (Clear Human Female)" },
-  { code: "am-yotor-bright-female", name: "ሳራ (Sara) - አጫጭር ቪዲዮዎች ደስደስ የሚል ድምፅ (Bright Shorts Female)" },
-  { code: "am-yotor-rugged-male", name: "አቤል (Abel) - ለረጅም ቪዲዮዎች ጎርናና ድምፅ (Deep Rugged Male)" },
-  { code: "am-male", name: "Amharic (Ethiopia) male - መደበኛ (Google Standard)" },
   { code: "en", name: "English (US) - Neutral" },
   { code: "en-gb", name: "English (UK) - British Accent" },
-  { code: "en-in", name: "English (India) - India Accent" },
+  { code: "en-US-Standard-D", name: "English (US) - Deep Male" },
+  { code: "en-US-Standard-F", name: "English (US) - Bright Female" },
+  { code: "am-yotor-epic-male", name: "Amharic - Epic Male" },
   { code: "es", name: "Spanish - Español" },
-  { code: "fr", name: "French - Français" },
-  { code: "de", name: "German - Deutsch" },
-  { code: "it", name: "Italian - Italiano" },
-  { code: "hi", name: "Hindi - हिन्दी" },
-  { code: "ja", name: "Japanese - 日本語" },
-  { code: "pt", name: "Portuguese - Português" }
+  { code: "fr", name: "French - Français" }
 ];
 
 export const VISUAL_STYLES = [
