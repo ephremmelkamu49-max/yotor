@@ -297,18 +297,9 @@ export default function RenderModal({
         cleanupRenderSubprocesses();
 
         const baseMime = selectedMimeType ? selectedMimeType.split(';')[0] : 'video/webm';
-        let finalBlob = new Blob(recordedChunksRef.current, { type: baseMime });
+        const finalBlob = new Blob(recordedChunksRef.current, { type: baseMime });
         
         const actualDurationMs = Date.now() - actualRenderStartTime;
-        
-        if (baseMime === 'video/webm') {
-           try {
-             addLog("Fixing WebM metadata duration headers...");
-             finalBlob = await fixWebmDuration(finalBlob, actualDurationMs, { logger: false });
-           } catch (e) {
-             console.warn("Failed to fix WebM duration", e);
-           }
-        }
         
         const finalUrl = URL.createObjectURL(finalBlob);
         setRenderedBlobUrl(finalUrl);
@@ -397,10 +388,36 @@ export default function RenderModal({
               const ttsSrc = audioCtx.createMediaElementSource(sceneTts);
               ttsSrc.connect(audioDest);
               ttsSrc.connect(audioCtx.destination);
-              sceneTts.play().catch(e => console.warn("Render TTS error:", e));
             } catch (e) {
               console.warn("Could not connect TTS to AudioContext:", e);
-              sceneTts.play().catch(e => {}); // Play anyway if context fails
+            }
+
+            addLog("Synchronizing voiceover track...");
+            await new Promise((resolve) => {
+              const timeout = setTimeout(() => {
+                addLog("⚠️ Voiceover buffering timeout, proceeding with fallback duration.");
+                resolve(true);
+              }, 6000);
+
+              if (sceneTts!.readyState >= 1) {
+                clearTimeout(timeout);
+                resolve(true);
+              } else {
+                sceneTts!.onloadedmetadata = () => {
+                  clearTimeout(timeout);
+                  resolve(true);
+                };
+                sceneTts!.onerror = () => {
+                  clearTimeout(timeout);
+                  resolve(true);
+                };
+              }
+            });
+
+            try {
+              await sceneTts.play();
+            } catch (e) {
+              console.warn("Render TTS play error:", e);
             }
           }
         }
