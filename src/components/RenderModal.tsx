@@ -5,6 +5,7 @@ import { Language, translations } from '../translations';
 import { 
   Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu
 } from 'lucide-react';
+import fixWebmDuration from 'fix-webm-duration';
 
 interface RenderModalProps {
   isOpen: boolean;
@@ -240,12 +241,12 @@ export default function RenderModal({
       let extension = 'webm';
 
       const candidates = [
-        'video/mp4;codecs=h264,aac',
-        'video/mp4;codecs=h264',
-        'video/mp4',
         'video/webm;codecs=vp9,opus',
         'video/webm;codecs=vp8,opus',
-        'video/webm'
+        'video/webm',
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4;codecs=h264,aac',
+        'video/mp4'
       ];
 
       for (const candidate of candidates) {
@@ -286,28 +287,47 @@ export default function RenderModal({
         }
       };
 
-      mediaRecorder.onstop = () => {
+      let actualRenderStartTime = 0;
+
+      mediaRecorder.onstop = async () => {
         addLog("Wrapping media frames inside container...");
+        
+        // Clean up all playing media, sound streams and close AudioContext safely 
+        // after the recorder has completely finished receiving tracks and flushed all data.
+        cleanupRenderSubprocesses();
+
         const baseMime = selectedMimeType ? selectedMimeType.split(';')[0] : 'video/webm';
-        const finalBlob = new Blob(recordedChunksRef.current, { type: baseMime });
+        let finalBlob = new Blob(recordedChunksRef.current, { type: baseMime });
+        
+        const actualDurationMs = Date.now() - actualRenderStartTime;
+        
+        if (baseMime === 'video/webm') {
+           try {
+             addLog("Fixing WebM metadata duration headers...");
+             finalBlob = await fixWebmDuration(finalBlob, actualDurationMs, { logger: false });
+           } catch (e) {
+             console.warn("Failed to fix WebM duration", e);
+           }
+        }
+        
         const finalUrl = URL.createObjectURL(finalBlob);
         setRenderedBlobUrl(finalUrl);
         
         // Calculate size metadata
         const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
         setStatistics({
-          duration: totalSecondsToRender,
+          duration: Math.round(actualDurationMs / 1000),
           fileSize: `${sizeInMb} MB`,
           scenesProcessed: scenesToRender.length,
           fps: 30
         });
-
         setRenderStatus('completed');
         addLog(`Compilation SUCCESS. Final WebM binary matches ${sizeInMb} MB.`);
       };
 
       // Start recording
-      mediaRecorder.start();
+      actualRenderStartTime = Date.now();
+      mediaRecorder.start(1000);
       addLog("Master stitch recording initialized successfully.");
 
       // Helper to wait until a media element is fully ready to draw
@@ -350,7 +370,6 @@ export default function RenderModal({
         if (index >= scenesToRender.length) {
           addLog("Stitching timeline limits reached. Compiling final code...");
           mediaRecorder.stop();
-          cleanupRenderSubprocesses();
           return;
         }
 

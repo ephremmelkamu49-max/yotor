@@ -1988,7 +1988,7 @@ export default function VideoCanvas({
                   </span>
                 </div>
                 <span className="text-[9px] font-mono bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 px-2 py-0.5 rounded">
-                  gemini-3.5-flash
+                  gemini-2.5-flash
                 </span>
               </div>
 

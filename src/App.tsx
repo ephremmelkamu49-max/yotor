@@ -1073,7 +1073,25 @@ export default function App() {
                   </div>
                 </div>
 
-
+                {/* 4. PWA Installer */}
+                {deferredPrompt && (
+                  <div className="pt-5 mt-2 border-t border-zinc-900/40">
+                    <button
+                      onClick={triggerPwaInstall}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold font-mono uppercase tracking-widest transition-colors shadow-lg shadow-emerald-900/20"
+                    >
+                      <Download size={16} />
+                      {language === "am"
+                        ? "አፑን ወደ ስልክዎ ይጫኑ (Install Android App)"
+                        : "Install App to Device"}
+                    </button>
+                    <p className="text-[10px] text-zinc-500 text-center mt-2 font-sans leading-relaxed">
+                      {language === "am" 
+                         ? "ይህንን መተግበሪያ እንደ አፕሊኬሽን ስልክዎ ላይ ይጫኑት። ከጫኑት በኋላ በፍጥነት እና በሙሉ ስክሪን መጠቀም ይችላሉ።" 
+                         : "Install this app on your device for the best full-screen experience."}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Close Button Bottom Area */}
