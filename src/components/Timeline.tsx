@@ -42,7 +42,7 @@ function StockClipCard({ clip, index, onSelect, language }: StockClipCardProps) 
     >
       {/* Thumbnail Image */}
       <img
-        src={thumb}
+        src={thumb || undefined}
         alt="Pexels Frame"
         className={`w-full h-full object-cover transition-transform duration-500 pointer-events-none ${
           isHovered || isPlaying ? 'opacity-0 scale-105' : 'opacity-100'
@@ -432,7 +432,7 @@ export default function Timeline({
                   <div className="relative shrink-0 w-36 h-24 sm:w-44 sm:h-28 bg-[#030712] border border-slate-800 rounded-xl overflow-hidden group">
                     {scene.videoThumb ? (
                       <img 
-                        src={scene.videoThumb} 
+                        src={scene.videoThumb || undefined} 
                         alt="Thumbnail" 
                         className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500 opacity-90 group-hover:opacity-100"
                       />

@@ -5,6 +5,7 @@ import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/ge
 import { EdgeTTS } from "edge-tts-universal";
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import { renderVideo, RenderRequest } from "./server/ffmpegRenderer.js";
 
 dotenv.config();
 
@@ -443,7 +444,7 @@ ${isAmharic ? `Since the script contains AMHARIC (Ge'ez) text:
 - Captions must match the segment wording exactly.`}
 
 - Use verbatim original text segments. Do NOT summarize or omit ANY text. 100% of the script must be accounted for.
-- Visual keywords should describe real-world physical settings, cinematic camera actions, and lighting setups.
+- Visual keywords MUST describe ONLY the core physical subject. Do NOT include camera angles, lighting, or styles.
 ${visualStyle ? `- VISUAL STYLE DESCRIPTOR: The user prefers a "${visualStyle}" aesthetic. Ensure 'keywords' incorporate descriptors like "${styleMapping[visualStyle] || ""}" to help find or represent this style.` : ""}
 - Ensure keywords are descriptive enough for a stock video search engine (e.g. 'slow motion 3d animation of child smiling pixar style' instead of just 'animation')`;
 
@@ -453,7 +454,7 @@ ${lengthInstruction}
 
 For each scene segment, provide:
 1. 'text': The exact verbatim original script excerpt for this scene.
-2. 'keywords': A SINGLE precise stock search query of 1-3 English words focusing strictly on the literal action or subject. No adjectives or styles.
+2. 'keywords': A precise English stock search query (1-3 words) representing the specific physical subject of this scene segment. For instance, 'coffee ceremony', 'running man', 'city street'. DO NOT include adjectives or styles like cinematic, 4k, photorealistic.
 3. 'caption': Accurate subtitles matching the original text segment verbatim.
 4. 'duration': Estimated speech duration in seconds (min 4.0s).
 
@@ -1455,6 +1456,26 @@ ${scenesText.substring(0, 5000)}` }] }]
       imageUrl: "https://images.pexels.com/photos/310452/pexels-photo-310452.jpeg?auto=compress&cs=tinysrgb&w=800",
       prompt: "fallback abstract thumbnail"
     });
+  }
+});
+
+app.post("/api/render-ffmpeg", express.json({ limit: '100mb' }), async (req, res) => {
+  try {
+    const payload = req.body as RenderRequest;
+    console.log("Starting backend render job...");
+    const outPath = await renderVideo(payload);
+    console.log("Backend render complete:", outPath);
+    
+    // Send file as attachment
+    res.download(outPath, `yotor_video_${Date.now()}.mp4`, (err) => {
+      if (err) {
+        console.error("Error sending rendered file:", err);
+      }
+      // Cleanup happens eventually or could be done here, skipping for brevity
+    });
+  } catch (err: any) {
+    console.error("FFmpeg render failed:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 

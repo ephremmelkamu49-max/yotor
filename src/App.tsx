@@ -195,7 +195,9 @@ export default function App() {
         : "Welcome to Yotor Cinematic Studio. This is a voice test.";
     const url = `/api/tts?text=${encodeURIComponent(testText)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`;
     const audio = new Audio(url);
-    audio.play().catch((e) => console.error("Voice test failed:", e));
+    audio.play().catch((e) => {
+      // Ignore
+    });
   };
 
   // Autosave active draft to localStorage

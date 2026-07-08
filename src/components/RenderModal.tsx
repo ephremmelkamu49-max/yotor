@@ -239,16 +239,16 @@ export default function RenderModal({
       audioDest.stream.getAudioTracks().forEach(track => mixedStream.addTrack(track));
 
       // 4. Set target codecs dynamically with native MP4/H264/AAC compatibility fallback for iOS & mobile systems
-      let selectedMimeType = 'video/webm;codecs=vp8,opus';
-      let extension = 'webm';
+      let selectedMimeType = 'video/mp4';
+      let extension = 'mp4';
 
       const candidates = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
         'video/mp4;codecs=avc1,mp4a.40.2',
         'video/mp4;codecs=h264,aac',
-        'video/mp4'
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
       ];
 
       for (const candidate of candidates) {
@@ -256,6 +256,8 @@ export default function RenderModal({
           selectedMimeType = candidate;
           if (candidate.startsWith('video/mp4')) {
             extension = 'mp4';
+          } else if (candidate.startsWith('video/webm')) {
+            extension = 'webm';
           }
           break;
         }
@@ -434,7 +436,7 @@ export default function RenderModal({
             try {
               await sceneTts.play();
             } catch (e) {
-              console.warn("Render TTS play error:", e);
+              // Ignore play interruption during render
             }
           }
         }
@@ -467,7 +469,7 @@ export default function RenderModal({
             try {
               await mediaEl.play();
             } catch (pErr) {
-              console.warn("Failed to invoke play() on active segment video:", pErr);
+              // Ignore play interruption during render
             }
           }
         } else {
@@ -562,6 +564,109 @@ export default function RenderModal({
       setRenderStatus('failed');
       addLog(`CRITICAL COMPILE ABORTED: ${err.message}`);
       cleanupRenderSubprocesses();
+    }
+  };
+
+  const initiateCloudRender = async () => {
+    try {
+      cleanupRenderSubprocesses();
+      setRenderStatus('rendering');
+      setProgress(0);
+      setRenderLogs([]);
+      
+      addLog("🚀 [Cloud Render] Initializing remote high-fidelity compilation...");
+      addLog("Preparing and uploading scene layout metadata...");
+
+      // Prepare payload
+      let scenesToRender = renderOption === 'fast' 
+        ? scenes.slice(0, Math.min(2, scenes.length))
+        : [...scenes];
+
+      const payloadScenes = [];
+
+      for (let i = 0; i < scenesToRender.length; i++) {
+        const scene = scenesToRender[i];
+        let ttsAudioBuffer: string | undefined = undefined;
+        
+        let targetDuration = scene.duration || 4.5;
+        
+        if (projectConfig.isVoiceEnabled && (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0))) {
+          const ttsUrl = scene.voiceoverUrl || `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`;
+          addLog(`[Cloud Render] Baking TTS for Scene ${i + 1}...`);
+          try {
+            const ttsRes = await fetch(ttsUrl);
+            if (ttsRes.ok) {
+              const buffer = await ttsRes.arrayBuffer();
+              const bytes = new Uint8Array(buffer);
+              let binary = '';
+              for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              const base64Audio = btoa(binary);
+              ttsAudioBuffer = base64Audio;
+              
+              // Try to estimate duration to override
+              const tempAudio = new Audio(ttsUrl);
+              const duration = await new Promise<number>((resolve) => {
+                tempAudio.onloadedmetadata = () => resolve(tempAudio.duration + 0.15);
+                setTimeout(() => resolve(scene.duration || 4.5), 1000);
+              });
+              if (!isNaN(duration) && duration > 0 && duration !== Infinity) {
+                targetDuration = duration;
+              }
+            }
+          } catch (e) {
+            console.warn("TTS fetch failed for cloud render", e);
+          }
+        }
+        
+        if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
+          const BEAT_INTERVAL = 0.5;
+          targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
+        }
+
+        payloadScenes.push({
+          id: scene.id,
+          videoUrl: scene.videoUrl || "",
+          ttsAudioBuffer,
+          duration: targetDuration
+        });
+      }
+
+      addLog("Uploading structural manifest to remote rendering farm...");
+      setProgress(25);
+
+      const payload = {
+        scenes: payloadScenes,
+        aspectRatio: projectConfig.aspectRatio,
+        musicUrl: projectConfig.isMusicEnabled ? projectConfig.musicTrack : undefined,
+        musicVolume: projectConfig.musicVolume
+      };
+
+      const response = await fetch("/api/render-ffmpeg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Cloud render failed: ${response.statusText}`);
+      }
+
+      addLog("✅ [Cloud Render] Remote compilation complete! Downloading master file...");
+      setProgress(100);
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      setRenderedBlobUrl(url);
+      setDownloadExtension("mp4");
+      setRenderStatus('finished');
+      if (onRenderComplete) onRenderComplete();
+
+    } catch (err: any) {
+      console.error(err);
+      setRenderStatus('failed');
+      addLog(`❌ [Cloud Render] FAILED: ${err.message}`);
     }
   };
 
@@ -894,7 +999,7 @@ export default function RenderModal({
                     alert(language === 'am' ? 'እባክዎ መጀመሪያ ነጻ ኮታዎን ይሙሉ!' : 'Please refill your free quota first!');
                     return;
                   }
-                  initiateRenderAndStitching();
+                  initiateCloudRender(); // Use reliable FFmpeg Cloud Render
                 }}
                 className={`py-4 text-white font-black text-sm uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 transition-all border border-indigo-400/30 ${
                   exportQuota > 0
@@ -976,7 +1081,7 @@ export default function RenderModal({
             {/* Real-time Inline Web Video Player Preview */}
             <div className="relative overflow-hidden rounded-2xl border border-zinc-900 bg-[#040406] p-1.5">
               <video
-                src={renderedBlobUrl}
+                src={renderedBlobUrl || undefined}
                 controls
                 playsInline
                 className="w-full h-auto max-h-[190px] rounded-xl object-contain mx-auto shadow-xl"
@@ -1094,7 +1199,7 @@ export default function RenderModal({
               </button>
               <button
                 type="button"
-                onClick={initiateRenderAndStitching}
+                onClick={initiateCloudRender}
                 className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-555 text-white font-bold text-xs rounded-xl transition-all font-mono uppercase tracking-widest"
                 id="retry-baking-btn"
               >

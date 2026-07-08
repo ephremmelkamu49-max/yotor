@@ -384,14 +384,7 @@ export default function VideoCanvas({
           ? 0
           : projectConfig.musicVolume;
       if (isPlaying) {
-        music
-          .play()
-          .catch((err) =>
-            console.warn(
-              "Audio autoplay blocked or waiting user trigger:",
-              err,
-            ),
-          );
+        music.play().catch(() => {});
       } else {
         music.pause();
       }
@@ -577,12 +570,7 @@ export default function VideoCanvas({
                 );
               })
               .catch((err) => {
-                console.error(
-                  `[TTS] Playback failed for scene ${currentScene.id}:`,
-                  err,
-                );
-                if (err.name !== "AbortError")
-                  console.warn("TTS Playback blocked:", err);
+                // Ignore play interruptions as they are expected during rapid scene scrubbing
               });
           }
         }, 50);
@@ -2361,11 +2349,14 @@ export default function VideoCanvas({
         </div>
 
         {/* Hidden active videos/images for crossfade rendering */}
-        {scenes.map((s) => {
+        {scenes.map((s, idx) => {
+          const isNear = Math.abs(idx - playbackIndex) <= 2;
           const isImage =
             s.videoUrl &&
             (s.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) ||
               s.videoUrl.includes("pollinations.ai"));
+              
+          const srcProps = isNear && s.videoUrl ? { src: s.videoUrl } : {};
 
           if (isImage) {
             return (
@@ -2375,7 +2366,7 @@ export default function VideoCanvas({
                 ref={(el) => {
                   videoRefs.current[s.id] = el as any;
                 }}
-                src={s.videoUrl}
+                {...srcProps}
                 crossOrigin="anonymous"
                 className="absolute pointer-events-none opacity-0 w-1 h-1"
                 alt="scene frame"
@@ -2390,31 +2381,33 @@ export default function VideoCanvas({
               ref={(el) => {
                 videoRefs.current[s.id] = el;
               }}
-              src={s.videoUrl}
+              {...srcProps}
               loop
               muted={isMuted || !projectConfig.isVideoSoundEnabled}
               playsInline
               crossOrigin="anonymous"
               className="absolute pointer-events-none opacity-0 w-1 h-1"
-              preload="auto"
+              preload={isNear ? "auto" : "none"}
             />
           );
         })}
 
         {/* Hidden active audio for Preloading TTS Voiceovers */}
-        {scenes.map((s) => (
+        {scenes.map((s, idx) => {
+          const isNear = Math.abs(idx - playbackIndex) <= 2;
+          const audioUrl = s.voiceoverUrl || (s.text && s.text.trim().length > 0 ? `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}` : "");
+          const audioSrcProps = isNear && audioUrl ? { src: audioUrl } : {};
+          return (
           <audio
             key={`audio_${s.id}`}
             ref={(el) => {
               if (el) audioRefs.current[s.id] = el;
             }}
-            src={
-              s.voiceoverUrl ||
-              (s.text && s.text.trim().length > 0 ? `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}` : undefined)
-            }
+            {...audioSrcProps}
             muted={isMuted}
             className="hidden"
             crossOrigin="anonymous"
+            preload={isNear ? "auto" : "none"}
             onError={(e) =>
               console.error(`[TTS] Error loading audio for scene ${s.id}:`, e)
             }
@@ -2426,7 +2419,7 @@ export default function VideoCanvas({
               }
             }}
           />
-        ))}
+        )})}
       </div>
 
       {/* Mechanical Playback Control Deck */}

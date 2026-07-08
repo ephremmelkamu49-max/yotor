@@ -240,13 +240,13 @@ export default function ProjectLibrary({
                       {firstSceneThumb ? (
                         isFirstThumbImage ? (
                           <img
-                            src={firstSceneThumb}
+                            src={firstSceneThumb || undefined}
                             alt={project.name}
                             className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
                           />
                         ) : (
                           <video
-                            src={firstSceneThumb}
+                            src={firstSceneThumb || undefined}
                             className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
                           />
                         )
