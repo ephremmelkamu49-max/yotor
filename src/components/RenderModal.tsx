@@ -16,6 +16,7 @@ interface RenderModalProps {
   onRenderFrameChange?: (index: number, time?: number) => void;
   language: Language;
   onRestoreProject?: (scenes: Scene[], config: ProjectConfig) => void;
+  onRenderComplete?: () => void;
 }
 
 export default function RenderModal({
@@ -26,7 +27,8 @@ export default function RenderModal({
   canvasElement,
   onRenderFrameChange,
   language,
-  onRestoreProject
+  onRestoreProject,
+  onRenderComplete
 }: RenderModalProps) {
   const t = translations[language];
   const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'completed' | 'failed'>('idle');
@@ -650,7 +652,14 @@ export default function RenderModal({
       });
 
       if (!response.ok) {
-        throw new Error(`Cloud render failed: ${response.statusText}`);
+        let errMsg = response.statusText;
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) {
+            errMsg = errData.error;
+          }
+        } catch (_) {}
+        throw new Error(errMsg || `Cloud render failed: status ${response.status}`);
       }
 
       addLog("✅ [Cloud Render] Remote compilation complete! Downloading master file...");
@@ -660,7 +669,17 @@ export default function RenderModal({
       const url = URL.createObjectURL(blob);
       setRenderedBlobUrl(url);
       setDownloadExtension("mp4");
-      setRenderStatus('finished');
+      
+      const sizeInMb = (blob.size / (1024 * 1024)).toFixed(2);
+      const totalDur = scenesToRender.reduce((s, sc) => s + sc.duration, 0);
+      setStatistics({
+        duration: Math.round(totalDur),
+        fileSize: `${sizeInMb} MB`,
+        scenesProcessed: scenesToRender.length,
+        fps: 30
+      });
+
+      setRenderStatus('completed');
       if (onRenderComplete) onRenderComplete();
 
     } catch (err: any) {

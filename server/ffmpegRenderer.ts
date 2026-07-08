@@ -31,11 +31,20 @@ async function downloadFile(url: string, dest: string) {
     }
   }
 
+  // Rewrite Pexels image subdomain to video subdomain for backend download stability
+  if (url.includes("images.pexels.com/video-files/")) {
+    url = url.replace("images.pexels.com/video-files/", "videos.pexels.com/video-files/");
+  }
+
   // Handle http and relative local URLs
   if (url.startsWith("http") || url.startsWith("/")) {
     const fetchUrl = url.startsWith("/") ? `http://127.0.0.1:3000${url}` : url;
-    const response = await fetch(fetchUrl);
-    if (!response.ok) throw new Error(`Failed to download ${fetchUrl}`);
+    const response = await fetch(fetchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+      }
+    });
+    if (!response.ok) throw new Error(`Failed to download ${fetchUrl} (status: ${response.status})`);
     const buffer = await response.arrayBuffer();
     await fs.writeFile(dest, Buffer.from(buffer));
     return;
@@ -91,17 +100,11 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       
       if (hasAudio) {
         cmd += `-i "${audioPath}" `;
-      }
-      
-      cmd += `-t ${scene.duration} -vf "${scaleFilter}" `;
-      
-      if (hasAudio) {
-        // Map video from input 0, audio from input 1
-        cmd += `-map 0:v:0 -map 1:a:0 -c:v libx264 -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
       } else {
-        // Generate silent audio so concat works smoothly
-        cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -map 0:v:0 -map 1:a:0 -c:v libx264 -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
+        cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
+      
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
       
       console.log("Running:", cmd);
       await execAsync(cmd);
