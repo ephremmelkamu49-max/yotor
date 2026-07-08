@@ -125,7 +125,6 @@ export const translations = {
     inactive: "ንቁ አይደለም",
     engine_veo: "ቪኦ 3.1 ቪዲዮ ሞተር",
     engine_tts: "የኢትዮጵያ ፕሪሚየም የተራኪ ድምፅ",
-    engine_openai: "ዳይሬክተር (GPT-4o)",
     engine_gemini: "ዳይሬክተር (Gemini 3.1)",
     
     // Additional Placeholders
@@ -134,7 +133,6 @@ export const translations = {
     placeholder_api: "ኤፒአይ ቁልፍ (API Key) እዚህ ያስገቡ",
     
     // Analysis info
-    info_director_openai: "ከፍተኛ ዳይሬክተር (GPT-4o)",
     info_director_gemini: "ረዳት ዳይሬክተር (Gemini 3.1)",
     info_reel_ai: "አይ ሪል ፈጣሪ (AI Reel Dreamer)",
     playing: "በማሳየት ላይ (PLAYING)",
@@ -327,7 +325,6 @@ export const translations = {
     inactive: "INACTIVE",
     engine_veo: "AI Video Engine (Veo 3.1)",
     engine_tts: "Premium Amharic Narrator",
-    engine_openai: "Director (GPT-4o)",
     engine_gemini: "Director (Gemini 3.1)",
 
     // Placeholders
@@ -336,7 +333,6 @@ export const translations = {
     placeholder_api: "Enter API Key here",
 
     // Analysis info
-    info_director_openai: "Precision Director (GPT-4o)",
     info_director_gemini: "Localized Director (Gemini 3.1)",
     info_reel_ai: "AI Reel Dreamer",
     playing: "PLAYING",

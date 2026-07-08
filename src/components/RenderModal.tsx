@@ -17,6 +17,7 @@ interface RenderModalProps {
   language: Language;
   onRestoreProject?: (scenes: Scene[], config: ProjectConfig) => void;
   onRenderComplete?: () => void;
+  voiceoverPeaks?: { [sceneId: string]: { url: string; peak: number } };
 }
 
 export default function RenderModal({
@@ -28,7 +29,8 @@ export default function RenderModal({
   onRenderFrameChange,
   language,
   onRestoreProject,
-  onRenderComplete
+  onRenderComplete,
+  voiceoverPeaks
 }: RenderModalProps) {
   const t = translations[language];
   const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'completed' | 'failed'>('idle');
@@ -405,6 +407,15 @@ export default function RenderModal({
             sceneTts = new Audio(ttsUrl);
             sceneTts.crossOrigin = "anonymous";
             
+            let targetVolume = 1.0;
+            if (projectConfig.autoLevelVoiceover && voiceoverPeaks) {
+              const peakData = voiceoverPeaks[scene.id];
+              if (peakData && peakData.peak > 0) {
+                targetVolume = Math.min(1.0, 0.85 / peakData.peak);
+              }
+            }
+            sceneTts.volume = targetVolume;
+            
             try {
               const ttsSrc = audioCtx.createMediaElementSource(sceneTts);
               ttsSrc.connect(audioDest);
@@ -627,11 +638,22 @@ export default function RenderModal({
           targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
         }
 
+        let sceneMusicVolume = projectConfig.musicVolume;
+        if (scene.musicVolume !== undefined && scene.musicVolume !== null) {
+          sceneMusicVolume = scene.musicVolume;
+        } else if (projectConfig.autoDuckNarration) {
+          const hasNarration = projectConfig.isVoiceEnabled && (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0));
+          if (hasNarration) {
+            sceneMusicVolume = Math.min(0.03, projectConfig.musicVolume * 0.25);
+          }
+        }
+
         payloadScenes.push({
           id: scene.id,
           videoUrl: scene.videoUrl || "",
           ttsAudioBuffer,
-          duration: targetDuration
+          duration: targetDuration,
+          musicVolume: sceneMusicVolume
         });
       }
 

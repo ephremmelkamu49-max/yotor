@@ -57,6 +57,8 @@ import {
   Settings,
   RefreshCw,
   Trash2,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 
 export default function App() {
@@ -71,7 +73,71 @@ export default function App() {
 
   const t = translations[language];
 
-  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [scenes, setScenesState] = useState<Scene[]>([]);
+  const [undoStack, setUndoStack] = useState<Scene[][]>([]);
+  const [redoStack, setRedoStack] = useState<Scene[][]>([]);
+
+  const setScenes = useCallback((newScenesOrFn: Scene[] | ((prev: Scene[]) => Scene[])) => {
+    setScenesState((prev) => {
+      const next = typeof newScenesOrFn === "function" ? newScenesOrFn(prev) : newScenesOrFn;
+      if (JSON.stringify(prev) !== JSON.stringify(next)) {
+        if (prev && prev.length > 0) {
+          setUndoStack((prevUndo) => {
+            const limited = prevUndo.length >= 50 ? prevUndo.slice(1) : prevUndo;
+            return [...limited, prev];
+          });
+          setRedoStack([]);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [...prev, scenes]);
+    setScenesState(previous);
+  }, [undoStack, scenes]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [...prev, scenes]);
+    setScenesState(next);
+  }, [redoStack, scenes]);
+
+  const [voiceoverPeaks, setVoiceoverPeaks] = useState<{ [sceneId: string]: { url: string; peak: number } }>({});
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+      if (modifier && e.key.toLowerCase() === "z") {
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleRedo();
+        } else {
+          e.preventDefault();
+          handleUndo();
+        }
+      } else if (modifier && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleUndo, handleRedo]);
+
   const [script, setScript] = useState<string>(
     "Here are 3 mind-blowing facts that will leave you speechless! Number one, honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old! Number two, water can boil and freeze at the same time. And number three, bananas are berries, but strawberries aren't. Follow for more crazy facts!",
   );
@@ -133,6 +199,16 @@ export default function App() {
     isVideoSoundEnabled: true,
     videoVolume: 0.5,
     videoFilter: "none",
+    autoDuckNarration: true,
+    autoAlignVoiceover: true,
+    autoLevelVoiceover: true,
+    watermarkEnabled: false,
+    watermarkType: "text",
+    watermarkText: "© BRAND OVERLAY",
+    watermarkLogoUrl: "",
+    watermarkPosition: "bottom-right",
+    watermarkOpacity: 0.6,
+    watermarkSize: 14,
   });
 
   // Load spectacular cosmic startup template
@@ -173,7 +249,7 @@ export default function App() {
       setScenes((prev) =>
         prev.map((s) => ({
           ...s,
-          voiceoverUrl: `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`,
+          voiceoverUrl: `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}`,
         })),
       );
     }
@@ -193,7 +269,7 @@ export default function App() {
       language === "am"
         ? "እንኳን ወደ ይቶር ሲኒማቲክ ስቱዲዮ በሰላም መጡ። ይህ የድምፅ መሞከሪያ ነው።"
         : "Welcome to Yotor Cinematic Studio. This is a voice test.";
-    const url = `/api/tts?text=${encodeURIComponent(testText)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`;
+    const url = `/api/tts?text=${encodeURIComponent(testText)}&lang=${projectConfig.voiceLanguage}`;
     const audio = new Audio(url);
     audio.play().catch((e) => {
       // Ignore
@@ -302,7 +378,6 @@ export default function App() {
     providedPexelsKey: string,
     providedPixabayKey: string,
     providedCoverrKey: string,
-    providedOpenaiKey: string,
     videoMode: "stock" | "veo" | "pollinations" = "stock",
     inputMode: "script" | "keywords" = "script",
   ) => {
@@ -322,7 +397,6 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-openai-key": providedOpenaiKey,
         },
         body: JSON.stringify({
           script: scriptText,
@@ -332,10 +406,6 @@ export default function App() {
       });
 
       const data = await response.json();
-
-      if (data.openaiError) {
-        console.warn("OpenAI API fallback triggered:", data.openaiError);
-      }
 
       if (data.info) {
         setLoadingStage(`${data.info}: ${t.stage_segmenting}`);
@@ -523,7 +593,7 @@ export default function App() {
               videoThumb,
               videoAuthor: author,
               videoAuthorUrl: "#",
-              voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`,
+              voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
               originalIndex: i,
               transitionToNext: "random" as any,
             };
@@ -591,7 +661,7 @@ export default function App() {
                 videoThumb: "", // Veo doesn't give thumb easily
                 videoAuthor: "Veo 3.1 AI",
                 videoAuthorUrl: "#",
-                voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`,
+                voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
                 originalIndex: i,
                 transitionToNext: "random" as any,
               };
@@ -608,7 +678,7 @@ export default function App() {
                 videoThumb: fallbackVid.thumbnail,
                 videoAuthor: fallbackVid.author,
                 videoAuthorUrl: "#",
-                voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}`,
+                voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
                 originalIndex: i,
                 transitionToNext: "random" as any,
               };
@@ -789,6 +859,38 @@ export default function App() {
           </div>
 
           <div className="flex items-center flex-wrap gap-3">
+            {/* Visual Undo Button */}
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl border transition-all text-[10px] uppercase tracking-wider font-bold ${
+                undoStack.length > 0
+                  ? "bg-slate-900/80 backdrop-blur-md border-white/10 text-slate-200 hover:bg-slate-800 hover:text-white hover:border-white/20 active:scale-[0.98]"
+                  : "bg-slate-950/40 border-white/5 text-slate-600 cursor-not-allowed opacity-50"
+              }`}
+              title={language === "am" ? "ድርጊት መልስ (Ctrl+Z)" : "Undo Last Action (Ctrl+Z)"}
+            >
+              <Undo2 size={13} className={undoStack.length > 0 ? "text-indigo-400" : "text-slate-600"} />
+              <span className="hidden xl:inline">{language === "am" ? "መልስ" : "Undo"}</span>
+            </button>
+
+            {/* Visual Redo Button */}
+            <button
+              type="button"
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl border transition-all text-[10px] uppercase tracking-wider font-bold ${
+                redoStack.length > 0
+                  ? "bg-slate-900/80 backdrop-blur-md border-white/10 text-slate-200 hover:bg-slate-800 hover:text-white hover:border-white/20 active:scale-[0.98]"
+                  : "bg-slate-950/40 border-white/5 text-slate-600 cursor-not-allowed opacity-50"
+              }`}
+              title={language === "am" ? "የተመለሰውን መልስ (Ctrl+Y)" : "Redo Action (Ctrl+Y)"}
+            >
+              <Redo2 size={13} className={redoStack.length > 0 ? "text-indigo-400" : "text-slate-600"} />
+              <span className="hidden xl:inline">{language === "am" ? "ድገም" : "Redo"}</span>
+            </button>
+
             {/* Elegant Settings Toggle Button */}
             <button
               type="button"
@@ -877,6 +979,9 @@ export default function App() {
               pexelsKey={pexelsKey}
               language={language}
               visualStyle={projectConfig.visualStyle}
+              projectConfig={projectConfig}
+              onUpdateConfig={handleUpdateConfig}
+              voiceoverPeaks={voiceoverPeaks}
             />
           </div>
 
@@ -898,6 +1003,8 @@ export default function App() {
                 canvasRef={canvasRef}
                 renderTime={renderTime}
                 language={language}
+                voiceoverPeaks={voiceoverPeaks}
+                setVoiceoverPeaks={setVoiceoverPeaks}
               />
             </div>
           </div>
@@ -918,6 +1025,7 @@ export default function App() {
             setRenderTime(time);
           }}
           language={language}
+          voiceoverPeaks={voiceoverPeaks}
           onRestoreProject={(restoredScenes, restoredConfig) => {
             setScenes(restoredScenes);
             setProjectConfig(restoredConfig);
@@ -1105,6 +1213,193 @@ export default function App() {
                       English 🇬🇧
                     </button>
                   </div>
+                </div>
+
+                {/* 3.5. Watermark Overlay Configuration */}
+                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                        {language === "am"
+                          ? "ዋተርማርክ / አርማ (Watermark & Logo)"
+                          : "Watermark & Logo Overlay"}
+                      </label>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                        {language === "am"
+                          ? "በቪዲዮው ላይ የራስዎን ጽሑፍ ወይም አርማ ማከል ይችላሉ።"
+                          : "Overlay a custom text or brand logo onto the video canvas."}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() =>
+                        handleUpdateConfig({
+                          watermarkEnabled: !projectConfig.watermarkEnabled,
+                        })
+                      }
+                      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
+                        projectConfig.watermarkEnabled
+                          ? "bg-indigo-600"
+                          : "bg-zinc-800"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none absolute left-0 inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+                          projectConfig.watermarkEnabled
+                            ? "translate-x-[22px]"
+                            : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {projectConfig.watermarkEnabled && (
+                    <div className="space-y-4 pt-1 animate-fadeIn">
+                      {/* Watermark Type Selection */}
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider block">
+                          {language === "am" ? "የዋተርማርክ ዓይነት" : "Watermark Type"}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateConfig({ watermarkType: "text" })}
+                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border transition-all ${
+                              projectConfig.watermarkType === "text"
+                                ? "bg-indigo-600/10 border-indigo-500/50 text-indigo-400"
+                                : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:border-zinc-800"
+                            }`}
+                          >
+                            {language === "am" ? "ጽሑፍ (Text)" : "Text Label"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateConfig({ watermarkType: "logo" })}
+                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border transition-all ${
+                              projectConfig.watermarkType === "logo"
+                                ? "bg-indigo-600/10 border-indigo-500/50 text-indigo-400"
+                                : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:border-zinc-800"
+                            }`}
+                          >
+                            {language === "am" ? "አርማ ምስል" : "Logo Image"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Dynamic content depending on type */}
+                      {projectConfig.watermarkType === "text" ? (
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider block">
+                            {language === "am" ? "የዋተርማርክ ጽሑፍ" : "Watermark Text"}
+                          </span>
+                          <input
+                            type="text"
+                            value={projectConfig.watermarkText || ""}
+                            onChange={(e) => handleUpdateConfig({ watermarkText: e.target.value })}
+                            placeholder="e.g. @my_channel"
+                            className="w-full bg-zinc-950 border border-zinc-900 text-zinc-300 text-xs rounded-xl px-3 py-2 outline-none hover:border-zinc-800 transition-all font-sans"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider block">
+                            {language === "am" ? "አርማ (ምስል ፋይል) ይጫኑ" : "Upload Logo Image"}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            {projectConfig.watermarkLogoUrl ? (
+                              <div className="w-12 h-12 rounded-xl border border-zinc-800 bg-zinc-950/40 p-1 flex items-center justify-center overflow-hidden shrink-0">
+                                <img
+                                  src={projectConfig.watermarkLogoUrl}
+                                  alt="Logo Watermark"
+                                  className="max-w-full max-h-full object-contain"
+                                  referrerPolicy="no-referrer"
+                                />
+                              </div>
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl border border-dashed border-zinc-800 flex items-center justify-center text-zinc-600 text-[10px] font-mono shrink-0">
+                                Empty
+                              </div>
+                            )}
+                            <label className="flex-1 flex flex-col items-center justify-center border border-dashed border-zinc-800 hover:border-zinc-700 bg-zinc-950 hover:bg-zinc-900/60 transition-all rounded-xl py-3 px-4 cursor-pointer text-center">
+                              <span className="text-[10px] font-bold text-indigo-400">
+                                {language === "am" ? "ምስል ለመምረጥ እዚህ ይጫኑ" : "Choose / Drag Logo File"}
+                              </span>
+                              <span className="text-[8px] text-zinc-500 mt-0.5">PNG, JPG or SVG</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                      handleUpdateConfig({
+                                        watermarkLogoUrl: reader.result as string,
+                                      });
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Watermark Position Selection */}
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider block">
+                          {language === "am" ? "የአቀማመጥ ምርጫ" : "Position On Screen"}
+                        </span>
+                        <select
+                          value={projectConfig.watermarkPosition || "bottom-right"}
+                          onChange={(e) => handleUpdateConfig({ watermarkPosition: e.target.value as any })}
+                          className="w-full bg-zinc-950 border border-zinc-900 text-zinc-300 text-xs rounded-xl px-3 py-2 outline-none cursor-pointer hover:border-zinc-800 transition-all font-sans"
+                        >
+                          <option value="top-left">{language === "am" ? "ላይኛ ግራ (Top Left)" : "Top Left"}</option>
+                          <option value="top-right">{language === "am" ? "ላይኛ ቀኝ (Top Right)" : "Top Right"}</option>
+                          <option value="bottom-left">{language === "am" ? "ታችኛ ግራ (Bottom Left)" : "Bottom Left"}</option>
+                          <option value="bottom-right">{language === "am" ? "ታችኛ ቀኝ (Bottom Right)" : "Bottom Right"}</option>
+                          <option value="center">{language === "am" ? "መሃል ላይ (Center)" : "Center"}</option>
+                        </select>
+                      </div>
+
+                      {/* Sliders for Opacity and Size */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center text-[10px] font-mono">
+                            <span className="text-zinc-500">{language === "am" ? "ግልፅነት (Opacity)" : "Opacity"}</span>
+                            <span className="text-indigo-400 font-bold">{Math.round((projectConfig.watermarkOpacity ?? 0.6) * 100)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="1.0"
+                            step="0.05"
+                            value={projectConfig.watermarkOpacity ?? 0.6}
+                            onChange={(e) => handleUpdateConfig({ watermarkOpacity: parseFloat(e.target.value) })}
+                            className="w-full h-1 bg-zinc-800 rounded appearance-none accent-indigo-500 cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center text-[10px] font-mono">
+                            <span className="text-zinc-500">{language === "am" ? "መጠን (Scale)" : "Scale / Size"}</span>
+                            <span className="text-indigo-400 font-bold">{projectConfig.watermarkSize ?? 14}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="8"
+                            max="36"
+                            step="1"
+                            value={projectConfig.watermarkSize ?? 14}
+                            onChange={(e) => handleUpdateConfig({ watermarkSize: parseInt(e.target.value) })}
+                            className="w-full h-1 bg-zinc-800 rounded appearance-none accent-indigo-500 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 4. PWA Installer */}

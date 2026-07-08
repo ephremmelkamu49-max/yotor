@@ -23,7 +23,6 @@ interface ScriptInputProps {
     pexelsKey: string,
     pixabayKey: string,
     coverrKey: string,
-    openaiKey: string,
     videoMode: "stock" | "veo" | "pollinations",
     inputMode: "script" | "keywords",
   ) => Promise<void>;
@@ -55,9 +54,6 @@ export default function ScriptInput({
   const [coverrKey, setCoverrKey] = useState<string>(
     () => localStorage.getItem("coverr_api_key") || "",
   );
-  const [openaiKey, setOpenaiKey] = useState<string>(
-    () => localStorage.getItem("openai_api_key") || "",
-  );
   const [videoMode, setVideoMode] = useState<"stock" | "veo" | "pollinations">(
     "stock",
   );
@@ -66,7 +62,6 @@ export default function ScriptInput({
   const [showKey, setShowKey] = useState(false);
   const [showPixabayKey, setShowPixabayKey] = useState(false);
   const [showCoverrKey, setShowCoverrKey] = useState(false);
-  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
   const [loadingDiagnostic, setLoadingDiagnostic] = useState(false);
@@ -107,15 +102,12 @@ export default function ScriptInput({
     else localStorage.removeItem("pixabay_api_key");
     if (coverrKey) localStorage.setItem("coverr_api_key", coverrKey);
     else localStorage.removeItem("coverr_api_key");
-    if (openaiKey) localStorage.setItem("openai_api_key", openaiKey);
-    else localStorage.removeItem("openai_api_key");
 
     onAnalyze(
       script,
       pexelsKey,
       pixabayKey,
       coverrKey,
-      openaiKey,
       videoMode,
       inputMode,
     );
@@ -239,38 +231,6 @@ export default function ScriptInput({
                   {showCoverrKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-            </div>
-
-            <div>
-              <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400 mb-1.5 mt-3">
-                <Bot size={13} className="text-indigo-400" />
-                ChatGPT Pro (OpenAI Key){" "}
-                <span className="text-zinc-650 font-normal lowercase">
-                  (For GPT-4o Power)
-                </span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showOpenaiKey ? "text" : "password"}
-                  value={openaiKey}
-                  onChange={(e) => setOpenaiKey(e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
-                  id="openai-key"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-                >
-                  {showOpenaiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <p className="text-[9px] text-zinc-500 mt-1.5 leading-tight">
-                * OpenAI API keys have strict limits. Once exhausted,
-                voice/director falls back to free engines. You must add paid
-                credits at platform.openai.com for continuous OpenAI use.
-              </p>
             </div>
 
             <div className="pt-3.5 border-t border-zinc-900 space-y-2">

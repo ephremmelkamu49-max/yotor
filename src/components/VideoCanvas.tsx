@@ -33,6 +33,31 @@ interface VideoCanvasProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   renderTime?: number;
   language: Language;
+  voiceoverPeaks?: { [sceneId: string]: { url: string; peak: number } };
+  setVoiceoverPeaks?: React.Dispatch<React.SetStateAction<{ [sceneId: string]: { url: string; peak: number } }>>;
+}
+
+async function analyzeAudioPeak(url: string): Promise<number> {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return 1.0;
+    const ctx = new AudioContext();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+    const buf = await res.arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(buf);
+    const channel = audioBuf.getChannelData(0);
+    let max = 0;
+    for (let i = 0; i < channel.length; i++) {
+      const val = Math.abs(channel[i]);
+      if (val > max) max = val;
+    }
+    await ctx.close();
+    return max || 1.0;
+  } catch (e) {
+    console.error("[Peak Detection] Error analyzing audio peak:", e);
+    return 1.0;
+  }
 }
 
 export default function VideoCanvas({
@@ -50,6 +75,8 @@ export default function VideoCanvas({
   canvasRef,
   renderTime,
   language,
+  voiceoverPeaks,
+  setVoiceoverPeaks,
 }: VideoCanvasProps) {
   const t = translations[language];
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
@@ -58,6 +85,8 @@ export default function VideoCanvas({
   const musicAudioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const progressTimerRef = useRef<any>(null);
+  const logoImageRef = useRef<HTMLImageElement | null>(null);
+  const prevLogoUrlRef = useRef<string>("");
 
   const [currentSceneTime, setCurrentSceneTime] = useState<number>(0);
   const currentSceneTimeRef = useRef<number>(0);
@@ -368,6 +397,33 @@ export default function VideoCanvas({
     projectConfig.isVideoSoundEnabled,
     projectConfig.videoVolume,
   ]);
+  
+  // Helper to compute the volume of background music depending on active scene overrides and auto-ducking
+  const getMusicVolumeForScene = (index: number) => {
+    if (isMuted || !projectConfig.isMusicEnabled) {
+      return 0;
+    }
+    const scene = scenes[index];
+    if (!scene) {
+      return projectConfig.musicVolume;
+    }
+
+    // 1. Explicit per-scene music volume override keyframe
+    if (scene.musicVolume !== undefined && scene.musicVolume !== null) {
+      return scene.musicVolume;
+    }
+
+    // 2. Auto-ducking when narration is present
+    if (projectConfig.autoDuckNarration) {
+      const hasNarration = projectConfig.isVoiceEnabled && (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0));
+      if (hasNarration) {
+        // Duck to a low volume level (e.g. 0.03, max 25% of global music volume)
+        return Math.min(0.03, projectConfig.musicVolume * 0.25);
+      }
+    }
+
+    return projectConfig.musicVolume;
+  };
 
   // Initialize and keep background music sync
   useEffect(() => {
@@ -376,13 +432,10 @@ export default function VideoCanvas({
     }
     const music = musicAudioRef.current;
 
-    if (projectConfig.musicTrack && projectConfig.isMusicEnabled !== false) {
+    if (projectConfig.musicTrack && projectConfig.isMusicEnabled) {
       music.src = projectConfig.musicTrack;
       music.loop = true;
-      music.volume =
-        isMuted || !projectConfig.isMusicEnabled
-          ? 0
-          : projectConfig.musicVolume;
+      music.volume = getMusicVolumeForScene(playbackIndex);
       if (isPlaying) {
         music.play().catch(() => {});
       } else {
@@ -401,9 +454,17 @@ export default function VideoCanvas({
   // Sync background music volume
   useEffect(() => {
     if (musicAudioRef.current) {
-      musicAudioRef.current.volume = isMuted ? 0 : projectConfig.musicVolume;
+      musicAudioRef.current.volume = getMusicVolumeForScene(playbackIndex);
     }
-  }, [projectConfig.musicVolume, isMuted]);
+  }, [
+    playbackIndex,
+    scenes,
+    projectConfig.musicVolume,
+    projectConfig.autoDuckNarration,
+    projectConfig.isVoiceEnabled,
+    isMuted,
+    projectConfig.isMusicEnabled
+  ]);
 
   // Synchronize muted / volume of all scene videos according to projectConfig
   useEffect(() => {
@@ -556,6 +617,16 @@ export default function VideoCanvas({
           `[TTS] Attempting playback for scene ${currentScene.id}, src: ${audio.src}`,
         );
         audio.currentTime = currentSceneTimeRef.current;
+        
+        let targetVolume = 1.0;
+        if (projectConfig.autoLevelVoiceover && voiceoverPeaks) {
+          const peakData = voiceoverPeaks[currentScene.id];
+          if (peakData && peakData.peak > 0) {
+            targetVolume = Math.min(1.0, 0.85 / peakData.peak);
+          }
+        }
+        audio.volume = isMuted ? 0 : targetVolume;
+
         // Pause before play to reset state, avoiding "interrupted by pause" errors
         audio.pause();
 
@@ -877,8 +948,9 @@ export default function VideoCanvas({
       const pIndex = playbackIndexRef.current;
       const prevSceneForTransition = pIndex > 0 ? scenes[pIndex - 1] : null;
 
-      let tSource = prevSceneForTransition?.transitionToNext && prevSceneForTransition.transitionToNext !== "none" 
-        ? prevSceneForTransition.transitionToNext 
+      const sceneTransition = prevSceneForTransition?.transitionToNext || prevSceneForTransition?.transitionType;
+      let tSource = sceneTransition && sceneTransition !== "none" 
+        ? sceneTransition 
         : (projectConfig.transitionType || "crossfade");
 
       const transitionDuration = projectConfig.transitionDuration || 0.5;
@@ -1289,6 +1361,97 @@ export default function VideoCanvas({
         });
       }
 
+      // 3.5. Draw Watermark / Branding Overlay
+      if (projectConfig.watermarkEnabled) {
+        ctx.save();
+        ctx.globalAlpha = projectConfig.watermarkOpacity !== undefined ? projectConfig.watermarkOpacity : 0.6;
+
+        const padding = 24 * (width / 1280); // scaled padding
+        const size = projectConfig.watermarkSize !== undefined ? projectConfig.watermarkSize : 14;
+        const scaleFactor = width / 1280;
+        const finalSize = Math.max(10, Math.floor(size * scaleFactor));
+        const position = projectConfig.watermarkPosition || "bottom-right";
+
+        let wx = padding;
+        let wy = padding;
+
+        if (projectConfig.watermarkType === "logo" && projectConfig.watermarkLogoUrl) {
+          if (prevLogoUrlRef.current !== projectConfig.watermarkLogoUrl) {
+            prevLogoUrlRef.current = projectConfig.watermarkLogoUrl;
+            const img = new Image();
+            img.src = projectConfig.watermarkLogoUrl;
+            img.onload = () => {
+              logoImageRef.current = img;
+            };
+          }
+
+          const img = logoImageRef.current;
+          if (img && img.complete && img.naturalWidth > 0) {
+            const imgAspectRatio = img.naturalWidth / img.naturalHeight;
+            const logoHeight = finalSize * 2.5;
+            const logoWidth = logoHeight * imgAspectRatio;
+
+            if (position === "top-left") {
+              wx = padding;
+              wy = padding;
+            } else if (position === "top-right") {
+              wx = width - logoWidth - padding;
+              wy = padding;
+            } else if (position === "bottom-left") {
+              wx = padding;
+              wy = height - logoHeight - padding;
+            } else if (position === "bottom-right") {
+              wx = width - logoWidth - padding;
+              wy = height - logoHeight - padding;
+            } else if (position === "center") {
+              wx = (width - logoWidth) / 2;
+              wy = (height - logoHeight) / 2;
+            }
+
+            ctx.drawImage(img, wx, wy, logoWidth, logoHeight);
+          }
+        } else if (projectConfig.watermarkType === "text" && projectConfig.watermarkText) {
+          ctx.font = `bold ${finalSize}px "${projectConfig.subtitleStyle.fontFamily || "Space Grotesk"}", system-ui, sans-serif`;
+          ctx.textBaseline = "middle";
+
+          const textWidth = ctx.measureText(projectConfig.watermarkText).width;
+          const textHeight = finalSize;
+
+          if (position === "top-left") {
+            wx = padding;
+            wy = padding + textHeight / 2;
+            ctx.textAlign = "left";
+          } else if (position === "top-right") {
+            wx = width - padding;
+            wy = padding + textHeight / 2;
+            ctx.textAlign = "right";
+          } else if (position === "bottom-left") {
+            wx = padding;
+            wy = height - padding - textHeight / 2;
+            ctx.textAlign = "left";
+          } else if (position === "bottom-right") {
+            wx = width - padding;
+            wy = height - padding - textHeight / 2;
+            ctx.textAlign = "right";
+          } else if (position === "center") {
+            wx = width / 2;
+            wy = height / 2;
+            ctx.textAlign = "center";
+          }
+
+          // Legibility shadow
+          ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+          ctx.shadowBlur = 4 * scaleFactor;
+          ctx.shadowOffsetX = 1 * scaleFactor;
+          ctx.shadowOffsetY = 1 * scaleFactor;
+
+          ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+          ctx.fillText(projectConfig.watermarkText, wx, wy);
+        }
+
+        ctx.restore();
+      }
+
       rafRef.current = requestAnimationFrame(render);
     };
 
@@ -1654,6 +1817,32 @@ export default function VideoCanvas({
                     🔥 SHORTS AUTO-TUNE
                   </button>
                 </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-zinc-900/60 mt-2">
+                <div className="flex flex-col">
+                  <span className="text-zinc-300 font-bold text-[11px] uppercase tracking-wider">
+                    {language === 'am' ? 'የጊዜ አሰላለፍ (Auto-Align Subtitles)' : 'Auto-Align Subtitles'}
+                  </span>
+                  <span className="text-zinc-500 text-[9px]">
+                    {language === 'am' ? 'የንዑስ ርዕስ ቆይታን ከድምፅ ጋር በትክክል ማዛመድ' : 'Adjust subtitle display duration based on actual voiceover length'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdateConfig({
+                      autoAlignVoiceover: !projectConfig.autoAlignVoiceover,
+                    })
+                  }
+                  className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-[10px] font-bold transition-all shadow-sm ${
+                    projectConfig.autoAlignVoiceover
+                      ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-400"
+                      : "bg-zinc-900 border-zinc-800 text-zinc-500"
+                  }`}
+                >
+                  {projectConfig.autoAlignVoiceover ? "✓ ENABLED" : "✗ DISABLED"}
+                </button>
               </div>
             </div>
           )}
@@ -2395,7 +2584,7 @@ export default function VideoCanvas({
         {/* Hidden active audio for Preloading TTS Voiceovers */}
         {scenes.map((s, idx) => {
           const isNear = Math.abs(idx - playbackIndex) <= 2;
-          const audioUrl = s.voiceoverUrl || (s.text && s.text.trim().length > 0 ? `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}&openai_key=${localStorage.getItem("openai_api_key") || ""}` : "");
+          const audioUrl = s.voiceoverUrl || (s.text && s.text.trim().length > 0 ? `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}` : "");
           const audioSrcProps = isNear && audioUrl ? { src: audioUrl } : {};
           return (
           <audio
@@ -2412,10 +2601,38 @@ export default function VideoCanvas({
               console.error(`[TTS] Error loading audio for scene ${s.id}:`, e)
             }
             onLoadedMetadata={(e) => {
-              // Update scene duration if audio is longer than estimated
+              // Update scene duration if audio length differs from current scene duration
               const aud = e.currentTarget;
-              if (aud.duration && aud.duration > 2) {
-                // We don't update the state here to avoid re-renders, but we use it for timeline logic
+              if (aud.duration && aud.duration > 0.1) {
+                if (projectConfig.autoAlignVoiceover) {
+                  const targetDur = parseFloat(aud.duration.toFixed(2));
+                  if (Math.abs(s.duration - targetDur) > 0.05) {
+                    if (setScenes) {
+                      setScenes((prev) =>
+                        prev.map((scene) => {
+                          if (scene.id === s.id) {
+                            return { ...scene, duration: targetDur };
+                          }
+                          return scene;
+                        })
+                      );
+                    }
+                  }
+                }
+              }
+
+              // Peak amplitude analysis for auto-leveling
+              if (audioUrl && setVoiceoverPeaks) {
+                analyzeAudioPeak(audioUrl).then((peak) => {
+                  setVoiceoverPeaks((prev) => {
+                    if (prev[s.id]?.url === audioUrl && prev[s.id]?.peak === peak) {
+                      return prev;
+                    }
+                    return { ...prev, [s.id]: { url: audioUrl, peak } };
+                  });
+                }).catch((err) => {
+                  console.error("Failed to analyze peak", err);
+                });
               }
             }}
           />

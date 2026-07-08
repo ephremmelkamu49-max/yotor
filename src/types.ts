@@ -12,6 +12,8 @@ export interface Scene {
   originalIndex: number; // Keep track of chronological order
   animationStyle?: AnimationStyle;
   transitionToNext?: "none" | "crossfade" | "slide" | "wipe" | "flicker" | "zoom" | "spin" | "blur" | "glitch" | "pixelate" | "random";
+  transitionType?: "none" | "crossfade" | "slide" | "wipe" | "flicker" | "zoom" | "spin" | "blur" | "glitch" | "pixelate" | "random";
+  musicVolume?: number; // per-scene background music volume keyframe
 }
 
 export type AnimationStyle =
@@ -76,6 +78,16 @@ export interface ProjectConfig {
   isVideoSoundEnabled?: boolean;
   videoVolume?: number;
   videoFilter?: "none" | "sepia" | "grayscale" | "contrast" | "vintage";
+  autoDuckNarration?: boolean;
+  autoAlignVoiceover?: boolean;
+  autoLevelVoiceover?: boolean;
+  watermarkEnabled?: boolean;
+  watermarkType?: "text" | "logo";
+  watermarkText?: string;
+  watermarkLogoUrl?: string;
+  watermarkPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+  watermarkOpacity?: number;
+  watermarkSize?: number;
 }
 
 export interface VideoClip {

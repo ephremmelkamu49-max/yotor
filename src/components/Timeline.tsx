@@ -2,10 +2,12 @@ import React, { useState, useRef } from 'react';
 import { Scene, AspectRatio } from '../types';
 import { DEFAULT_CATALOG } from '../data';
 import { 
-  Play, Plus, Trash2, Search, Film, Clock, ChevronUp, ChevronDown, Check, AlertTriangle, RefreshCw
+  Play, Plus, Trash2, Search, Film, Clock, ChevronUp, ChevronDown, Check, AlertTriangle, RefreshCw, Sparkles, Layers
 } from 'lucide-react';
 
 import { Language, translations } from '../translations';
+import SmartTimingWizard from './SmartTimingWizard';
+import TransitionPlanner from './TransitionPlanner';
 
 interface StockClipCardProps {
   clip: any;
@@ -127,6 +129,9 @@ interface TimelineProps {
   language: Language;
   visualStyle?: string;
   onBatchUpdateScenes?: (scenes: Scene[]) => void;
+  projectConfig?: any;
+  onUpdateConfig?: (updated: any) => void;
+  voiceoverPeaks?: { [sceneId: string]: { url: string; peak: number } };
 }
 
 export default function Timeline({
@@ -140,7 +145,10 @@ export default function Timeline({
   pexelsKey,
   language,
   visualStyle,
-  onBatchUpdateScenes
+  onBatchUpdateScenes,
+  projectConfig,
+  onUpdateConfig,
+  voiceoverPeaks
 }: TimelineProps) {
   const t = translations[language];
   const [searchSceneId, setSearchSceneId] = useState<string | null>(null);
@@ -149,6 +157,8 @@ export default function Timeline({
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [searchError, setSearchError] = useState<string>('');
   const [isBatchTimingOpen, setIsBatchTimingOpen] = useState<boolean>(false);
+  const [isSmartTimingOpen, setIsSmartTimingOpen] = useState<boolean>(false);
+  const [isTransitionPlannerOpen, setIsTransitionPlannerOpen] = useState<boolean>(false);
   const [batchMultiplier, setBatchMultiplier] = useState<number>(1.0);
   const [batchMinimum, setBatchMinimum] = useState<number>(4.0);
 
@@ -344,15 +354,62 @@ export default function Timeline({
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {projectConfig && onUpdateConfig && (
+            <>
+              <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!projectConfig.autoDuckNarration}
+                  onChange={(e) => onUpdateConfig({ autoDuckNarration: e.target.checked })}
+                  className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+                <span>{language === 'am' ? 'ራስ-ሰር ድምጽ ቅነሳ (Auto-Duck)' : 'Auto-Duck Music'}</span>
+              </label>
+              <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!projectConfig.autoAlignVoiceover}
+                  onChange={(e) => onUpdateConfig({ autoAlignVoiceover: e.target.checked })}
+                  className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+                <span>{language === 'am' ? 'የጊዜ አሰላለፍ (Auto-Align TTS)' : 'Auto-Align Subtitles to TTS'}</span>
+              </label>
+              <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!projectConfig.autoLevelVoiceover}
+                  onChange={(e) => onUpdateConfig({ autoLevelVoiceover: e.target.checked })}
+                  className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+                <span>{language === 'am' ? 'ድምጽ ማመጣጠኛ (Auto-Level Voice)' : 'Auto-Level Voiceovers'}</span>
+              </label>
+            </>
+          )}
           {onBatchUpdateScenes && (
-            <button
-              onClick={() => setIsBatchTimingOpen(true)}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors"
-            >
-              <Clock size={14} />
-              {language === 'am' ? 'ባች ጊዜ' : 'Batch Timing'}
-            </button>
+            <>
+              <button
+                onClick={() => setIsTransitionPlannerOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-600 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-all shadow-lg shadow-cyan-500/5"
+              >
+                <Layers size={14} className="text-cyan-400" />
+                {language === 'am' ? 'የሽግግር እቅድ' : 'Transition Planner'}
+              </button>
+              <button
+                onClick={() => setIsSmartTimingOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-450 hover:bg-indigo-600 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-all shadow-lg shadow-indigo-500/5"
+              >
+                <Sparkles size={14} className="text-indigo-400 animate-pulse" />
+                {language === 'am' ? 'ብልህ ጊዜ' : 'Smart Timing'}
+              </button>
+              <button
+                onClick={() => setIsBatchTimingOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors"
+              >
+                <Clock size={14} />
+                {language === 'am' ? 'ባች ጊዜ' : 'Batch Timing'}
+              </button>
+            </>
           )}
           <button
             onClick={onAddScene}
@@ -529,10 +586,63 @@ export default function Timeline({
                       </div>
                     </div>
 
+                    {/* Per-scene Music Volume Keyframe Override */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-zinc-950/40 border border-slate-800/40 rounded-xl p-3 mt-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <input
+                          type="checkbox"
+                          id={`override-vol-${scene.id}`}
+                          checked={scene.musicVolume !== undefined && scene.musicVolume !== null}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              onUpdateScene(scene.id, { musicVolume: projectConfig?.musicVolume ?? 0.12 });
+                            } else {
+                              onUpdateScene(scene.id, { musicVolume: undefined });
+                            }
+                          }}
+                          className="rounded border-zinc-700 bg-zinc-900 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer h-4 w-4"
+                        />
+                        <label htmlFor={`override-vol-${scene.id}`} className="text-xs text-slate-300 font-semibold cursor-pointer select-none">
+                          {language === 'am' ? 'የሙዚቃ ድምፅ እዚህ ክፍል ላይ ቀይር' : 'Override Scene Music Volume'}
+                        </label>
+                      </div>
+
+                      <div className="flex-1 flex items-center gap-3 w-full">
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          disabled={scene.musicVolume === undefined || scene.musicVolume === null}
+                          value={scene.musicVolume !== undefined && scene.musicVolume !== null ? scene.musicVolume : (projectConfig?.musicVolume ?? 0.12)}
+                          onChange={(e) => {
+                            onUpdateScene(scene.id, { musicVolume: parseFloat(e.target.value) });
+                          }}
+                          className={`flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed`}
+                        />
+                        <span className="text-[11px] font-mono font-bold min-w-[2.5rem] text-right text-indigo-400">
+                          {scene.musicVolume !== undefined && scene.musicVolume !== null
+                            ? `${Math.round(scene.musicVolume * 100)}%`
+                            : `${language === 'am' ? 'ከተለመደው' : 'Global'} (${Math.round((projectConfig?.musicVolume ?? 0.12) * 100)}%)`}
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 text-[11px] text-slate-400 border-t border-slate-800/60 pt-3">
                       <span className="flex items-center gap-1.5 text-xs text-slate-300">
                         <span className="font-semibold text-cyan-400 font-mono text-[10px] uppercase">Keywords / ፍለጋ:</span> {scene.keywords}
                       </span>
+                      
+                      {voiceoverPeaks && voiceoverPeaks[scene.id] && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-lg text-[9px] font-mono font-bold uppercase tracking-wider">
+                          <span>Peak: {voiceoverPeaks[scene.id].peak.toFixed(2)}</span>
+                          {projectConfig?.autoLevelVoiceover && (
+                            <span className="text-indigo-400 font-extrabold ml-1 border-l border-cyan-500/20 pl-1">
+                              Gain: {Math.min(1.0, 0.85 / voiceoverPeaks[scene.id].peak).toFixed(2)}x
+                            </span>
+                          )}
+                        </div>
+                      )}
                       
                       <label className="flex items-center gap-1 cursor-pointer hover:text-cyan-400 transition-colors ml-auto border border-slate-800 rounded-lg px-2.5 py-1 bg-slate-900 shadow-sm" onClick={(e) => e.stopPropagation()}>
                         <input 
@@ -756,6 +866,27 @@ export default function Timeline({
             </div>
           </div>
         </div>
+      )}
+
+      {isSmartTimingOpen && onBatchUpdateScenes && (
+        <SmartTimingWizard
+          isOpen={isSmartTimingOpen}
+          onClose={() => setIsSmartTimingOpen(false)}
+          scenes={scenes}
+          onBatchUpdateScenes={onBatchUpdateScenes}
+          projectConfig={projectConfig}
+          language={language}
+        />
+      )}
+
+      {isTransitionPlannerOpen && (
+        <TransitionPlanner
+          isOpen={isTransitionPlannerOpen}
+          onClose={() => setIsTransitionPlannerOpen(false)}
+          scenes={scenes}
+          onUpdateScene={onUpdateScene}
+          language={language}
+        />
       )}
     </div>
   );

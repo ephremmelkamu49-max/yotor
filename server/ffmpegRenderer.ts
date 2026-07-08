@@ -11,6 +11,7 @@ export interface RenderScene {
   videoUrl: string;
   ttsAudioBuffer?: string; // base64 encoded audio, or we can just download it if it's a full URL
   duration: number;
+  musicVolume?: number;
 }
 
 export interface RenderRequest {
@@ -129,8 +130,26 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       await downloadFile(req.musicUrl, musicPath);
       
       const vol = req.musicVolume !== undefined ? req.musicVolume : 0.3;
+      
+      // Compute dynamic volume expression for scenes if there are overrides
+      let expr = `${vol}`;
+      let cumulativeTime = 0;
+      let hasOverrides = false;
+      for (const scene of req.scenes) {
+        const sceneVol = scene.musicVolume !== undefined ? scene.musicVolume : vol;
+        if (Math.abs(sceneVol - vol) > 0.001) {
+          hasOverrides = true;
+          const start = cumulativeTime.toFixed(2);
+          const end = (cumulativeTime + scene.duration).toFixed(2);
+          expr = `if(between(t,${start},${end}),${sceneVol.toFixed(3)},${expr})`;
+        }
+        cumulativeTime += scene.duration;
+      }
+
+      const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
+      
       // Mix concatenated audio with music audio
-      const mixCmd = `ffmpeg -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]volume=${vol}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -c:a aac "${finalPath}"`;
+      const mixCmd = `ffmpeg -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -c:a aac "${finalPath}"`;
       console.log("Running music mix:", mixCmd);
       await execAsync(mixCmd);
     }

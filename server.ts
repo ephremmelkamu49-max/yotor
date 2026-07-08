@@ -3,7 +3,6 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/genai";
 import { EdgeTTS } from "edge-tts-universal";
-import OpenAI from "openai";
 import dotenv from "dotenv";
 import { renderVideo, RenderRequest } from "./server/ffmpegRenderer.js";
 
@@ -63,15 +62,6 @@ if (process.env.GEMINI_API_KEY) {
         'User-Agent': 'aistudio-build',
       }
     }
-  });
-}
-
-// Setup OpenAI Client
-let openai: OpenAI | null = null;
-let isOpenAiQuotaExhausted = false;
-if (process.env.OPENAI_API_KEY) {
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
   });
 }
 
@@ -265,7 +255,6 @@ app.get("/api/video-download-get", async (req, res) => {
 // 1. Script Analysis API - uses Gemini to split user text into structured cinematic scenes
 app.post("/api/analyze-script", async (req, res) => {
   const { script, visualStyle, isKeywordsOnly } = req.body;
-  const providedOpenaiKey = req.headers["x-openai-key"] as string;
   
   if (!script || typeof script !== "string") {
     return res.status(400).json({ error: "Script text is required" });
@@ -349,9 +338,9 @@ app.post("/api/analyze-script", async (req, res) => {
     }
   }
 
-  if (!ai && !openai && !(providedOpenaiKey?.startsWith('sk-'))) {
+  if (!ai) {
     // If API key is missing, fall back to an smart adaptive splitter so the app handles 30 minutes smoothly!
-    console.warn("Neither GEMINI_API_KEY nor OPENAI_API_KEY is defined. Falling back to mechanical split.");
+    console.warn("GEMINI_API_KEY is not defined. Falling back to mechanical split.");
     const sentences = script
       .split(/(?<=[.!?።፤፧])\s+/)
       .map(s => s.trim())
@@ -465,47 +454,8 @@ ${script}
 
     let processedScenes: any[] = [];
 
-    let openaiErrorMessage = "";
-
-    // Attempt OpenAI first if requested or available (ChatGPT Pro request)
-    const effectiveOpenAiKey = providedOpenaiKey || (isOpenAiQuotaExhausted ? undefined : process.env.OPENAI_API_KEY);
-    if (effectiveOpenAiKey) {
-      try {
-        console.log("[Director Engine] Using OpenAI (GPT-4o) for high-precision direction...");
-        const localOpenai = new OpenAI({ apiKey: effectiveOpenAiKey });
-        const chatCompletion = await localOpenai.chat.completions.create({
-          messages: [{ role: "user", content: prompt }],
-          model: "gpt-4o",
-          response_format: { type: "json_object" }
-        });
-        
-        const content = chatCompletion.choices[0].message.content;
-        if (content) {
-          const parsedResult = JSON.parse(content);
-          processedScenes = parsedResult.scenes.map((scene: any, index: number) => ({
-            id: `scene_${index}_${Date.now()}`,
-            ...scene,
-            originalIndex: index
-          }));
-          return res.json({ 
-            scenes: processedScenes, 
-            engine: 'openai', 
-            info: 'Precision Director (GPT-4o)' 
-          });
-        }
-      } catch (openAiErr: any) {
-        openaiErrorMessage = openAiErr?.message || "Unknown OpenAI Issue";
-        if (openaiErrorMessage.includes("429") || openaiErrorMessage.includes("quota") || openaiErrorMessage.includes("billing")) {
-          isOpenAiQuotaExhausted = true;
-          console.log("[Director Engine] OpenAI quota exhausted. Subsequent requests will route directly to Gemini.");
-        } else {
-          console.log("OpenAI Direction failed, falling back to Gemini:", openaiErrorMessage);
-        }
-      }
-    }
-
     if (!ai) {
-        throw new Error(openaiErrorMessage ? `OpenAI Failed: ${openaiErrorMessage}. Also no Gemini API key configured.` : "No primary AI engine available.");
+        throw new Error("No primary Gemini AI engine available.");
     }
 
     const response = await generateContentWithFallback(ai, {
@@ -554,8 +504,7 @@ ${script}
     res.json({ 
       scenes: processedScenes, 
       engine: 'gemini', 
-      info: 'Localized Director (Gemini 3.1)',
-      openaiError: openaiErrorMessage || undefined
+      info: 'Localized Director (Gemini 3.1)'
     });
   } catch (error: any) {
     console.error("Gemini script parser failed:", error);
@@ -830,8 +779,6 @@ app.get("/api/diagnose", async (req, res) => {
   
   const diagnostics: any = {
     geminiApiKeyConfigured: !!process.env.GEMINI_API_KEY,
-    openaiApiKeyConfigured: !!process.env.OPENAI_API_KEY,
-    chatGptProStatus: !!process.env.OPENAI_API_KEY ? "Active (GPT-4o Platinum)" : "Inactive",
     veoStatus: !!process.env.GEMINI_API_KEY ? "Operational (Experimental 3.1)" : "Inactive",
     geminiTtsStatus: "ok", // 'ok', 'quota_limit', 'error', 'no_key'
     geminiTtsMessage: "Premium & Unlimited Neural Voices Active.",
@@ -864,63 +811,14 @@ app.get("/api/tts", async (req, res) => {
 
   try {
     const safeText = text.substring(0, 5000);
-    const providedOpenaiKey = req.query.openai_key as string;
-
-    // ---------------------------------------------------------
-    // OPENAI TTS (High Quality, Natural Human Voices)
-    // ---------------------------------------------------------
-    const activeOpenAI = providedOpenaiKey ? new OpenAI({ apiKey: providedOpenaiKey }) : openai;
-    if (activeOpenAI && lang.startsWith('am-openai-')) {
-      try {
-        const voiceName = lang.includes('nova') ? 'nova' : 'onyx';
-        const mp3 = await activeOpenAI.audio.speech.create({
-          model: "tts-1",
-          voice: voiceName,
-          input: safeText,
-        });
-        
-        const arrayBuffer = await mp3.arrayBuffer();
-        const combinedBuffer = Buffer.from(arrayBuffer);
-
-        const range = req.headers.range;
-        if (range) {
-          const parts = range.replace(/bytes=/, "").split("-");
-          const start = parseInt(parts[0], 10);
-          const end = parts[1] ? parseInt(parts[1], 10) : combinedBuffer.length - 1;
-          const chunksize = (end - start) + 1;
-          const fileChunk = combinedBuffer.subarray(start, end + 1);
-
-          res.writeHead(206, {
-            "Content-Range": `bytes ${start}-${end}/${combinedBuffer.length}`,
-            "Accept-Ranges": "bytes",
-            "Content-Length": chunksize,
-            "Content-Type": "audio/mpeg",
-            "Cache-Control": "public, max-age=86400",
-            "Access-Control-Allow-Origin": "*"
-          });
-          return res.end(fileChunk);
-        } else {
-          res.writeHead(200, {
-            "Content-Length": combinedBuffer.length,
-            "Accept-Ranges": "bytes",
-            "Content-Type": "audio/mpeg",
-            "Cache-Control": "public, max-age=86400",
-            "Access-Control-Allow-Origin": "*"
-          });
-          return res.end(combinedBuffer);
-        }
-      } catch (oai_err: any) {
-        console.log(`[Info] OpenAI TTS bypassed; Reason: ${oai_err?.message}`);
-      }
-    }
 
     // ---------------------------------------------------------
     // MICROSOFT EDGE TTS (Unlimited, Neural Free Voices)
     // ---------------------------------------------------------
-    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male' || lang.startsWith('am-yotor-') || lang.startsWith('am-openai-') || lang.startsWith('en') || lang === 'es' || lang === 'fr') {
+    if (lang === 'am-edge-male' || lang === 'am-edge-female' || lang === 'am-male' || lang.startsWith('am-yotor-') || lang.startsWith('en') || lang === 'es' || lang === 'fr') {
       try {
         let voiceName = "am-ET-AmehaNeural"; // Default Amharic male
-        if (lang === 'am-edge-female' || lang === 'am-yotor-warm-female' || lang === 'am-yotor-bright-female' || lang === 'am-openai-nova') {
+        if (lang === 'am-edge-female' || lang === 'am-yotor-warm-female' || lang === 'am-yotor-bright-female') {
           voiceName = "am-ET-MekdesNeural";
         } else if (lang === 'en-US-Standard-D') {
           voiceName = "en-US-GuyNeural"; // Deep Male
