@@ -19,10 +19,6 @@ import { GOOGLE_TTS_LANGUAGES, VIDEO_TEMPLATES } from "../data";
 
 interface ScriptInputProps {
   onAnalyze: (
-    script: string,
-    pexelsKey: string,
-    pixabayKey: string,
-    coverrKey: string,
     videoMode: "stock" | "veo" | "pollinations",
     inputMode: "script" | "keywords",
   ) => Promise<void>;
@@ -45,6 +41,11 @@ export default function ScriptInput({
   const displayedLoadingStage =
     loadingStage === "Analyzing Script..." ? t.running_analysis : loadingStage;
 
+  const [videoMode, setVideoMode] = useState<"stock" | "veo" | "pollinations">(
+    "stock",
+  );
+  const [inputMode, setInputMode] = useState<"script" | "keywords">("script");
+
   const [pexelsKey, setPexelsKey] = useState<string>(
     () => localStorage.getItem("pexels_api_key") || "",
   );
@@ -54,10 +55,6 @@ export default function ScriptInput({
   const [coverrKey, setCoverrKey] = useState<string>(
     () => localStorage.getItem("coverr_api_key") || "",
   );
-  const [videoMode, setVideoMode] = useState<"stock" | "veo" | "pollinations">(
-    "stock",
-  );
-  const [inputMode, setInputMode] = useState<"script" | "keywords">("script");
 
   const [showKey, setShowKey] = useState(false);
   const [showPixabayKey, setShowPixabayKey] = useState(false);
@@ -104,10 +101,6 @@ export default function ScriptInput({
     else localStorage.removeItem("coverr_api_key");
 
     onAnalyze(
-      script,
-      pexelsKey,
-      pixabayKey,
-      coverrKey,
       videoMode,
       inputMode,
     );

@@ -145,15 +145,6 @@ export default function App() {
   const [loadingStage, setLoadingStage] = useState<string>(
     "Analyzing narration text...",
   );
-  const [pexelsKey, setPexelsKey] = useState<string>(() => {
-    return localStorage.getItem("pexels_api_key") || "";
-  });
-  const [pixabayKey, setPixabayKey] = useState<string>(() => {
-    return localStorage.getItem("pixabay_api_key") || "";
-  });
-  const [coverrKey, setCoverrKey] = useState<string>(() => {
-    return localStorage.getItem("coverr_api_key") || "";
-  });
   const [isRenderOpen, setIsRenderOpen] = useState<boolean>(false);
 
   // PWA & Settings states
@@ -374,10 +365,6 @@ export default function App() {
 
   // Triggers Gemini parser pipeline
   const handleAnalyzeScript = async (
-    scriptText: string,
-    providedPexelsKey: string,
-    providedPixabayKey: string,
-    providedCoverrKey: string,
     videoMode: "stock" | "veo" | "pollinations" = "stock",
     inputMode: "script" | "keywords" = "script",
   ) => {
@@ -386,9 +373,10 @@ export default function App() {
       videoMode === "veo" ? t.stage_veo_dreaming : t.stage_analyzing_director,
     );
     // Sync credentials
-    setPexelsKey(providedPexelsKey);
-    setPixabayKey(providedPixabayKey);
-    setCoverrKey(providedCoverrKey);
+    const pexelsKey = localStorage.getItem("pexels_api_key") || "";
+    const pixabayKey = localStorage.getItem("pixabay_api_key") || "";
+    const coverrKey = localStorage.getItem("coverr_api_key") || "";
+
     setIsPlaying(false);
     setPlaybackIndex(0);
 
@@ -399,7 +387,7 @@ export default function App() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          script: scriptText,
+          script: script,
           visualStyle: projectConfig.visualStyle,
           isKeywordsOnly: inputMode === "keywords",
         }),
@@ -471,14 +459,14 @@ export default function App() {
                 if (videoUrl) break;
 
                 // Try Pexels first
-                if (providedPexelsKey || !providedPixabayKey) {
+                if (pexelsKey || !pixabayKey) {
                   try {
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 6000);
                     const pexelsResponse = await fetch(
                       `/api/pexels/search?query=${encodeURIComponent(query)}`,
                       {
-                        headers: { "x-pexels-key": providedPexelsKey || "" },
+                        headers: { "x-pexels-key": pexelsKey || "" },
                         signal: controller.signal,
                       },
                     );
@@ -505,14 +493,14 @@ export default function App() {
                 }
 
                 // If Pexels fails, try Pixabay
-                if (!videoUrl && (providedPixabayKey || !providedPexelsKey)) {
+                if (!videoUrl && (pixabayKey || !pexelsKey)) {
                   try {
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 6000);
                     const pixabayResponse = await fetch(
                       `/api/pixabay/search?query=${encodeURIComponent(query)}`,
                       {
-                        headers: { "x-pixabay-key": providedPixabayKey || "" },
+                        headers: { "x-pixabay-key": pixabayKey || "" },
                         signal: controller.signal,
                       },
                     );
@@ -540,14 +528,14 @@ export default function App() {
                 }
 
                 // If Pexels & Pixabay fail, try Coverr
-                if (!videoUrl && (providedCoverrKey || (!providedPexelsKey && !providedPixabayKey))) {
+                if (!videoUrl && (coverrKey || (!pexelsKey && !pixabayKey))) {
                   try {
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 6000);
                     const coverrResponse = await fetch(
                       `/api/coverr/search?query=${encodeURIComponent(query)}`,
                       {
-                        headers: { "x-coverr-key": providedCoverrKey || "" },
+                        headers: { "x-coverr-key": coverrKey || "" },
                         signal: controller.signal,
                       },
                     );
@@ -976,7 +964,6 @@ export default function App() {
               onAddScene={handleAddScene}
               onDeleteScene={handleDeleteScene}
               onMoveScene={handleMoveScene}
-              pexelsKey={pexelsKey}
               language={language}
               visualStyle={projectConfig.visualStyle}
               projectConfig={projectConfig}
