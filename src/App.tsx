@@ -413,7 +413,7 @@ export default function App() {
                     clearTimeout(timeout);
                     const pexelsData = await pexelsResponse.json();
                     if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
-                      const bestClip = pexelsData.videos[i % pexelsData.videos.length];
+                      const bestClip = pexelsData.videos[0];
                       const files = bestClip.video_files || [];
                       const mp4Files = files.filter(
                         (f: any) =>
@@ -447,7 +447,7 @@ export default function App() {
                     clearTimeout(timeout);
                     const pixabayData = await pixabayResponse.json();
                     if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
-                      const bestClip = pixabayData.hits[i % pixabayData.hits.length];
+                      const bestClip = pixabayData.hits[0];
                       const videos = bestClip.videos || {};
                       const selectedVid =
                         videos.large ||
@@ -464,6 +464,34 @@ export default function App() {
                     }
                   } catch (e) {
                     console.warn(`Pixabay try for "${query}" failed/timed out:`, e);
+                  }
+                }
+
+                // If Pexels & Pixabay fail, try Coverr
+                if (!videoUrl && (providedCoverrKey || (!providedPexelsKey && !providedPixabayKey))) {
+                  try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 6000);
+                    const coverrResponse = await fetch(
+                      `/api/coverr/search?query=${encodeURIComponent(query)}`,
+                      {
+                        headers: { "x-coverr-key": providedCoverrKey || "" },
+                        signal: controller.signal,
+                      },
+                    );
+                    clearTimeout(timeout);
+                    const coverrData = await coverrResponse.json();
+                    if (coverrResponse.ok && coverrData.hits?.length > 0) {
+                      const bestClip = coverrData.hits[0];
+                      const selectedVid = bestClip.urls?.mp4 || bestClip.urls?.mp4_download || '';
+                      if (selectedVid) {
+                        videoUrl = selectedVid;
+                        videoThumb = bestClip.thumbnail || "";
+                        author = bestClip.author?.name || "Coverr Creator";
+                      }
+                    }
+                  } catch (e) {
+                    console.warn(`Coverr try for "${query}" failed/timed out:`, e);
                   }
                 }
               }
@@ -888,6 +916,10 @@ export default function App() {
             setRenderTime(time);
           }}
           language={language}
+          onRestoreProject={(restoredScenes, restoredConfig) => {
+            setScenes(restoredScenes);
+            setProjectConfig(restoredConfig);
+          }}
         />
 
         {/* App Settings and PWA Installer Modal */}

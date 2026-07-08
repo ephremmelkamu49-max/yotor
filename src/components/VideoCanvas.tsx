@@ -74,6 +74,7 @@ export default function VideoCanvas({
     "Identify and describe all visible objects, color palette, pacing, and overall mood in this scene.",
   );
   const [analysisError, setAnalysisError] = useState<string>("");
+  const [isAnalyzingBeats, setIsAnalyzingBeats] = useState<boolean>(false);
 
   // AI Copilot States
   const [aiSubTab, setAiSubTab] = useState<"copilot" | "analyzer">("copilot");
@@ -245,6 +246,65 @@ export default function VideoCanvas({
     }
   };
 
+  const handleSnapToBeats = async () => {
+    if (!projectConfig.musicTrack || !setScenes) return;
+    setIsAnalyzingBeats(true);
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      const res = await fetch(projectConfig.musicTrack);
+      const buf = await res.arrayBuffer();
+      const audioBuf = await ctx.decodeAudioData(buf);
+      
+      const channel = audioBuf.getChannelData(0);
+      let max = 0;
+      for (let i = 0; i < channel.length; i++) {
+        if (Math.abs(channel[i]) > max) max = Math.abs(channel[i]);
+      }
+      
+      const peaks: number[] = [];
+      const threshold = max * 0.8;
+      const sampleRate = audioBuf.sampleRate;
+      
+      for (let i = 0; i < channel.length; i++) {
+        if (Math.abs(channel[i]) > threshold) {
+          const time = i / sampleRate;
+          if (peaks.length === 0 || time - peaks[peaks.length - 1] > 0.3) {
+            peaks.push(time);
+          }
+        }
+      }
+
+      if (peaks.length > 0) {
+        let currentCumulative = 0;
+        const newScenes = scenes.map(scene => {
+            const targetEnd = currentCumulative + scene.duration;
+            // Find closest peak to targetEnd
+            let closestPeak = peaks[0];
+            let minDiff = Math.abs(targetEnd - peaks[0]);
+            for(let p of peaks) {
+                if(Math.abs(targetEnd - p) < minDiff) {
+                    minDiff = Math.abs(targetEnd - p);
+                    closestPeak = p;
+                }
+            }
+            // Ensure the duration doesn't become too small
+            let newDuration = closestPeak - currentCumulative;
+            if (newDuration < 1.0) newDuration = scene.duration; // Fallback to original if peak is too close
+            
+            currentCumulative += newDuration;
+            return { ...scene, duration: parseFloat(newDuration.toFixed(1)) };
+        });
+        setScenes(newScenes);
+        alert(language === "am" ? "የክፍሎቹ ጊዜ ከሙዚቃው ምት ጋር ተስተካክሏል!" : "Scenes snapped to nearest beats successfully!");
+      }
+    } catch (err) {
+      console.error("Beat sync failed:", err);
+      alert(language === "am" ? "የምት ትንተና አልተሳካም።" : "Beat analysis failed.");
+    }
+    setIsAnalyzingBeats(false);
+  };
+
   const renderTimePropRef = useRef<number | undefined>(renderTime);
   const isRenderingRef = useRef<boolean>(!!isRendering);
   useEffect(() => {
@@ -375,6 +435,33 @@ export default function VideoCanvas({
   useEffect(() => {
     if (!currentScene) return;
 
+    if (isPlaying && playbackIndex > 0 && playbackIndex > playbackIndexRef.current) {
+      try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContext && !isMuted) {
+          const ctx = new AudioContext();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(400, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.15);
+          
+          gain.gain.setValueAtTime(0, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+          
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.15);
+        }
+      } catch (err) {
+        // fail silently if audio context is restricted
+      }
+    }
+
     stopAllTtsAudios();
     setCurrentSceneTime(0);
     currentSceneTimeRef.current = 0;
@@ -384,7 +471,7 @@ export default function VideoCanvas({
     if (isPlaying) {
       playActiveSceneTtsAndVideo();
     }
-  }, [playbackIndex, currentScene?.id, isPlaying]);
+  }, [playbackIndex, currentScene?.id, isPlaying, isMuted]);
 
   // Handle overall Play/Pause toggles
   useEffect(() => {
@@ -1637,35 +1724,33 @@ export default function VideoCanvas({
                     {Math.round(projectConfig.musicVolume * 200)}%
                   </span>
                 </div>
-
-                {/* Auto Beat Sync Toggle */}
+                {/* Custom Audio Upload */}
                 <div className="flex items-center gap-2 pr-2 border-l border-zinc-900 pl-4 ml-2">
-                  <span className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">
-                    Auto Beat Sync
-                  </span>
-                  <button
-                    onClick={() =>
-                      onUpdateConfig({
-                        syncToMusicBeats: !projectConfig.syncToMusicBeats,
-                      })
-                    }
-                    className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
-                      projectConfig.syncToMusicBeats
-                        ? "bg-indigo-500"
-                        : "bg-zinc-800"
-                    }`}
-                    role="switch"
-                    aria-checked={projectConfig.syncToMusicBeats}
-                  >
-                    <span className="sr-only">Use setting</span>
-                    <span
-                      aria-hidden="true"
-                      className={`pointer-events-none absolute left-0 inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
-                        projectConfig.syncToMusicBeats
-                          ? "translate-x-3.5"
-                          : "translate-x-0.5"
-                      }`}
+                  <label className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase cursor-pointer hover:text-indigo-400 transition-colors">
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                           const url = URL.createObjectURL(file);
+                           onUpdateConfig({ musicTrack: url });
+                        }
+                      }}
                     />
+                    Upload BGM
+                  </label>
+                </div>
+                
+                {/* Auto Beat Sync Button */}
+                <div className="flex items-center gap-2 pr-2 border-l border-zinc-900 pl-4 ml-2">
+                  <button
+                    onClick={handleSnapToBeats}
+                    disabled={isAnalyzingBeats || !projectConfig.musicTrack}
+                    className="text-[10px] bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 font-bold font-mono tracking-widest uppercase px-2 py-1 rounded hover:bg-indigo-600/40 disabled:opacity-50 transition-colors"
+                  >
+                    {isAnalyzingBeats ? "Analyzing..." : "Snap to Beats"}
                   </button>
                 </div>
 

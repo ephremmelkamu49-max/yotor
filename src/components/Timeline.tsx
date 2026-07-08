@@ -126,6 +126,7 @@ interface TimelineProps {
   pexelsKey: string;
   language: Language;
   visualStyle?: string;
+  onBatchUpdateScenes?: (scenes: Scene[]) => void;
 }
 
 export default function Timeline({
@@ -138,7 +139,8 @@ export default function Timeline({
   onMoveScene,
   pexelsKey,
   language,
-  visualStyle
+  visualStyle,
+  onBatchUpdateScenes
 }: TimelineProps) {
   const t = translations[language];
   const [searchSceneId, setSearchSceneId] = useState<string | null>(null);
@@ -146,6 +148,9 @@ export default function Timeline({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [searchError, setSearchError] = useState<string>('');
+  const [isBatchTimingOpen, setIsBatchTimingOpen] = useState<boolean>(false);
+  const [batchMultiplier, setBatchMultiplier] = useState<number>(1.0);
+  const [batchMinimum, setBatchMinimum] = useState<number>(4.0);
 
   // Total calculated video duration
   const totalDuration = scenes.reduce((sum, s) => sum + s.duration, 0).toFixed(1);
@@ -339,14 +344,25 @@ export default function Timeline({
             </p>
           </div>
         </div>
-        <button
-          onClick={onAddScene}
-          className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors"
-          id="add-scene-timeline-btn"
-        >
-          <Plus size={14} />
-          {t.add_scene}
-        </button>
+        <div className="flex gap-2">
+          {onBatchUpdateScenes && (
+            <button
+              onClick={() => setIsBatchTimingOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors"
+            >
+              <Clock size={14} />
+              {language === 'am' ? 'ባች ጊዜ' : 'Batch Timing'}
+            </button>
+          )}
+          <button
+            onClick={onAddScene}
+            className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/50 text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors shadow-lg shadow-indigo-500/20"
+            id="add-scene-timeline-btn"
+          >
+            <Plus size={14} />
+            {t.add_scene}
+          </button>
+        </div>
       </div>
 
       {/* Scenarios lists timeline */}
@@ -649,6 +665,94 @@ export default function Timeline({
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Timing Modal */}
+      {isBatchTimingOpen && onBatchUpdateScenes && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#0c0c0e] border border-zinc-800 rounded-3xl max-w-md w-full flex flex-col shadow-2xl overflow-hidden animate-zoomIn relative">
+            <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/20">
+              <div>
+                <h3 className="text-base font-light text-zinc-100">{language === 'am' ? 'የጊዜ ማስተካከያ' : 'Batch Timing Adjustments'}</h3>
+                <p className="text-[10px] text-zinc-500 mt-1 uppercase font-mono">{language === 'am' ? 'የሁሉንም ክፍሎች ጊዜ በአንድ ጊዜ ያስተካክሉ' : 'Adjust duration for all scenes'}</p>
+              </div>
+              <button
+                onClick={() => setIsBatchTimingOpen(false)}
+                className="text-zinc-400 hover:text-zinc-200 text-xs font-semibold p-2 bg-zinc-900 border border-zinc-800 rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-6">
+              {/* Option 1: Minimum Duration */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-widest block font-mono">
+                    {language === 'am' ? 'አነስተኛ ጊዜ ለሁሉም (ሴኮንድ)' : 'Set Minimum Duration'}
+                  </label>
+                  <span className="text-xs font-mono text-cyan-400">{batchMinimum}s</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="15"
+                  step="0.5"
+                  value={batchMinimum}
+                  onChange={(e) => setBatchMinimum(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                />
+                <button
+                  onClick={() => {
+                    const newScenes = scenes.map(s => ({
+                      ...s,
+                      duration: Math.max(s.duration, batchMinimum)
+                    }));
+                    onBatchUpdateScenes(newScenes);
+                    setIsBatchTimingOpen(false);
+                  }}
+                  className="w-full py-2 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors"
+                >
+                  {language === 'am' ? 'አነስተኛውን ተግብር' : 'Apply Minimum Duration'}
+                </button>
+              </div>
+
+              <div className="h-px bg-zinc-800/50 w-full" />
+
+              {/* Option 2: Proportional Multiplier */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-widest block font-mono">
+                    {language === 'am' ? 'በተመጣጣኝ አርዝም/አሳጥር' : 'Scale Proportionally'}
+                  </label>
+                  <span className="text-xs font-mono text-indigo-400">{batchMultiplier.toFixed(1)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="3"
+                  step="0.1"
+                  value={batchMultiplier}
+                  onChange={(e) => setBatchMultiplier(parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                />
+                <button
+                  onClick={() => {
+                    const newScenes = scenes.map(s => ({
+                      ...s,
+                      duration: parseFloat((s.duration * batchMultiplier).toFixed(1))
+                    }));
+                    onBatchUpdateScenes(newScenes);
+                    setIsBatchTimingOpen(false);
+                  }}
+                  className="w-full py-2 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-400 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors"
+                >
+                  {language === 'am' ? 'ተመጣጣኙን ተግብር' : 'Apply Scale Multiplier'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

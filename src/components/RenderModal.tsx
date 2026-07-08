@@ -15,6 +15,7 @@ interface RenderModalProps {
   canvasElement: HTMLCanvasElement | null;
   onRenderFrameChange?: (index: number, time?: number) => void;
   language: Language;
+  onRestoreProject?: (scenes: Scene[], config: ProjectConfig) => void;
 }
 
 export default function RenderModal({
@@ -24,7 +25,8 @@ export default function RenderModal({
   projectConfig,
   canvasElement,
   onRenderFrameChange,
-  language
+  language,
+  onRestoreProject
 }: RenderModalProps) {
   const t = translations[language];
   const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'completed' | 'failed'>('idle');
@@ -151,7 +153,7 @@ export default function RenderModal({
             
             tempAudio.onloadedmetadata = () => {
               clearTimeout(timeout);
-              if (tempAudio.duration && !isNaN(tempAudio.duration) && tempAudio.duration > 0) {
+              if (tempAudio.duration && !isNaN(tempAudio.duration) && tempAudio.duration > 0 && tempAudio.duration !== Infinity) {
                 resolve(tempAudio.duration + 0.15);
               } else {
                 resolve(scene.duration || 4.5);
@@ -281,6 +283,12 @@ export default function RenderModal({
       const mediaRecorder = new MediaRecorder(mixedStream, options);
       mediaRecorderRef.current = mediaRecorder;
 
+      mediaRecorder.onerror = (e: any) => {
+        console.error("MediaRecorder error:", e);
+        addLog(`⚠️ MediaRecorder error: ${e?.message || 'Encoder buffer overflow or resource limitation.'}`);
+        setRenderStatus('failed');
+      };
+
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           recordedChunksRef.current.push(e.data);
@@ -297,9 +305,18 @@ export default function RenderModal({
         cleanupRenderSubprocesses();
 
         const baseMime = selectedMimeType ? selectedMimeType.split(';')[0] : 'video/webm';
-        const finalBlob = new Blob(recordedChunksRef.current, { type: baseMime });
+        let finalBlob = new Blob(recordedChunksRef.current, { type: baseMime });
         
         const actualDurationMs = Date.now() - actualRenderStartTime;
+        
+        if (baseMime === 'video/webm') {
+           try {
+             addLog("Fixing WebM metadata duration headers...");
+             finalBlob = await fixWebmDuration(finalBlob, actualDurationMs, { logger: false });
+           } catch (e) {
+             console.warn("Failed to fix WebM duration", e);
+           }
+        }
         
         const finalUrl = URL.createObjectURL(finalBlob);
         setRenderedBlobUrl(finalUrl);
@@ -491,7 +508,7 @@ export default function RenderModal({
               elapsed += (clockTick / 1000);
               
               let targetDuration = scene.duration;
-              if (sceneTts && !isNaN(sceneTts.duration) && sceneTts.duration > 0) {
+              if (sceneTts && !isNaN(sceneTts.duration) && sceneTts.duration > 0 && sceneTts.duration !== Infinity) {
                 targetDuration = sceneTts.duration + 0.3;
               }
 
@@ -501,7 +518,7 @@ export default function RenderModal({
               }
                 
               // Track progress linearly
-              const completedSeconds = scenesToRender.slice(0, index).reduce((s, sc) => s + sc.duration, 0) + Math.min(elapsed, targetDuration);
+              const completedSeconds = scenesToRender.slice(0, index).reduce((s, sc) => s + sc.duration, 0) + Math.min(elapsed, targetDuration !== Infinity ? targetDuration : elapsed);
               setProgress(Math.min(99, Math.round((completedSeconds / totalSecondsToRender) * 100)));
 
               // Propagate high-fidelity elapsed time for smooth animations
@@ -509,7 +526,12 @@ export default function RenderModal({
                 onRenderFrameChange(index, elapsed);
               }
 
-              if (elapsed >= targetDuration) {
+              const isAudioFinished = sceneTts ? sceneTts.ended || (sceneTts.error !== null) : false;
+              const hasReachedTarget = elapsed >= targetDuration;
+              // If targetDuration is Infinity, fallback to scene.duration but also wait for audio to finish
+              const hasReachedFallback = elapsed >= scene.duration && isAudioFinished;
+
+              if (hasReachedTarget || hasReachedFallback || (targetDuration === Infinity && isAudioFinished)) {
                 clearInterval(stepTimer);
                 if (sceneTts) {
                   sceneTts.pause();
@@ -801,6 +823,59 @@ export default function RenderModal({
               <span>
                 <strong>System Integrity Check:</strong> {language === 'am' ? 'ማቀናበሩ ሙሉ በሙሉ በእርስዎ ስልክ/ኮምፒውተር ውስጥ በከፍተኛ ፍጥነት ይከናወናል። ጥራቱ እንዳይቋረጥ እባክዎን ይህንን ፔጅ ሳይዘጉት ይጠብቁ።' : 'Compilation renders directly in the browser utilizing hardware acceleration. Keep this browser tab active and stay on screen for pristine frame pacing.'}
               </span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-[#09090b] border border-zinc-800/80 space-y-3">
+              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">
+                {language === 'am' ? 'የፕሮጀክት አስተዳደር' : 'Project Management'}
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const projectData = JSON.stringify({ scenes, projectConfig }, null, 2);
+                    const blob = new Blob([projectData], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `project-${Date.now()}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl font-semibold text-xs text-white transition-colors"
+                >
+                  {language === 'am' ? 'ፕሮጀክት አውርድ (JSON)' : 'Download Project (JSON)'}
+                </button>
+                <label className="py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl font-semibold text-xs text-white transition-colors text-center cursor-pointer flex items-center justify-center">
+                  {language === 'am' ? 'ፕሮጀክት አስገባ (JSON)' : 'Restore Project (JSON)'}
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        try {
+                          const data = JSON.parse(event.target?.result as string);
+                          if (data.scenes && data.projectConfig && onRestoreProject) {
+                            onRestoreProject(data.scenes, data.projectConfig);
+                            alert(language === 'am' ? 'ፕሮጀክቱ በተሳካ ሁኔታ ተመልሷል!' : 'Project restored successfully!');
+                          } else {
+                            throw new Error('Invalid project structure');
+                          }
+                        } catch (err) {
+                          console.error('Failed to parse project JSON:', err);
+                          alert(language === 'am' ? 'የተሳሳተ የፕሮጀክት ፋይል። እባክዎ እንደገና ይሞክሩ።' : 'Invalid project file. Please try again.');
+                        }
+                      };
+                      reader.readAsText(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-1">

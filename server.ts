@@ -67,6 +67,7 @@ if (process.env.GEMINI_API_KEY) {
 
 // Setup OpenAI Client
 let openai: OpenAI | null = null;
+let isOpenAiQuotaExhausted = false;
 if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -165,25 +166,38 @@ app.post("/api/video-download", async (req, res) => {
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
+    const fetchHeaders: Record<string, string> = {
+      'x-goog-api-key': apiKey!,
+    };
+    if (req.headers.range) {
+      fetchHeaders['Range'] = req.headers.range;
+    }
+
     const videoRes = await fetch(uri, {
-      headers: { 'x-goog-api-key': apiKey! },
+      headers: fetchHeaders,
     });
 
-    if (!videoRes.ok) {
+    if (!videoRes.ok && videoRes.status !== 206) {
       throw new Error(`Failed to fetch video from storage: ${videoRes.statusText}`);
     }
 
-    res.setHeader('Content-Type', 'video/mp4');
-    // Using reader for full compatibility with global fetch in Node
-    const reader = videoRes.body?.getReader();
-    if (!reader) throw new Error("No reader on video response body");
-    
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(value);
+    res.status(videoRes.status);
+    const contentType = videoRes.headers.get('content-type');
+    const contentLength = videoRes.headers.get('content-length');
+    const contentRange = videoRes.headers.get('content-range');
+    const acceptRanges = videoRes.headers.get('accept-ranges');
+
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+    if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+
+    if (videoRes.body) {
+      const { Readable } = await import("stream");
+      Readable.fromWeb(videoRes.body as any).pipe(res);
+    } else {
+      res.end();
     }
-    res.end();
   } catch (err: any) {
     console.error("Veo Download Error:", err);
     res.status(500).json({ error: err.message || "Failed to download video" });
@@ -210,22 +224,38 @@ app.get("/api/video-download-get", async (req, res) => {
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
+    const fetchHeaders: Record<string, string> = {
+      'x-goog-api-key': apiKey!,
+    };
+    if (req.headers.range) {
+      fetchHeaders['Range'] = req.headers.range;
+    }
+
     const videoRes = await fetch(uri, {
-      headers: { 'x-goog-api-key': apiKey! },
+      headers: fetchHeaders,
     });
 
-    if (!videoRes.ok) throw new Error("Failed to fetch video");
-
-    res.setHeader('Content-Type', 'video/mp4');
-    const reader = videoRes.body?.getReader();
-    if (!reader) throw new Error("No reader");
-    
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(value);
+    if (!videoRes.ok && videoRes.status !== 206) {
+      throw new Error(`Failed to fetch video: ${videoRes.statusText}`);
     }
-    res.end();
+
+    res.status(videoRes.status);
+    const contentType = videoRes.headers.get('content-type');
+    const contentLength = videoRes.headers.get('content-length');
+    const contentRange = videoRes.headers.get('content-range');
+    const acceptRanges = videoRes.headers.get('accept-ranges');
+
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+    if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
+
+    if (videoRes.body) {
+      const { Readable } = await import("stream");
+      Readable.fromWeb(videoRes.body as any).pipe(res);
+    } else {
+      res.end();
+    }
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -372,7 +402,7 @@ app.post("/api/analyze-script", async (req, res) => {
       // Enhanced visual keyword guess including more Amharic-relevant roots
       const matchedNouns = seg.toLowerCase().match(/\b(forest|sunset|technology|people|ocean|city|space|nature|abstract|cyberpunk|office|coding|data|future|workspace|ethiopia|mountains|landscape|flower|human|animal|addis|coffee|culture|history|traditional|luxury|peaceful|wildlife)\b/g);
       const baseKeyword = matchedNouns ? matchedNouns[0] : fallbackKeywordsList[idx % fallbackKeywordsList.length];
-      const keywords = `${baseKeyword} ${styleMapping[visualStyle || 'realistic']} motion 16:9 cinematic`;
+      const keywords = baseKeyword;
       return {
         id: `scene_${idx}_${Date.now()}`,
         text: seg,
@@ -387,7 +417,7 @@ app.post("/api/analyze-script", async (req, res) => {
       scenes.push({
         id: `scene_fallback_${Date.now()}`,
         text: script,
-        keywords: `cinematic ${styleMapping[visualStyle || 'realistic']}`,
+        keywords: "cinematic nature",
         caption: script,
         duration: 8,
         originalIndex: 0
@@ -423,7 +453,7 @@ ${lengthInstruction}
 
 For each scene segment, provide:
 1. 'text': The exact verbatim original script excerpt for this scene.
-2. 'keywords': High-quality, cinematic visual search query tags (MUST BE IN ENGLISH).
+2. 'keywords': A SINGLE precise stock search query of 1-3 English words focusing strictly on the literal action or subject. No adjectives or styles.
 3. 'caption': Accurate subtitles matching the original text segment verbatim.
 4. 'duration': Estimated speech duration in seconds (min 4.0s).
 
@@ -437,7 +467,7 @@ ${script}
     let openaiErrorMessage = "";
 
     // Attempt OpenAI first if requested or available (ChatGPT Pro request)
-    const effectiveOpenAiKey = providedOpenaiKey || process.env.OPENAI_API_KEY;
+    const effectiveOpenAiKey = providedOpenaiKey || (isOpenAiQuotaExhausted ? undefined : process.env.OPENAI_API_KEY);
     if (effectiveOpenAiKey) {
       try {
         console.log("[Director Engine] Using OpenAI (GPT-4o) for high-precision direction...");
@@ -463,8 +493,13 @@ ${script}
           });
         }
       } catch (openAiErr: any) {
-        openaiErrorMessage = openAiErr?.message || "Unknown OpenAI Error";
-        console.error("OpenAI Direction failed, falling back to Gemini:", openAiErr);
+        openaiErrorMessage = openAiErr?.message || "Unknown OpenAI Issue";
+        if (openaiErrorMessage.includes("429") || openaiErrorMessage.includes("quota") || openaiErrorMessage.includes("billing")) {
+          isOpenAiQuotaExhausted = true;
+          console.log("[Director Engine] OpenAI quota exhausted. Subsequent requests will route directly to Gemini.");
+        } else {
+          console.log("OpenAI Direction failed, falling back to Gemini:", openaiErrorMessage);
+        }
       }
     }
 
@@ -874,7 +909,7 @@ app.get("/api/tts", async (req, res) => {
           return res.end(combinedBuffer);
         }
       } catch (oai_err: any) {
-        console.log(`[Info] OpenAI TTS bypassed; Error: ${oai_err?.message}`);
+        console.log(`[Info] OpenAI TTS bypassed; Reason: ${oai_err?.message}`);
       }
     }
 
@@ -938,7 +973,7 @@ app.get("/api/tts", async (req, res) => {
       } catch (edge_err: any) {
         // Log gracefully to prevent triggering false-positive system alerts
         const errMsg = edge_err instanceof Error ? edge_err.message : (edge_err?.message || (typeof edge_err === 'string' ? edge_err : JSON.stringify(edge_err)));
-        console.log(`[Info] Edge TTS bypassed; engaging secondary voice pipeline. Error: ${errMsg}`);
+        console.log(`[Info] Edge TTS bypassed; engaging secondary voice pipeline. Reason: ${errMsg}`);
       }
     }
 
