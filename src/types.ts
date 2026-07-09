@@ -77,7 +77,7 @@ export interface ProjectConfig {
   visualStyle?: VisualStyle;
   isVideoSoundEnabled?: boolean;
   videoVolume?: number;
-  videoFilter?: "none" | "sepia" | "grayscale" | "contrast" | "vintage";
+  videoFilter?: "none" | "sepia" | "grayscale" | "contrast" | "vintage" | "teal" | "high-contrast";
   autoDuckNarration?: boolean;
   autoAlignVoiceover?: boolean;
   autoLevelVoiceover?: boolean;

@@ -425,7 +425,34 @@ export default function App() {
             // Random jitter to spread out hits slightly even in parallel
             await new Promise((r) => setTimeout(r, i * 120));
 
-            const searchQuery = `${stylePrefix}${scene.keywords}`;
+            // Format search query dynamically to prevent extremely long prompts and non-ASCII character URLs (e.g. Amharic) which trigger 431 errors
+            let cleanKeywords = (scene.keywords || "")
+              // Strip brackets like [0:00 - 1:15]
+              .replace(/\[\d+:\d+\s*-\s*\d+:\d+\]/gi, "")
+              .replace(/\(\s*The\s+Hook\s*\)/gi, "")
+              .replace(/['"“»«]/g, "")
+              .trim();
+
+            // Extract ASCII only characters (English/numbers) so we don't blow up the url encode
+            let asciiKeywords = cleanKeywords.replace(/[^\x00-\x7F]+/g, " ").replace(/\s+/g, " ").trim();
+
+            if (!asciiKeywords || asciiKeywords.length < 3) {
+              // Extract English terms from scene.text if any exist
+              const textAscii = (scene.text || "").replace(/[^\x00-\x7F]+/g, " ").trim();
+              const words = textAscii.split(/\s+/).filter(w => w.length > 2 && !w.includes("[") && !w.includes("]"));
+              if (words.length > 0) {
+                asciiKeywords = words.slice(0, 5).join(" ");
+              } else {
+                asciiKeywords = "cinematic highly detailed epic storytelling visual";
+              }
+            }
+
+            // Cap overall length at 120 characters to guarantee no 431 HTTP error
+            if (asciiKeywords.length > 120) {
+              asciiKeywords = asciiKeywords.substring(0, 120).trim();
+            }
+
+            const searchQuery = `${stylePrefix}${asciiKeywords}`;
 
             if (videoMode === "pollinations") {
               // Use Pollinations AI (Free 3D Animation Image Generator)
@@ -437,19 +464,26 @@ export default function App() {
               // Stock mode: Clean and formulate adaptive fallback queries
               // Stock search engines do not understand long styles, so we try multiple levels of specificity
               const cleanWords = (scene.keywords || "")
-                .replace(/cinematic|professional|movement|high depth of field|hd|4k|photorealistic|ultra|3d pixar style animation|cute expressive characters|vibrant volumetric lighting|disney style 3d render|2d handdrawn animation|flat colors|expressive line art|illustrative style|studio ghibli aesthetic|anime style background|detailed characters|japanese animation|soft watercolor painting|artistic bleeding colors|paper texture|impressionist|cyberpunk aesthetic|neon colored lights|futuristic cityscape|rainy night|high tech|silhouette|handdrawn pencil sketch|charcoal texture|artistic line work/gi, "")
+                .replace(/cinematic|professional|movement|high depth of field|hd|4k|photorealistic|ultra|3d pixar style animation|cute expressive characters|vibrant volumetric lighting|disney style 3d render|2d handdrawn animation|flat colors|expressive line art|illustrative style|studio ghibli aesthetic|anime style background|detailed characters|japanese animation|soft watercolor painting|artistic bleeding colors|paper texture|impressionist|cyberpunk aesthetic|neon colored lights|futuristic cityscape|rainy night|high tech|silhouette|handdrawn pencil sketch|charcoal texture|artistic line work|detailed|realistic|epic|storytelling|aesthetic|vibrant|beautiful|gorgeous|artistic|stunning|glorious|breathtaking|highly|background|concept|art|render|style|illustration|digital|painting/gi, "")
                 .replace(/[^a-zA-Z0-9\s]/g, "")
                 .replace(/\s+/g, " ")
                 .trim();
 
+              // For stock search, we MUST put the pure, clean visual subject FIRST!
+              // Prepending a stylePrefix (like "cinematic 4k ...") to stock searches breaks them
+              // because stock APIs look for exact words. They don't know what "cinematic 4k" means!
               const queriesToTry = [
-                cleanWords, // 1: Perfect cleaned words (e.g., "coffee ceremonies", "sunset over beach")
-                cleanWords.split(" ").slice(0, 3).join(" "), // 2: First 3 words (e.g. "sunset over")
-                cleanWords.split(" ")[0], // 3: Single primary word (e.g., "sunset")
+                cleanWords, // 1: Perfect clean subject (e.g., "coffee ceremony") - EXACT MATCH
+                cleanWords.split(" ").slice(0, 4).join(" "), // 2: First 4 words
+                cleanWords.split(" ").slice(0, 3).join(" "), // 3: First 3 words
+                cleanWords.split(" ").slice(0, 2).join(" "), // 4: First 2 words
+                cleanWords.split(" ")[0], // 5: Single primary noun
               ].filter(q => q && q.trim().length > 1);
 
-              // Put original query at front just in case they targeted specific terms
-              queriesToTry.unshift(searchQuery);
+              // Add style-prefixed query as a final low-priority fallback only
+              if (searchQuery && searchQuery !== cleanWords) {
+                queriesToTry.push(searchQuery);
+              }
 
               // Distinct values
               const uniqueQueries = Array.from(new Set(queriesToTry));
@@ -681,7 +715,7 @@ export default function App() {
     } catch (err: any) {
       console.warn("Generation failed:", err);
       // Better local fallback: support Amharic punctuation and sequential logic
-      const sentences = scriptText
+      const sentences = script
         .split(/(?<=[.!?።፤፧])\s+/)
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
@@ -948,14 +982,6 @@ export default function App() {
               language={language}
             />
 
-            <ProjectLibrary
-              currentScript={script}
-              currentScenes={scenes}
-              currentConfig={projectConfig}
-              onLoadProject={handleLoadSavedProject}
-              language={language}
-            />
-
             <Timeline
               scenes={scenes}
               activeSceneId={activeSceneId}
@@ -1158,6 +1184,59 @@ export default function App() {
                           {style.id === "realistic"
                             ? "Cinematic 4K"
                             : style.id.replace("-", " ")}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Video Color Grading & Filters */}
+                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                      {language === "am"
+                        ? "የቪዲዮ ቀለም ቅንብር እና ፊልተሮች (Color Grading & Filters)"
+                        : "Video Color Grading & Filters"}
+                    </label>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      {language === "am"
+                        ? "ለቪዲዮዎ አስደናቂ ሲኒማቲክ ገጽታ ለመስጠት የቀለም ፊልተር ይምረጡ።"
+                        : "Apply high-quality color grading to make your storyboard cinematic."}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { id: "none", name: "Original", am: "ያለ ፊልተር", desc: "No color filter" },
+                      { id: "teal", name: "Cinematic Teal", am: "ሲኒማቲክ ቲል", desc: "Teal & Orange tint" },
+                      { id: "high-contrast", name: "High Contrast", am: "ከፍተኛ ንፅፅር", desc: "Bold punchy look" },
+                      { id: "grayscale", name: "Grayscale", am: "ጥቁር እና ነጭ", desc: "Classic monochrome" },
+                      { id: "sepia", name: "Warm Sepia", am: "ሞቃታማ ሴፒያ", desc: "Vintage golden tone" },
+                      { id: "vintage", name: "Retro Vintage", am: "ጥንታዊ (ቪንቴጅ)", desc: "Aged film effect" },
+                    ].map((filt) => (
+                      <button
+                        key={filt.id}
+                        type="button"
+                        onClick={() =>
+                          handleUpdateConfig({ videoFilter: filt.id as any })
+                        }
+                        className={`flex flex-col items-start p-2.5 rounded-xl border transition-all text-left ${
+                          (projectConfig.videoFilter || "none") === filt.id
+                            ? "bg-indigo-600/10 border-indigo-600/50 ring-1 ring-indigo-600/20"
+                            : "bg-zinc-950 border-zinc-900 hover:border-zinc-800"
+                        }`}
+                      >
+                        <span
+                          className={`text-[11px] font-bold ${
+                            (projectConfig.videoFilter || "none") === filt.id
+                              ? "text-indigo-400"
+                              : "text-zinc-300"
+                          }`}
+                        >
+                          {language === "am" ? filt.am : filt.name}
+                        </span>
+                        <span className="text-[9px] text-zinc-500 mt-0.5">
+                          {filt.desc}
                         </span>
                       </button>
                     ))}
@@ -1408,6 +1487,20 @@ export default function App() {
                     </p>
                   </div>
                 )}
+
+                {/* 5. Project Library / Archives */}
+                <div className="pt-5 mt-2 border-t border-zinc-900/40">
+                  <ProjectLibrary
+                    currentScript={script}
+                    currentScenes={scenes}
+                    currentConfig={projectConfig}
+                    onLoadProject={(project) => {
+                      handleLoadSavedProject(project);
+                      setIsSettingsOpen(false); // Close settings when a project is loaded
+                    }}
+                    language={language}
+                  />
+                </div>
               </div>
 
               {/* Close Button Bottom Area */}

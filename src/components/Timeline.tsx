@@ -125,7 +125,7 @@ interface TimelineProps {
   onAddScene: () => void;
   onDeleteScene: (sceneId: string) => void;
   onMoveScene: (index: number, direction: 'up' | 'down') => void;
-  pexelsKey: string;
+  pexelsKey?: string;
   language: Language;
   visualStyle?: string;
   onBatchUpdateScenes?: (scenes: Scene[]) => void;

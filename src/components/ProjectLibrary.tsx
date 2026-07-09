@@ -12,6 +12,8 @@ import {
   History,
   Copy,
   Check,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import { Scene, ProjectConfig, SavedProject } from "../types";
 import { Language, translations } from "../translations";
@@ -200,6 +202,26 @@ export default function ProjectLibrary({
               <Save size={13} />
               <span>{t.save_current_project}</span>
             </button>
+          </div>
+
+          {/* Privacy & Isolation Guarantee Badge */}
+          <div className="flex items-start gap-3 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 animate-fadeIn">
+            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl mt-0.5 shrink-0">
+              <Lock size={14} />
+            </div>
+            <div className="text-zinc-400 space-y-1 flex-1">
+              <span className="text-[10px] font-black text-emerald-400 block uppercase tracking-wider font-sans flex items-center gap-1.5">
+                <ShieldCheck size={13} />
+                {language === "am"
+                  ? "የግል እና ባለቤትነቱ የተረጋገጠ ማከማቻ"
+                  : "Private & Secure Storage Only"}
+              </span>
+              <p className="text-[10px] text-zinc-400 leading-relaxed font-medium">
+                {language === "am"
+                  ? "እነዚህ የተቀመጡ ፕሮጀክቶች በሙሉ በራስዎ ኮምፒውተር/ብሮውዘር ላይ ብቻ (localStorage) የሚቀመጡ በመሆናቸው ከእርስዎ በስተቀር ሌላ ማንኛውም ሰው በፍጹም ሊያያቸው ወይም ሊደርስባቸው አይችልም።"
+                  : "These saved projects are stored strictly inside your own browser's local sandbox (localStorage). No other users or developers can ever view, access, or modify your storyboard data."}
+              </p>
+            </div>
           </div>
 
           {/* List of projects */}

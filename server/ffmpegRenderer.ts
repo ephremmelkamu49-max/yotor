@@ -96,6 +96,9 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       let cmd = `ffmpeg -y `;
       if (isImage) {
         cmd += `-loop 1 `;
+      } else {
+        // Loop the input video infinitely so it matches the voiceover duration perfectly
+        cmd += `-stream_loop -1 `;
       }
       cmd += `-i "${videoPath}" `;
       

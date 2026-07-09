@@ -921,6 +921,12 @@ export default function VideoCanvas({
             case "vintage":
               currentFilter += " sepia(40%) contrast(120%) brightness(90%) saturate(80%)";
               break;
+            case "teal":
+              currentFilter += " contrast(115%) saturate(135%) sepia(15%) hue-rotate(-15deg)";
+              break;
+            case "high-contrast":
+              currentFilter += " contrast(180%) brightness(95%) saturate(125%)";
+              break;
           }
         }
         ctx.filter = currentFilter.trim() || "none";
@@ -1517,40 +1523,40 @@ export default function VideoCanvas({
           </div>
 
           {/* Dynamic tabs */}
-          <div className="flex items-center bg-slate-900/80 p-1 border border-slate-800 rounded-xl text-xs">
+          <div className="flex items-center overflow-x-auto whitespace-nowrap flex-nowrap scrollbar-none max-w-full bg-slate-900/80 p-1 border border-slate-800 rounded-xl text-xs gap-1">
             <button
               onClick={() => setShowConfigTabs("ratio")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "ratio" ? "bg-cyan-600 text-white font-bold shadow" : "text-slate-500 hover:text-slate-300"}`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "ratio" ? "bg-cyan-600 text-white font-bold shadow" : "text-slate-500 hover:text-slate-300"}`}
             >
               {t.tab_size}
             </button>
             <button
               onClick={() => setShowConfigTabs("subtitle")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "subtitle" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "subtitle" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_subtitles}
             </button>
             <button
               onClick={() => setShowConfigTabs("music")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "music" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "music" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_music}
             </button>
             <button
               onClick={() => setShowConfigTabs("motion")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "motion" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "motion" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               {t.tab_motion}
             </button>
             <button
               onClick={() => setShowConfigTabs("filters")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${showConfigTabs === "filters" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "filters" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
             >
               Filters
             </button>
             <button
               onClick={() => setShowConfigTabs("analyzer")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1 ${showConfigTabs === "analyzer" ? "bg-indigo-650 text-white font-bold" : "text-indigo-400 hover:text-indigo-300"}`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 flex items-center gap-1 ${showConfigTabs === "analyzer" ? "bg-indigo-650 text-white font-bold" : "text-indigo-400 hover:text-indigo-300"}`}
               title="Analyze active video scene with Gemini 3.1 Pro"
             >
               <Cpu
@@ -2215,8 +2221,8 @@ export default function VideoCanvas({
                 <div className="h-px bg-zinc-900 flex-1"></div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                {(["none", "sepia", "grayscale", "contrast", "vintage"] as const).map(
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(["none", "sepia", "grayscale", "contrast", "vintage", "teal", "high-contrast"] as const).map(
                   (filter) => (
                     <button
                       key={filter}

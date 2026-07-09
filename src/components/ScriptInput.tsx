@@ -358,7 +358,7 @@ export default function ScriptInput({
               {t.video_source}
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="grid grid-cols-3 gap-2 mb-4">
             <button
               type="button"
               onClick={() => setVideoMode("stock")}
