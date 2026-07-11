@@ -12,7 +12,7 @@ const app = express();
 const PORT = 3000;
 
 // JSON parser
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '500mb' }));
 
 // PWA routes for mobile installability
 app.get("/manifest.json", (req, res) => {

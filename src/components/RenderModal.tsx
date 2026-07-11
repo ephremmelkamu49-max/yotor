@@ -34,7 +34,7 @@ export default function RenderModal({
   voiceoverPeaks
 }: RenderModalProps) {
   const t = translations[language];
-  const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'completed' | 'failed'>('idle');
+  const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'processing' | 'completed' | 'failed'>('idle');
   
   // Custom video download quota (starts at 3)
   const [exportQuota, setExportQuota] = useState<number>(() => {
@@ -88,6 +88,8 @@ export default function RenderModal({
   const audioDestNodeRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const audioSourcesRef = useRef<any[]>([]);
   const renderLoopTimeoutRef = useRef<any>(null);
+  const cloudRenderAbortControllerRef = useRef<AbortController | null>(null);
+  const cloudRenderIntervalRef = useRef<any>(null);
 
   useEffect(() => {
     return () => {
@@ -102,6 +104,14 @@ export default function RenderModal({
   const cleanupRenderSubprocesses = () => {
     if (renderLoopTimeoutRef.current) {
       clearInterval(renderLoopTimeoutRef.current);
+    }
+    if (cloudRenderIntervalRef.current) {
+      clearInterval(cloudRenderIntervalRef.current);
+      cloudRenderIntervalRef.current = null;
+    }
+    if (cloudRenderAbortControllerRef.current) {
+      cloudRenderAbortControllerRef.current.abort();
+      cloudRenderAbortControllerRef.current = null;
     }
     if (currentRenderAudioRef.current) {
       currentRenderAudioRef.current.pause();
@@ -558,7 +568,6 @@ export default function RenderModal({
             }, clockTick);
           });
         } catch (err: any) {
-      if (typeof progressInterval !== 'undefined') clearInterval(progressInterval);
           addLog(`Sequence timing error: ${err.message}`);
           if (sceneTts) {
             sceneTts.pause();
@@ -588,18 +597,55 @@ export default function RenderModal({
     setRenderLogs([]);
     addLog(`Initiating remote compile via /api/render-ffmpeg...`);
 
-    let progressInterval: any;
+    if (cloudRenderIntervalRef.current) clearInterval(cloudRenderIntervalRef.current);
+    if (cloudRenderAbortControllerRef.current) cloudRenderAbortControllerRef.current.abort();
+
+    const abortController = new AbortController();
+    cloudRenderAbortControllerRef.current = abortController;
+
     try {
       const payloadScenes = [];
+      let currentIdx = 0;
       for (const scene of scenes) {
+        currentIdx++;
+        if (abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
+        addLog(`[Prep] Processing scene ${currentIdx} of ${scenes.length}...`);
+        setProgress(Math.round((currentIdx / scenes.length) * 15));
+        
         let ttsAudioBuffer = undefined;
         let targetDuration = scene.duration;
-        if (scene.ttsAudioUrl) {
-          const m = scene.ttsAudioUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-          if (m) {
-            ttsAudioBuffer = m[2];
+        
+        // Fetch the voiceover URL if voice is enabled and convert it to base64 for reliable server-side mixing
+        if (projectConfig.isVoiceEnabled) {
+          const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
+          if (ttsUrl) {
+            try {
+              addLog(`  -> Preparing voiceover narrative...`);
+              const audioRes = await fetch(ttsUrl, { signal: abortController.signal });
+              const audioBlob = await audioRes.blob();
+              const reader = new FileReader();
+              const base64Audio = await new Promise<string>((resolve, reject) => {
+                if (abortController.signal.aborted) {
+                  reject(new DOMException("Aborted", "AbortError"));
+                  return;
+                }
+                reader.onloadend = () => {
+                  const res = reader.result as string;
+                  const m = res.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+                  resolve(m ? m[2] : "");
+                };
+                reader.readAsDataURL(audioBlob);
+              });
+              if (base64Audio) {
+                ttsAudioBuffer = base64Audio;
+              }
+            } catch (e: any) {
+              if (e.name === 'AbortError') throw e;
+              console.warn("Failed to fetch and convert TTS to base64", e);
+            }
           }
         }
+
         let sceneMusicVolume = undefined;
         if (typeof scene.musicVolume === 'number') {
            sceneMusicVolume = scene.musicVolume;
@@ -607,15 +653,21 @@ export default function RenderModal({
         let finalVideoUrl = scene.videoUrl || "";
         if (finalVideoUrl.startsWith('http') || finalVideoUrl.startsWith('blob:')) {
           try {
+            addLog(`  -> Caching visual clip...`);
             const fetchUrl = finalVideoUrl.startsWith('/') ? finalVideoUrl : finalVideoUrl.replace("images.pexels.com/video-files/", "videos.pexels.com/video-files/");
-            const blobRes = await fetch(fetchUrl);
+            const blobRes = await fetch(fetchUrl, { signal: abortController.signal });
             const blobData = await blobRes.blob();
             const reader = new FileReader();
-            finalVideoUrl = await new Promise((resolve) => {
-              reader.onloadend = () => resolve(reader.result);
+            finalVideoUrl = await new Promise<string>((resolve, reject) => {
+              if (abortController.signal.aborted) {
+                reject(new DOMException("Aborted", "AbortError"));
+                return;
+              }
+              reader.onloadend = () => resolve(reader.result as string);
               reader.readAsDataURL(blobData);
             });
-          } catch(e) {
+          } catch(e: any) {
+            if (e.name === 'AbortError') throw e;
             console.warn("Failed to convert video to base64", e);
           }
         }
@@ -635,14 +687,20 @@ export default function RenderModal({
       let finalMusicUrl = projectConfig.isMusicEnabled ? projectConfig.musicTrack : undefined;
       if (finalMusicUrl && (finalMusicUrl.startsWith('http') || finalMusicUrl.startsWith('blob:'))) {
         try {
-          const blobRes = await fetch(finalMusicUrl);
+          addLog("Mixing cinematic music background track...");
+          const blobRes = await fetch(finalMusicUrl, { signal: abortController.signal });
           const blobData = await blobRes.blob();
           const reader = new FileReader();
-          finalMusicUrl = await new Promise((resolve) => {
-            reader.onloadend = () => resolve(reader.result);
+          finalMusicUrl = await new Promise<string>((resolve, reject) => {
+            if (abortController.signal.aborted) {
+              reject(new DOMException("Aborted", "AbortError"));
+              return;
+            }
+            reader.onloadend = () => resolve(reader.result as string);
             reader.readAsDataURL(blobData);
           });
-        } catch(e) {
+        } catch(e: any) {
+          if (e.name === 'AbortError') throw e;
           console.warn("Failed to convert music to base64", e);
         }
       }
@@ -655,18 +713,21 @@ export default function RenderModal({
       };
       
       addLog("Starting backend compilation...");
-      progressInterval = setInterval(() => {
+      const pInterval = setInterval(() => {
         setProgress((p) => p < 90 ? p + Math.random() * 5 : p);
         addLog("Still baking...");
       }, 3000);
+      cloudRenderIntervalRef.current = pInterval;
       
       const response = await fetch("/api/render-ffmpeg", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: abortController.signal
       });
 
-      clearInterval(progressInterval);
+      clearInterval(pInterval);
+      cloudRenderIntervalRef.current = null;
 
       if (!response.ok) {
         let errMsg = response.statusText;
@@ -698,9 +759,18 @@ export default function RenderModal({
       });
       setProgress(100);
       setRenderStatus('completed');
+      cloudRenderAbortControllerRef.current = null;
       if (onRenderComplete) onRenderComplete();
     } catch (err: any) {
-      if (progressInterval) clearInterval(progressInterval);
+      if (cloudRenderIntervalRef.current) {
+        clearInterval(cloudRenderIntervalRef.current);
+        cloudRenderIntervalRef.current = null;
+      }
+      cloudRenderAbortControllerRef.current = null;
+      if (err.name === 'AbortError') {
+        addLog("Compilation aborted by user.");
+        return;
+      }
       console.error(err);
       setRenderStatus('failed');
       addLog(`❌ [Cloud Render] FAILED: ${err.message}`);
@@ -722,7 +792,12 @@ export default function RenderModal({
             <FileVideo className="text-indigo-400" size={18} />
             {t.render_studio}
           </h1>
-          <p className="text-xs text-zinc-500 mt-1.5">{t.render_log_assembling}</p>
+          <p className="text-xs text-zinc-500 mt-1.5">
+            {renderStatus === 'idle' && (language === 'am' ? 'የቪዲዮ ማውረጃ ምርጫዎችን ያስተካክሉ' : 'Configure video export parameters')}
+            {(renderStatus === 'rendering' || renderStatus === 'processing') && t.render_log_assembling}
+            {renderStatus === 'completed' && (language === 'am' ? 'ቪዲዮው በተሳካ ሁኔታ ተጠናቋል!' : 'Master export completed successfully!')}
+            {renderStatus === 'failed' && (language === 'am' ? 'ማቀናበሩ ተቋርጧል ወይም አልተሳካም' : 'Export process stopped or aborted')}
+          </p>
         </div>
 
         {renderStatus === 'idle' && (
@@ -1052,20 +1127,28 @@ export default function RenderModal({
           </div>
         )}
 
-        {renderStatus === 'rendering' && (
+        {(renderStatus === 'rendering' || renderStatus === 'processing') && (
           <div className="space-y-5 py-4 flex-1 flex flex-col justify-between">
             <div className="space-y-4">
               <div className="flex items-center justify-center py-6">
                 <div className="relative flex items-center justify-center">
                   <div className="absolute w-20 h-20 border-4 border-indigo-500/10 rounded-full" />
                   <div className="absolute w-20 h-20 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-base font-bold font-mono text-indigo-400">{progress}%</span>
+                  <span className="text-base font-bold font-mono text-indigo-400">{Math.round(progress)}%</span>
                 </div>
               </div>
 
               <div className="space-y-1 text-center">
-                <span className="text-xs font-semibold text-zinc-300 block">Framing Movie Sequence...</span>
-                <p className="text-[10px] text-zinc-500">Compiling scene timings and syncing text subtitles</p>
+                <span className="text-xs font-semibold text-zinc-300 block">
+                  {renderStatus === 'processing' 
+                    ? (language === 'am' ? 'ቪዲዮው በክላውድ በጥራት እየተዘጋጀ ነው...' : 'Cloud Rendering Sequence...')
+                    : (language === 'am' ? 'ፊልሙን በማቀናጀት ላይ...' : 'Framing Movie Sequence...')}
+                </span>
+                <p className="text-[10px] text-zinc-500">
+                  {renderStatus === 'processing'
+                    ? (language === 'am' ? 'ድምፅ እና ምስሎችን በከፍተኛ ጥራት በማዋሃድ ላይ፤ እባክዎን ገጹን አይዝጉ' : 'Converting, uploading and stitching frames on high-performance backend')
+                    : (language === 'am' ? 'ምስሎችና ድምፆችን በማዋሃድ ላይ' : 'Compiling scene timings and syncing text subtitles')}
+                </p>
               </div>
 
               {/* Progress track */}
