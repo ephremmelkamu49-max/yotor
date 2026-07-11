@@ -691,23 +691,37 @@ export default function RenderModal({
       setProgress(40);
       
       let pollStatus = "processing";
+      let pollDelay = 10000;
       while (pollStatus === "processing") {
-        await new Promise(r => setTimeout(r, 3000));
-        const statusRes = await fetch(`/api/render-status?jobId=${jobId}`);
-        if (!statusRes.ok) {
-           let errData;
-           try {
-             errData = await statusRes.json();
-           } catch(e) {}
-           throw new Error(`Failed to check status: ${statusRes.status} ${statusRes.statusText} ${errData?.error || ''}`);
+        await new Promise(r => setTimeout(r, pollDelay));
+        try {
+          const statusRes = await fetch(`/api/render-status?jobId=${jobId}`);
+          if (!statusRes.ok) {
+            if (statusRes.status === 429) {
+              addLog(`Rate limited. Waiting longer before next check...`);
+              pollDelay += 5000;
+              continue; // Skip throwing error
+            }
+            let errData;
+            try {
+              errData = await statusRes.json();
+            } catch(e) {}
+            throw new Error(`Failed to check status: ${statusRes.status} ${statusRes.statusText} ${errData?.error || ''}`);
+          }
+          const statusData = await statusRes.json();
+          if (statusData.status === "error") {
+            throw new Error(statusData.error || "Unknown render error");
+          }
+          pollStatus = statusData.status;
+          setProgress((p) => p < 90 ? p + Math.random() * 5 : p);
+          addLog(`Still baking...`);
+        } catch (err: any) {
+          if (err.message && err.message.includes("Failed to fetch")) {
+             addLog(`Network hiccup during poll... retrying.`);
+             continue;
+          }
+          throw err;
         }
-        const statusData = await statusRes.json();
-        if (statusData.status === "error") {
-          throw new Error(statusData.error || "Unknown render error");
-        }
-        pollStatus = statusData.status;
-        setProgress((p) => p < 90 ? p + Math.random() * 5 : p);
-        addLog(`Still baking...`);
       }
 
       addLog("✅ [Cloud Render] Remote compilation complete! Downloading master file...");
