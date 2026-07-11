@@ -1524,8 +1524,11 @@ app.get("/api/render-download", (req, res) => {
   if (!job || job.status !== "done" || !job.outPath) {
     return res.status(400).json({ error: "Job not ready" });
   }
-  res.sendFile(job.outPath, (err) => {
+  res.sendFile(job.outPath, (err: any) => {
     if (err) {
+      if (err.code === 'ECONNABORTED' || err.message?.includes('Request aborted')) {
+        return; // Ignore normal client disconnects
+      }
       console.error("Error sending rendered file:", err);
       if (!res.headersSent) {
         res.status(500).json({ error: "File not found or unreadable" });
