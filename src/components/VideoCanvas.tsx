@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Scene, AspectRatio, ProjectConfig, AnimationStyle } from "../types";
 import { DEFAULT_MUSIC, DEFAULT_CATALOG, GOOGLE_TTS_LANGUAGES } from "../data";
 import { Language, translations } from "../translations";
+import { getTtsUrl } from "../App";
 import {
   Play,
   Pause,
@@ -2590,7 +2591,7 @@ export default function VideoCanvas({
         {/* Hidden active audio for Preloading TTS Voiceovers */}
         {scenes.map((s, idx) => {
           const isNear = Math.abs(idx - playbackIndex) <= 2;
-          const audioUrl = s.voiceoverUrl || (s.text && s.text.trim().length > 0 ? `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}` : "");
+          const audioUrl = s.voiceoverUrl || (s.text && s.text.trim().length > 0 ? getTtsUrl(s.text, projectConfig.voiceLanguage) : "");
           const audioSrcProps = isNear && audioUrl ? { src: audioUrl } : {};
           return (
           <audio

@@ -61,6 +61,17 @@ import {
   Redo2,
 } from "lucide-react";
 
+export const getTtsUrl = (text: string, lang: string): string => {
+  let url = `/api/tts?text=${encodeURIComponent(text)}&lang=${lang}`;
+  if (lang && lang.startsWith("openai-")) {
+    const key = localStorage.getItem("openai_api_key") || "";
+    if (key) {
+      url += `&openai_key=${encodeURIComponent(key)}`;
+    }
+  }
+  return url;
+};
+
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem("app_language") as Language) || "en";
@@ -240,7 +251,7 @@ export default function App() {
       setScenes((prev) =>
         prev.map((s) => ({
           ...s,
-          voiceoverUrl: `/api/tts?text=${encodeURIComponent(s.text)}&lang=${projectConfig.voiceLanguage}`,
+          voiceoverUrl: getTtsUrl(s.text, projectConfig.voiceLanguage),
         })),
       );
     }
@@ -260,7 +271,7 @@ export default function App() {
       language === "am"
         ? "እንኳን ወደ ይቶር ሲኒማቲክ ስቱዲዮ በሰላም መጡ። ይህ የድምፅ መሞከሪያ ነው።"
         : "Welcome to Yotor Cinematic Studio. This is a voice test.";
-    const url = `/api/tts?text=${encodeURIComponent(testText)}&lang=${projectConfig.voiceLanguage}`;
+    const url = getTtsUrl(testText, projectConfig.voiceLanguage);
     const audio = new Audio(url);
     audio.play().catch((e) => {
       // Ignore
@@ -615,7 +626,7 @@ export default function App() {
               videoThumb,
               videoAuthor: author,
               videoAuthorUrl: "#",
-              voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
+              voiceoverUrl: getTtsUrl(scene.text, projectConfig.voiceLanguage),
               originalIndex: i,
               transitionToNext: "random" as any,
             };
@@ -683,7 +694,7 @@ export default function App() {
                 videoThumb: "", // Veo doesn't give thumb easily
                 videoAuthor: "Veo 3.1 AI",
                 videoAuthorUrl: "#",
-                voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
+                voiceoverUrl: getTtsUrl(scene.text, projectConfig.voiceLanguage),
                 originalIndex: i,
                 transitionToNext: "random" as any,
               };
@@ -700,7 +711,7 @@ export default function App() {
                 videoThumb: fallbackVid.thumbnail,
                 videoAuthor: fallbackVid.author,
                 videoAuthorUrl: "#",
-                voiceoverUrl: `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`,
+                voiceoverUrl: getTtsUrl(scene.text, projectConfig.voiceLanguage),
                 originalIndex: i,
                 transitionToNext: "random" as any,
               };
@@ -949,14 +960,7 @@ export default function App() {
               <span className="hidden sm:inline">Refresh App</span>
             </button>
 
-            <a
-              href={window.location.href}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-900/80 backdrop-blur-md border border-white/10 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-white/20 text-[10px] uppercase tracking-widest font-bold rounded-2xl transition-all"
-            >
-              🌐 {t.full_web_view}
-            </a>
+
             <button
               onClick={() => setIsRenderOpen(true)}
               disabled={scenes.length === 0}

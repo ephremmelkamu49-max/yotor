@@ -13,6 +13,8 @@ import {
   Play,
   TrendingUp,
   Bot,
+  Save,
+  Check,
 } from "lucide-react";
 import { Language, translations } from "../translations";
 import { GOOGLE_TTS_LANGUAGES, VIDEO_TEMPLATES } from "../data";
@@ -55,13 +57,22 @@ export default function ScriptInput({
   const [coverrKey, setCoverrKey] = useState<string>(
     () => localStorage.getItem("coverr_api_key") || "",
   );
+  const [openaiKey, setOpenaiKey] = useState<string>(
+    () => localStorage.getItem("openai_api_key") || "",
+  );
 
   const [showKey, setShowKey] = useState(false);
   const [showPixabayKey, setShowPixabayKey] = useState(false);
   const [showCoverrKey, setShowCoverrKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
   const [loadingDiagnostic, setLoadingDiagnostic] = useState(false);
+
+  const [pexelsSaved, setPexelsSaved] = useState(false);
+  const [pixabaySaved, setPixabaySaved] = useState(false);
+  const [coverrSaved, setCoverrSaved] = useState(false);
+  const [openaiSaved, setOpenaiSaved] = useState(false);
 
   const runDiagnostics = async () => {
     setLoadingDiagnostic(true);
@@ -99,6 +110,8 @@ export default function ScriptInput({
     else localStorage.removeItem("pixabay_api_key");
     if (coverrKey) localStorage.setItem("coverr_api_key", coverrKey);
     else localStorage.removeItem("coverr_api_key");
+    if (openaiKey) localStorage.setItem("openai_api_key", openaiKey);
+    else localStorage.removeItem("openai_api_key");
 
     onAnalyze(
       videoMode,
@@ -155,21 +168,54 @@ export default function ScriptInput({
                   (optional)
                 </span>
               </label>
-              <div className="relative">
-                <input
-                  type={showKey ? "text" : "password"}
-                  value={pexelsKey}
-                  onChange={(e) => setPexelsKey(e.target.value)}
-                  placeholder="Paste your Pexels API key here..."
-                  className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
-                  id="pexels-key"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showKey ? "text" : "password"}
+                    value={pexelsKey}
+                    onChange={(e) => setPexelsKey(e.target.value)}
+                    placeholder="Paste your Pexels API key here..."
+                    className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
+                    id="pexels-key"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(!showKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-350"
+                  >
+                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-350"
+                  onClick={() => {
+                    const trimmed = pexelsKey.trim();
+                    if (trimmed) {
+                      localStorage.setItem("pexels_api_key", trimmed);
+                    } else {
+                      localStorage.removeItem("pexels_api_key");
+                    }
+                    setPexelsSaved(true);
+                    setTimeout(() => setPexelsSaved(false), 2000);
+                  }}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 min-w-[75px] ${
+                    pexelsSaved
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-indigo-600 hover:bg-indigo-500 text-white border border-transparent"
+                  }`}
+                  title="Save Pexels Key / አስቀምጥ"
                 >
-                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {pexelsSaved ? (
+                    <>
+                      <Check size={13} />
+                      {language === "am" ? "ተቀምጧል" : "Saved"}
+                    </>
+                  ) : (
+                    <>
+                      <Save size={13} />
+                      {language === "am" ? "አስቀምጥ" : "Save"}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -182,20 +228,54 @@ export default function ScriptInput({
                   (optional)
                 </span>
               </label>
-              <div className="relative">
-                <input
-                  type={showPixabayKey ? "text" : "password"}
-                  value={pixabayKey}
-                  onChange={(e) => setPixabayKey(e.target.value)}
-                  className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
-                  id="pixabay-key"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showPixabayKey ? "text" : "password"}
+                    value={pixabayKey}
+                    onChange={(e) => setPixabayKey(e.target.value)}
+                    placeholder="Paste your Pixabay API key here..."
+                    className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
+                    id="pixabay-key"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPixabayKey(!showPixabayKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-350"
+                  >
+                    {showPixabayKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setShowPixabayKey(!showPixabayKey)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-350"
+                  onClick={() => {
+                    const trimmed = pixabayKey.trim();
+                    if (trimmed) {
+                      localStorage.setItem("pixabay_api_key", trimmed);
+                    } else {
+                      localStorage.removeItem("pixabay_api_key");
+                    }
+                    setPixabaySaved(true);
+                    setTimeout(() => setPixabaySaved(false), 2000);
+                  }}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 min-w-[75px] ${
+                    pixabaySaved
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-indigo-600 hover:bg-indigo-500 text-white border border-transparent"
+                  }`}
+                  title="Save Pixabay Key / አስቀምጥ"
                 >
-                  {showPixabayKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {pixabaySaved ? (
+                    <>
+                      <Check size={13} />
+                      {language === "am" ? "ተቀምጧል" : "Saved"}
+                    </>
+                  ) : (
+                    <>
+                      <Save size={13} />
+                      {language === "am" ? "አስቀምጥ" : "Save"}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -208,20 +288,54 @@ export default function ScriptInput({
                   (optional - Elite footage)
                 </span>
               </label>
-              <div className="relative">
-                <input
-                  type={showCoverrKey ? "text" : "password"}
-                  value={coverrKey}
-                  onChange={(e) => setCoverrKey(e.target.value)}
-                  className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
-                  id="coverr-key"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showCoverrKey ? "text" : "password"}
+                    value={coverrKey}
+                    onChange={(e) => setCoverrKey(e.target.value)}
+                    placeholder="Paste your Coverr API key here..."
+                    className="w-full bg-[#050505] border border-zinc-800 text-zinc-100 text-sm rounded-lg pl-3 pr-10 py-2 focus:outline-none focus:border-indigo-500/50"
+                    id="coverr-key"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCoverrKey(!showCoverrKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-350"
+                  >
+                    {showCoverrKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setShowCoverrKey(!showCoverrKey)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-350"
+                  onClick={() => {
+                    const trimmed = coverrKey.trim();
+                    if (trimmed) {
+                      localStorage.setItem("coverr_api_key", trimmed);
+                    } else {
+                      localStorage.removeItem("coverr_api_key");
+                    }
+                    setCoverrSaved(true);
+                    setTimeout(() => setCoverrSaved(false), 2000);
+                  }}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 min-w-[75px] ${
+                    coverrSaved
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-indigo-600 hover:bg-indigo-500 text-white border border-transparent"
+                  }`}
+                  title="Save Coverr Key / አስቀምጥ"
                 >
-                  {showCoverrKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {coverrSaved ? (
+                    <>
+                      <Check size={13} />
+                      {language === "am" ? "ተቀምጧል" : "Saved"}
+                    </>
+                  ) : (
+                    <>
+                      <Save size={13} />
+                      {language === "am" ? "አስቀምጥ" : "Save"}
+                    </>
+                  )}
                 </button>
               </div>
             </div>

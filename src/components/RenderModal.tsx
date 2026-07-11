@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Scene, ProjectConfig } from '../types';
 import { DEFAULT_MUSIC } from '../data';
 import { Language, translations } from '../translations';
+import { getTtsUrl } from '../App';
 import { 
   Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu
 } from 'lucide-react';
@@ -146,7 +147,7 @@ export default function RenderModal({
           if (!scene.voiceoverUrl && (!scene.text || scene.text.trim().length === 0)) {
             return scene; // No TTS for this scene
           }
-          const ttsUrl = scene.voiceoverUrl || `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`;
+          const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
           const tempAudio = new Audio(ttsUrl);
           tempAudio.crossOrigin = "anonymous";
           
@@ -403,7 +404,7 @@ export default function RenderModal({
         let sceneTts: HTMLAudioElement | null = null;
         if (projectConfig.isVoiceEnabled && audioCtx && audioDest) {
           if (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0)) {
-            const ttsUrl = scene.voiceoverUrl || `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`;
+            const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
             sceneTts = new Audio(ttsUrl);
             sceneTts.crossOrigin = "anonymous";
             
@@ -604,7 +605,7 @@ export default function RenderModal({
         let targetDuration = scene.duration || 4.5;
         
         if (projectConfig.isVoiceEnabled && (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0))) {
-          const ttsUrl = scene.voiceoverUrl || `/api/tts?text=${encodeURIComponent(scene.text)}&lang=${projectConfig.voiceLanguage}`;
+          const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
           addLog(`[Cloud Render] Baking TTS for Scene ${i + 1}...`);
           try {
             const ttsRes = await fetch(ttsUrl);

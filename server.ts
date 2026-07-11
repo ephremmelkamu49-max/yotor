@@ -877,6 +877,128 @@ app.get("/api/tts", async (req, res) => {
     }
 
     // ---------------------------------------------------------
+    // OPENAI TTS (Premium ChatGPT Voices)
+    // ---------------------------------------------------------
+    if (lang.startsWith("openai-")) {
+      try {
+        const voiceName = lang.replace("openai-", ""); // alloy, echo, fable, onyx, nova, shimmer
+        const userApiKey = (req.query.openai_key as string) || (req.headers["x-openai-key"] as string) || process.env.OPENAI_API_KEY;
+        
+        if (!userApiKey) {
+          throw new Error("OpenAI API Key is missing. Please add your OpenAI API Key in the settings panel to use ChatGPT voices.");
+        }
+
+        const openAiResponse = await fetch("https://api.openai.com/v1/audio/speech", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${userApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "tts-1",
+            input: safeText,
+            voice: voiceName,
+            response_format: "mp3"
+          })
+        });
+
+        if (!openAiResponse.ok) {
+          const errBody = await openAiResponse.text();
+          throw new Error(`OpenAI TTS API Error: ${openAiResponse.status} - ${errBody}`);
+        }
+
+        const arrayBuffer = await openAiResponse.arrayBuffer();
+        const combinedBuffer = Buffer.from(arrayBuffer);
+
+        if (combinedBuffer.length === 0) {
+          throw new Error("OpenAI TTS produced 0 bytes of audio.");
+        }
+
+        const range = req.headers.range;
+        if (range) {
+          const parts = range.replace(/bytes=/, "").split("-");
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : combinedBuffer.length - 1;
+          const chunksize = (end - start) + 1;
+          const fileChunk = combinedBuffer.subarray(start, end + 1);
+
+          res.writeHead(206, {
+            "Content-Range": `bytes ${start}-${end}/${combinedBuffer.length}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": chunksize,
+            "Content-Type": "audio/mpeg",
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*"
+          });
+          return res.end(fileChunk);
+        } else {
+          res.writeHead(200, {
+            "Content-Length": combinedBuffer.length,
+            "Accept-Ranges": "bytes",
+            "Content-Type": "audio/mpeg",
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*"
+          });
+          return res.end(combinedBuffer);
+        }
+      } catch (openai_err: any) {
+        console.warn("OpenAI TTS Failed, falling back to Microsoft Edge Neural TTS:", openai_err.message || openai_err);
+        
+        let fallbackVoice = "en-US-ChristopherNeural"; // default standard
+        const voiceName = lang.replace("openai-", "");
+        if (voiceName === "alloy" || voiceName === "echo" || voiceName === "onyx") {
+          fallbackVoice = "en-US-GuyNeural"; // Deep Male
+        } else if (voiceName === "fable") {
+          fallbackVoice = "en-GB-RyanNeural"; // British
+        } else if (voiceName === "nova" || voiceName === "shimmer") {
+          fallbackVoice = "en-US-AriaNeural"; // Bright Female
+        }
+
+        try {
+          console.log(`[TTS Fallback] Synthesizing text with Edge voice: ${fallbackVoice}`);
+          const tts = new EdgeTTS(safeText, fallbackVoice);
+          const result = await tts.synthesize();
+          const combinedBuffer = Buffer.from(await result.audio.arrayBuffer());
+          
+          if (combinedBuffer.length === 0) {
+            throw new Error("Edge fallback TTS produced 0 bytes of audio.");
+          }
+            
+          const range = req.headers.range;
+          if (range) {
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : combinedBuffer.length - 1;
+            const chunksize = (end - start) + 1;
+            const fileChunk = combinedBuffer.subarray(start, end + 1);
+
+            res.writeHead(206, {
+              "Content-Range": `bytes ${start}-${end}/${combinedBuffer.length}`,
+              "Accept-Ranges": "bytes",
+              "Content-Length": chunksize,
+              "Content-Type": "audio/mpeg",
+              "Cache-Control": "public, max-age=86400",
+              "Access-Control-Allow-Origin": "*"
+            });
+            return res.end(fileChunk);
+          } else {
+            res.writeHead(200, {
+              "Content-Length": combinedBuffer.length,
+              "Accept-Ranges": "bytes",
+              "Content-Type": "audio/mpeg",
+              "Cache-Control": "public, max-age=86400",
+              "Access-Control-Allow-Origin": "*"
+            });
+            return res.end(combinedBuffer);
+          }
+        } catch (fallback_err: any) {
+          console.warn(`[Info] Both OpenAI and Edge TTS Fallback failed: ${fallback_err.message || fallback_err}. Engaging ultimate Google Translate fallback.`);
+          // Do not return here, allowing the code execution to fall through to the Google Translate TTS block
+        }
+      }
+    }
+
+    // ---------------------------------------------------------
     // GEMINI TTS (High Quality, Metered API)
     // ---------------------------------------------------------
     if ((lang === 'am-gemini-male' || lang === 'am-gemini-female') && ai) {
@@ -945,7 +1067,7 @@ app.get("/api/tts", async (req, res) => {
     // ---------------------------------------------------------
     let fallbackLang = lang.includes('-') ? lang.split('-')[0] : lang;
     if (fallbackLang.startsWith('am')) fallbackLang = 'am';
-    else if (fallbackLang.startsWith('en')) fallbackLang = 'en';
+    else if (fallbackLang.startsWith('en') || fallbackLang.startsWith('openai')) fallbackLang = 'en';
 
     // For Google TTS, we must split long text into chunks of ~200 chars to avoid "413 Request Entity Too Large"
     const chunks: string[] = [];
