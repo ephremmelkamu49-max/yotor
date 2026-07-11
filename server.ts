@@ -1524,9 +1524,12 @@ app.get("/api/render-download", (req, res) => {
   if (!job || job.status !== "done" || !job.outPath) {
     return res.status(400).json({ error: "Job not ready" });
   }
-  res.download(job.outPath, `yotor_video_${jobId}.mp4`, (err) => {
+  res.sendFile(job.outPath, (err) => {
     if (err) {
       console.error("Error sending rendered file:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "File not found or unreadable" });
+      }
     }
   });
 });

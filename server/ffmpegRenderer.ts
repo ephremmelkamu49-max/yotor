@@ -86,8 +86,8 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       await Promise.all(workers);
     };
 
-    // Download in parallel with concurrency 2
-    await runWithConcurrency(req.scenes, 2, async (scene, i) => {
+    // Download in parallel with concurrency 5
+    await runWithConcurrency(req.scenes, 5, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
       
@@ -113,8 +113,8 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
 
     console.log("All assets downloaded successfully. Commencing fast FFmpeg scene processing...");
 
-    // Process scenes sequentially (concurrency 1) to avoid CPU/Memory overload and OOM kills on small instances
-    await runWithConcurrency(req.scenes, 1, async (scene, i) => {
+    // Process scenes in parallel with concurrency 3 (to avoid CPU/Memory overload)
+    await runWithConcurrency(req.scenes, 3, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
       const outPath = path.join(tempDir, `out_${i}.mp4`);
@@ -142,7 +142,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
       
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -threads 1 -crf 28 -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
       
       console.log("Running scene", i);
       await execAsync(cmd);
