@@ -9,7 +9,8 @@ import os from "os";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 const execAsync = promisify(exec);
-const ffmpegPath = ffmpegInstaller.path;
+// Prefer native system ffmpeg (/usr/bin/ffmpeg) over node_modules binary to guarantee architecture compatibility and executable permissions
+const ffmpegPath = "/usr/bin/ffmpeg";
 
 export interface RenderScene {
   id: string;
@@ -28,10 +29,11 @@ export interface RenderRequest {
 
 async function downloadFile(url: string, dest: string) {
   if (url.startsWith("data:")) {
-    // Handle base64
-    const matches = url.match(/^data:([A-Za-z0-9-+\/.]+);(?:[\w=]+;)*base64,(.+)$/);
-    if (matches && matches.length === 3) {
-      const buffer = Buffer.from(matches[2], "base64");
+    // High-performance substring splitting instead of expensive regex match on huge base64 assets
+    const commaIndex = url.indexOf(",");
+    if (commaIndex !== -1) {
+      const base64Data = url.substring(commaIndex + 1);
+      const buffer = Buffer.from(base64Data, "base64");
       await fs.writeFile(dest, buffer);
       return;
     }
@@ -45,10 +47,13 @@ async function downloadFile(url: string, dest: string) {
   // Handle http and relative local URLs
   if (url.startsWith("http") || url.startsWith("/")) {
     const fetchUrl = url.startsWith("/") ? `http://127.0.0.1:3000${url}` : url;
+    
+    // Add AbortSignal timeout to prevent hanging forever on unresponsive CDN nodes
     const response = await fetch(fetchUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-      }
+      },
+      signal: AbortSignal.timeout(15000)
     });
 
     if (!response.ok) throw new Error(`Failed to download ${fetchUrl} (status: ${response.status})`);
@@ -148,7 +153,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
       
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -pix_fmt yuv420p -r 30 "${outPath}"`;
       
       console.log("Running scene", i);
       await execAsync(cmd);

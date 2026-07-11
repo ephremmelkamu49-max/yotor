@@ -48,12 +48,24 @@ export default function RenderModal({
   };
 
   const [progress, setProgress] = useState<number>(0);
+
+  const updateProgressForward = (nextVal: number) => {
+    setProgress((prev) => {
+      let quantized = Math.round(nextVal / 10) * 10;
+      quantized = Math.max(0, Math.min(100, quantized));
+      if (quantized >= 100 && nextVal < 99.5) {
+        quantized = 90;
+      }
+      return Math.max(prev, quantized);
+    });
+  };
   const [renderLogs, setRenderLogs] = useState<string[]>([]);
   const [renderOption, setRenderOption] = useState<'full' | 'fast'>('full');
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
   const [downloadExtension, setDownloadExtension] = useState<string>('webm');
   const [exportQuality, setExportQuality] = useState<'720p' | '1080p'>('720p');
   const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('saver');
+  const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('local');
   const [statistics, setStatistics] = useState({
     duration: 0,
     fileSize: '0 MB',
@@ -347,6 +359,7 @@ export default function RenderModal({
           fps: 30
         });
         setRenderStatus('completed');
+        setProgress(100);
         addLog(`Compilation SUCCESS. Final WebM binary matches ${sizeInMb} MB.`);
       };
 
@@ -403,7 +416,7 @@ export default function RenderModal({
         
         // Update background visual indices
         renderIndexRef.current = index;
-        setProgress(Math.round((index / scenesToRender.length) * 100));
+        updateProgressForward((index / scenesToRender.length) * 100);
 
         // Signal parent to update the active timeline scene and captions
         if (onRenderFrameChange) {
@@ -545,7 +558,7 @@ export default function RenderModal({
                 
               // Track progress linearly
               const completedSeconds = scenesToRender.slice(0, index).reduce((s, sc) => s + sc.duration, 0) + Math.min(elapsed, targetDuration !== Infinity ? targetDuration : elapsed);
-              setProgress(Math.min(99, Math.round((completedSeconds / totalSecondsToRender) * 100)));
+              updateProgressForward((completedSeconds / totalSecondsToRender) * 100);
 
               // Propagate high-fidelity elapsed time for smooth animations
               if (onRenderFrameChange) {
@@ -603,6 +616,24 @@ export default function RenderModal({
     const abortController = new AbortController();
     cloudRenderAbortControllerRef.current = abortController;
 
+    const uploadBlobUrl = async (blobUrl: string, filename: string): Promise<string> => {
+      const blobRes = await fetch(blobUrl, { signal: abortController.signal });
+      const blobData = await blobRes.blob();
+      const formData = new FormData();
+      formData.append("file", blobData, filename);
+      
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        signal: abortController.signal
+      });
+      if (!uploadRes.ok) {
+        throw new Error(`Upload failed with status ${uploadRes.status}`);
+      }
+      const data = await uploadRes.json();
+      return data.url;
+    };
+
     try {
       const payloadScenes = [];
       let currentIdx = 0;
@@ -610,7 +641,7 @@ export default function RenderModal({
         currentIdx++;
         if (abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
         addLog(`[Prep] Processing scene ${currentIdx} of ${scenes.length}...`);
-        setProgress(Math.round((currentIdx / scenes.length) * 15));
+        updateProgressForward((currentIdx / scenes.length) * 15);
         
         let ttsAudioBuffer = undefined;
         let targetDuration = scene.duration;
@@ -651,25 +682,17 @@ export default function RenderModal({
            sceneMusicVolume = scene.musicVolume;
         }
         let finalVideoUrl = scene.videoUrl || "";
-        if (finalVideoUrl.startsWith('http') || finalVideoUrl.startsWith('blob:')) {
+        if (finalVideoUrl.startsWith('blob:')) {
           try {
-            addLog(`  -> Caching visual clip...`);
-            const fetchUrl = finalVideoUrl.startsWith('/') ? finalVideoUrl : finalVideoUrl.replace("images.pexels.com/video-files/", "videos.pexels.com/video-files/");
-            const blobRes = await fetch(fetchUrl, { signal: abortController.signal });
-            const blobData = await blobRes.blob();
-            const reader = new FileReader();
-            finalVideoUrl = await new Promise<string>((resolve, reject) => {
-              if (abortController.signal.aborted) {
-                reject(new DOMException("Aborted", "AbortError"));
-                return;
-              }
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.readAsDataURL(blobData);
-            });
+            addLog(`  -> Caching local video buffer to server...`);
+            finalVideoUrl = await uploadBlobUrl(finalVideoUrl, `scene_video_${scene.id}.mp4`);
+            addLog(`  -> Cache complete!`);
           } catch(e: any) {
             if (e.name === 'AbortError') throw e;
-            console.warn("Failed to convert video to base64", e);
+            console.warn("Failed to convert video", e);
           }
+        } else {
+          addLog(`  -> Linking remote visual clip...`);
         }
 
         payloadScenes.push({
@@ -682,27 +705,20 @@ export default function RenderModal({
       }
 
       addLog("Uploading structural manifest to remote rendering farm...");
-      setProgress(20);
+      updateProgressForward(20);
 
       let finalMusicUrl = projectConfig.isMusicEnabled ? projectConfig.musicTrack : undefined;
-      if (finalMusicUrl && (finalMusicUrl.startsWith('http') || finalMusicUrl.startsWith('blob:'))) {
+      if (finalMusicUrl && finalMusicUrl.startsWith('blob:')) {
         try {
           addLog("Mixing cinematic music background track...");
-          const blobRes = await fetch(finalMusicUrl, { signal: abortController.signal });
-          const blobData = await blobRes.blob();
-          const reader = new FileReader();
-          finalMusicUrl = await new Promise<string>((resolve, reject) => {
-            if (abortController.signal.aborted) {
-              reject(new DOMException("Aborted", "AbortError"));
-              return;
-            }
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blobData);
-          });
+          finalMusicUrl = await uploadBlobUrl(finalMusicUrl, "custom_music.mp3");
+          addLog("Upload complete!");
         } catch(e: any) {
           if (e.name === 'AbortError') throw e;
           console.warn("Failed to convert music to base64", e);
         }
+      } else if (finalMusicUrl) {
+        addLog("Linking remote cinematic music background...");
       }
 
       const payload = {
@@ -714,7 +730,10 @@ export default function RenderModal({
       
       addLog("Starting backend compilation...");
       const pInterval = setInterval(() => {
-        setProgress((p) => p < 90 ? p + Math.random() * 5 : p);
+        setProgress((p) => {
+          const nextVal = p < 90 ? p + 10 : p;
+          return nextVal;
+        });
         addLog("Still baking...");
       }, 3000);
       cloudRenderIntervalRef.current = pInterval;
@@ -741,7 +760,7 @@ export default function RenderModal({
       }
       
       addLog("✅ [Cloud Render] Remote compilation complete! Downloading master video...");
-      setProgress(95);
+      setProgress(90);
 
       const finalBlob = await response.blob();
       const finalUrl = URL.createObjectURL(finalBlob);
@@ -871,6 +890,69 @@ export default function RenderModal({
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* 📥 የማውረጃ ዘዴ ይምረጡ / Choose Download Option */}
+            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
+              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block flex items-center gap-1">
+                📥 {language === 'am' ? 'የማውረጃ ዘዴ ይምረጡ (Choose Download Option)' : 'Choose Export Method'}
+              </span>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 1. Local Browser Render (Fast and 100% Reliable) */}
+                <button
+                  type="button"
+                  onClick={() => setExportMethod('local')}
+                  className={`p-3.5 border rounded-xl flex flex-col text-left transition-all ${
+                    exportMethod === 'local'
+                      ? 'bg-emerald-500/5 border-emerald-500 text-emerald-400 font-bold shadow-sm shadow-emerald-500/5'
+                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-semibold flex items-center gap-1.5">
+                      ⚡ {language === 'am' ? 'በስልክ/በኮምፒውተር ላይ ፈጣን ማውረጃ' : 'Local Device Render'}
+                    </span>
+                    {exportMethod === 'local' && (
+                      <span className="text-[8px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider">
+                        {language === 'am' ? 'የሚመከር' : 'Recommended'}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[9.5px] text-zinc-400 mt-2 leading-normal font-sans">
+                    {language === 'am' 
+                      ? 'ያለ ምንም ተጨማሪ የኢንተርኔት ዳታ በቀጥታ በስልክዎ/በኮምፒተርዎ ላይ በሰከንዶች ውስጥ ያዘጋጃል። 100% አስተማማኝ፣ እጅግ ፈጣን እና ቀላል ነው! 🚀' 
+                      : 'Renders in your browser using hardware acceleration. Uses 0 additional internet bandwidth, 100% reliable and instant download.'}
+                  </span>
+                </button>
+
+                {/* 2. Cloud Server Render */}
+                <button
+                  type="button"
+                  onClick={() => setExportMethod('cloud')}
+                  className={`p-3.5 border rounded-xl flex flex-col text-left transition-all ${
+                    exportMethod === 'cloud'
+                      ? 'bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold shadow-sm shadow-indigo-500/5'
+                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-semibold flex items-center gap-1.5">
+                      ☁️ {language === 'am' ? 'በክላውድ ሰርቨር ላይ ማቀናበሪያ' : 'Cloud Server Render'}
+                    </span>
+                    {exportMethod === 'cloud' && (
+                      <span className="text-[8px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider font-bold">
+                        {language === 'am' ? 'ሰርቨር' : 'Server'}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[9.5px] text-zinc-400 mt-2 leading-normal font-sans">
+                    {language === 'am' 
+                      ? 'ማቀናበሩን በክላውድ ሰርቨራችን ላይ ያደርጋል። ይህ ምርጫ ከፍተኛ የኢንተርኔት ግንኙነት (ፈጣን ዳታ) እና ረጅም ጊዜ ሊጠይቅ ይችላል።' 
+                      : 'Compiles frames on high-performance cloud GPUs. Requires high internet speed to upload resources and may take longer.'}
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Resolution/Duration segment */}
@@ -1111,17 +1193,29 @@ export default function RenderModal({
                     alert(language === 'am' ? 'እባክዎ መጀመሪያ ነጻ ኮታዎን ይሙሉ!' : 'Please refill your free quota first!');
                     return;
                   }
-                  initiateCloudRender(); // Use reliable FFmpeg Cloud Render
+                  if (exportMethod === 'local') {
+                    initiateRenderAndStitching(); // Local browser-side renderer
+                  } else {
+                    initiateCloudRender(); // Cloud server-side renderer
+                  }
                 }}
-                className={`py-4 text-white font-black text-sm uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 transition-all border border-indigo-400/30 ${
+                className={`py-4 text-white font-black text-xs sm:text-sm uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 transition-all border ${
                   exportQuota > 0
-                    ? 'bg-indigo-600 hover:bg-indigo-505 shadow-xl shadow-indigo-600/40 active:scale-95 cursor-pointer'
+                    ? exportMethod === 'local'
+                      ? 'bg-emerald-600 hover:bg-emerald-550 border-emerald-400/30 shadow-xl shadow-emerald-600/40 active:scale-95 cursor-pointer'
+                      : 'bg-indigo-600 hover:bg-indigo-505 border-indigo-400/30 shadow-xl shadow-indigo-600/40 active:scale-95 cursor-pointer'
                     : 'bg-zinc-800 border-zinc-900 cursor-not-allowed opacity-40'
                 }`}
                 id="render-start-btn"
               >
                 <Download size={18} fill="currentColor" className={exportQuota > 0 ? "animate-bounce" : ""} />
-                {language === 'am' ? (exportQuota > 0 ? 'አሁን ቪዲዮውን አዘጋጅና አውርድ' : 'ኮታ የለም • ኮታውን ይሙሉ') : (exportQuota > 0 ? 'START VIDEO EXPORT' : 'EMPTY QUOTA • REFILL NOW')}
+                {language === 'am' 
+                  ? (exportQuota > 0 
+                      ? (exportMethod === 'local' ? 'በስልክ ላይ ማቀናበሪያ ጀምር (የሚመከር)' : 'በክላውድ ላይ ማቀናበሪያ ጀምር') 
+                      : 'ኮታ የለም • ኮታውን ይሙሉ') 
+                  : (exportQuota > 0 
+                      ? (exportMethod === 'local' ? 'START LOCAL EXPORT (RECOMMENDED)' : 'START CLOUD EXPORT') 
+                      : 'EMPTY QUOTA • REFILL NOW')}
               </button>
             </div>
           </div>
@@ -1319,8 +1413,16 @@ export default function RenderModal({
               </button>
               <button
                 type="button"
-                onClick={initiateCloudRender}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-555 text-white font-bold text-xs rounded-xl transition-all font-mono uppercase tracking-widest"
+                onClick={() => {
+                  if (exportMethod === 'local') {
+                    initiateRenderAndStitching();
+                  } else {
+                    initiateCloudRender();
+                  }
+                }}
+                className={`flex-1 py-2.5 text-white font-bold text-xs rounded-xl transition-all font-mono uppercase tracking-widest ${
+                  exportMethod === 'local' ? 'bg-emerald-600 hover:bg-emerald-550' : 'bg-indigo-600 hover:bg-indigo-555'
+                }`}
                 id="retry-baking-btn"
               >
                 {language === 'am' ? 'እንደገና ሞክር' : 'Retry Baking Session'}
