@@ -72,25 +72,49 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
 
     const sceneFiles: string[] = [];
 
-    console.log(`Downloading ${req.scenes.length} scene assets in parallel...`);
-    await Promise.all(req.scenes.map(async (scene, i) => {
+    console.log(`Downloading ${req.scenes.length} scene assets...`);
+    
+    // Concurrency limiter function
+    const runWithConcurrency = async <T,>(items: T[], concurrency: number, task: (item: T, index: number) => Promise<void>) => {
+      const queue = items.map((item, index) => ({ item, index }));
+      const workers = Array(concurrency).fill(null).map(async () => {
+        while (queue.length > 0) {
+          const { item, index } = queue.shift()!;
+          await task(item, index);
+        }
+      });
+      await Promise.all(workers);
+    };
+
+    // Download in parallel with concurrency 5
+    await runWithConcurrency(req.scenes, 5, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
       
-      // Download video
-      await downloadFile(scene.videoUrl, videoPath);
+      // Download video with retry
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          await downloadFile(scene.videoUrl, videoPath);
+          break;
+        } catch (e: any) {
+          retries--;
+          console.error(`Failed to download ${scene.videoUrl}, retries left: ${retries}`);
+          if (retries === 0) throw e;
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
       
       // If there's TTS, write it
       if (scene.ttsAudioBuffer) {
         await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
       }
-    }));
+    });
 
     console.log("All assets downloaded successfully. Commencing fast FFmpeg scene processing...");
 
-    // Process each scene
-    for (let i = 0; i < req.scenes.length; i++) {
-      const scene = req.scenes[i];
+    // Process scenes in parallel with concurrency 3 (to avoid CPU/Memory overload)
+    await runWithConcurrency(req.scenes, 3, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
       const outPath = path.join(tempDir, `out_${i}.mp4`);
@@ -120,9 +144,12 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       
       cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
       
-      console.log("Running:", cmd);
+      console.log("Running scene", i);
       await execAsync(cmd);
-      sceneFiles.push(outPath);
+    });
+    
+    for (let i = 0; i < req.scenes.length; i++) {
+      sceneFiles.push(path.join(tempDir, `out_${i}.mp4`));
     }
 
     // Concatenate all scenes

@@ -1486,27 +1486,49 @@ ${scenesText.substring(0, 5000)}` }] }]
   }
 });
 
-app.post("/api/render-ffmpeg", express.json({ limit: '100mb' }), async (req, res) => {
-  // Set generous connection timeouts for long-running video downloads (10 minutes)
-  req.setTimeout(600000);
-  res.setTimeout(600000);
-  try {
-    const payload = req.body as RenderRequest;
-    console.log("Starting backend render job...");
-    const outPath = await renderVideo(payload);
-    console.log("Backend render complete:", outPath);
-    
-    // Send file as attachment
-    res.download(outPath, `yotor_video_${Date.now()}.mp4`, (err) => {
-      if (err) {
-        console.error("Error sending rendered file:", err);
-      }
-      // Cleanup happens eventually or could be done here, skipping for brevity
-    });
-  } catch (err: any) {
-    console.error("FFmpeg render failed:", err);
-    res.status(500).json({ error: err.message });
+const renderJobs = new Map<string, { status: "processing" | "done" | "error", outPath?: string, error?: string }>();
+
+app.post("/api/render-ffmpeg", express.json({ limit: '500mb' }), async (req, res) => {
+  const jobId = Date.now().toString() + Math.random().toString(36).substring(7);
+  renderJobs.set(jobId, { status: "processing" });
+  
+  // Start job in background
+  (async () => {
+    try {
+      const payload = req.body as RenderRequest;
+      console.log(`Starting backend render job ${jobId}...`);
+      const outPath = await renderVideo(payload);
+      console.log(`Backend render job ${jobId} complete:`, outPath);
+      renderJobs.set(jobId, { status: "done", outPath });
+    } catch (err: any) {
+      console.error(`FFmpeg render job ${jobId} failed:`, err);
+      renderJobs.set(jobId, { status: "error", error: err.message });
+    }
+  })();
+
+  res.json({ jobId });
+});
+
+app.get("/api/render-status", (req, res) => {
+  const jobId = req.query.jobId as string;
+  const job = renderJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found" });
   }
+  res.json(job);
+});
+
+app.get("/api/render-download", (req, res) => {
+  const jobId = req.query.jobId as string;
+  const job = renderJobs.get(jobId);
+  if (!job || job.status !== "done" || !job.outPath) {
+    return res.status(400).json({ error: "Job not ready" });
+  }
+  res.download(job.outPath, `yotor_video_${jobId}.mp4`, (err) => {
+    if (err) {
+      console.error("Error sending rendered file:", err);
+    }
+  });
 });
 
 // 5. Vite Dev Server & Static Production Routing

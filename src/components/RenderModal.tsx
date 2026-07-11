@@ -659,7 +659,7 @@ export default function RenderModal({
       }
 
       addLog("Uploading structural manifest to remote rendering farm...");
-      setProgress(25);
+      setProgress(20);
 
       const payload = {
         scenes: payloadScenes,
@@ -684,11 +684,37 @@ export default function RenderModal({
         } catch (_) {}
         throw new Error(errMsg || `Cloud render failed: status ${response.status}`);
       }
+      
+      const { jobId } = await response.json();
+      
+      addLog(`Job ${jobId} registered. Polling for completion...`);
+      setProgress(40);
+      
+      let pollStatus = "processing";
+      while (pollStatus === "processing") {
+        await new Promise(r => setTimeout(r, 3000));
+        const statusRes = await fetch(`/api/render-status?jobId=${jobId}`);
+        if (!statusRes.ok) {
+           throw new Error(`Failed to check status: ${statusRes.statusText}`);
+        }
+        const statusData = await statusRes.json();
+        if (statusData.status === "error") {
+          throw new Error(statusData.error || "Unknown render error");
+        }
+        pollStatus = statusData.status;
+        setProgress((p) => p < 90 ? p + Math.random() * 5 : p);
+        addLog(`Still baking...`);
+      }
 
       addLog("✅ [Cloud Render] Remote compilation complete! Downloading master file...");
-      setProgress(100);
+      setProgress(95);
 
-      const blob = await response.blob();
+      const downloadRes = await fetch(`/api/render-download?jobId=${jobId}`);
+      if (!downloadRes.ok) {
+         throw new Error(`Failed to download master file: ${downloadRes.statusText}`);
+      }
+
+      const blob = await downloadRes.blob();
       const url = URL.createObjectURL(blob);
       setRenderedBlobUrl(url);
       setDownloadExtension("mp4");
@@ -702,6 +728,7 @@ export default function RenderModal({
         fps: 30
       });
 
+      setProgress(100);
       setRenderStatus('completed');
       if (onRenderComplete) onRenderComplete();
 
