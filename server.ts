@@ -1487,6 +1487,9 @@ ${scenesText.substring(0, 5000)}` }] }]
 });
 
 app.post("/api/render-ffmpeg", express.json({ limit: '100mb' }), async (req, res) => {
+  // Set generous connection timeouts for long-running video downloads (10 minutes)
+  req.setTimeout(600000);
+  res.setTimeout(600000);
   try {
     const payload = req.body as RenderRequest;
     console.log("Starting backend render job...");

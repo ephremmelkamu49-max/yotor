@@ -70,6 +70,22 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
 
     const sceneFiles: string[] = [];
 
+    console.log(`Downloading ${req.scenes.length} scene assets in parallel...`);
+    await Promise.all(req.scenes.map(async (scene, i) => {
+      const videoPath = path.join(tempDir, `vid_${i}.mp4`);
+      const audioPath = path.join(tempDir, `aud_${i}.wav`);
+      
+      // Download video
+      await downloadFile(scene.videoUrl, videoPath);
+      
+      // If there's TTS, write it
+      if (scene.ttsAudioBuffer) {
+        await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
+      }
+    }));
+
+    console.log("All assets downloaded successfully. Commencing fast FFmpeg scene processing...");
+
     // Process each scene
     for (let i = 0; i < req.scenes.length; i++) {
       const scene = req.scenes[i];
@@ -77,15 +93,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
       const outPath = path.join(tempDir, `out_${i}.mp4`);
       
-      // Download video
-      await downloadFile(scene.videoUrl, videoPath);
-      
-      // If there's TTS, write it (assuming it's passed as base64 or URL)
-      let hasAudio = false;
-      if (scene.ttsAudioBuffer) {
-        await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
-        hasAudio = true;
-      }
+      const hasAudio = !!scene.ttsAudioBuffer;
 
       // Format video: crop/scale, set duration, add audio if exists
       // Filter graph for scaling and cropping to fit exactly
@@ -108,7 +116,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
       
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
       
       console.log("Running:", cmd);
       await execAsync(cmd);
