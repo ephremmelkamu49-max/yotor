@@ -1489,26 +1489,33 @@ ${scenesText.substring(0, 5000)}` }] }]
 const renderJobs = new Map<string, { status: "processing" | "done" | "error", outPath?: string, error?: string }>();
 
 app.post("/api/render-ffmpeg", express.json({ limit: '500mb' }), async (req, res) => {
-  const jobId = Date.now().toString() + Math.random().toString(36).substring(7);
-  renderJobs.set(jobId, { status: "processing" });
-  
-  // Start job in background
-  (async () => {
-    try {
-      const payload = req.body as RenderRequest;
-      console.log(`Starting backend render job ${jobId}...`);
-      const outPath = await renderVideo(payload);
-      console.log(`Backend render job ${jobId} complete:`, outPath);
-      renderJobs.set(jobId, { status: "done", outPath });
-    } catch (err: any) {
-      console.error(`FFmpeg render job ${jobId} failed:`, err);
-      renderJobs.set(jobId, { status: "error", error: err.message });
+  try {
+    const payload = req.body as RenderRequest;
+    console.log(`Starting synchronous backend render job...`);
+    const outPath = await renderVideo(payload);
+    console.log(`Backend render job complete:`, outPath);
+    
+    // Instead of sending a JSON response, we stream the file directly
+    res.sendFile(outPath, (err: any) => {
+      if (err) {
+        if (err.code === 'ECONNABORTED' || err.message?.includes('Request aborted')) {
+          return;
+        }
+        console.error("Error sending rendered file:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "File not found or unreadable" });
+        }
+      }
+    });
+  } catch (err: any) {
+    console.error(`FFmpeg render job failed:`, err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
     }
-  })();
-
-  res.json({ jobId });
+  }
 });
 
+app.get("/api/render-jobs", (req, res) => { res.json(Array.from(renderJobs.entries())); });
 app.get("/api/render-status", (req, res) => {
   const jobId = req.query.jobId as string;
   const job = renderJobs.get(jobId);

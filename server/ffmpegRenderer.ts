@@ -29,7 +29,7 @@ export interface RenderRequest {
 async function downloadFile(url: string, dest: string) {
   if (url.startsWith("data:")) {
     // Handle base64
-    const matches = url.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    const matches = url.match(/^data:([A-Za-z0-9-+\/.]+);(?:[\w=]+;)*base64,(.+)$/);
     if (matches && matches.length === 3) {
       const buffer = Buffer.from(matches[2], "base64");
       await fs.writeFile(dest, buffer);
@@ -54,13 +54,8 @@ async function downloadFile(url: string, dest: string) {
     if (!response.ok) throw new Error(`Failed to download ${fetchUrl} (status: ${response.status})`);
 
     // Use streaming to save RAM!
-    if (response.body) {
-      // @ts-ignore - response.body is a web stream in Node 18+ which can be converted
-      await pipeline(Readable.fromWeb(response.body), createWriteStream(dest));
-    } else {
-      const buffer = await response.arrayBuffer();
-      await fs.writeFile(dest, Buffer.from(buffer));
-    }
+    const buffer = await response.arrayBuffer();
+    await fs.writeFile(dest, Buffer.from(buffer));
     return;
   }
   

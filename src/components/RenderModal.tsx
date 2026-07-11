@@ -558,6 +558,7 @@ export default function RenderModal({
             }, clockTick);
           });
         } catch (err: any) {
+      if (typeof progressInterval !== 'undefined') clearInterval(progressInterval);
           addLog(`Sequence timing error: ${err.message}`);
           if (sceneTts) {
             sceneTts.pause();
@@ -582,73 +583,27 @@ export default function RenderModal({
   };
 
   const initiateCloudRender = async () => {
+    setRenderStatus('processing');
+    setProgress(0);
+    setRenderLogs([]);
+    addLog(`Initiating remote compile via /api/render-ffmpeg...`);
+
+    let progressInterval: any;
     try {
-      cleanupRenderSubprocesses();
-      setRenderStatus('rendering');
-      setProgress(0);
-      setRenderLogs([]);
-      
-      addLog("🚀 [Cloud Render] Initializing remote high-fidelity compilation...");
-      addLog("Preparing and uploading scene layout metadata...");
-
-      // Prepare payload
-      let scenesToRender = renderOption === 'fast' 
-        ? scenes.slice(0, Math.min(2, scenes.length))
-        : [...scenes];
-
       const payloadScenes = [];
-
-      for (let i = 0; i < scenesToRender.length; i++) {
-        const scene = scenesToRender[i];
-        let ttsAudioBuffer: string | undefined = undefined;
-        
-        let targetDuration = scene.duration || 4.5;
-        
-        if (projectConfig.isVoiceEnabled && (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0))) {
-          const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
-          addLog(`[Cloud Render] Baking TTS for Scene ${i + 1}...`);
-          try {
-            const ttsRes = await fetch(ttsUrl);
-            if (ttsRes.ok) {
-              const buffer = await ttsRes.arrayBuffer();
-              const bytes = new Uint8Array(buffer);
-              let binary = '';
-              for (let i = 0; i < bytes.byteLength; i++) {
-                binary += String.fromCharCode(bytes[i]);
-              }
-              const base64Audio = btoa(binary);
-              ttsAudioBuffer = base64Audio;
-              
-              // Try to estimate duration to override
-              const tempAudio = new Audio(ttsUrl);
-              const duration = await new Promise<number>((resolve) => {
-                tempAudio.onloadedmetadata = () => resolve(tempAudio.duration + 0.15);
-                setTimeout(() => resolve(scene.duration || 4.5), 1000);
-              });
-              if (!isNaN(duration) && duration > 0 && duration !== Infinity) {
-                targetDuration = duration;
-              }
-            }
-          } catch (e) {
-            console.warn("TTS fetch failed for cloud render", e);
+      for (const scene of scenesToRender) {
+        let ttsAudioBuffer = undefined;
+        let targetDuration = scene.duration;
+        if (scene.ttsAudioUrl) {
+          const m = scene.ttsAudioUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+          if (m) {
+            ttsAudioBuffer = m[2];
           }
         }
-        
-        if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
-          const BEAT_INTERVAL = 0.5;
-          targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
+        let sceneMusicVolume = undefined;
+        if (typeof scene.musicVolume === 'number') {
+           sceneMusicVolume = scene.musicVolume;
         }
-
-        let sceneMusicVolume = projectConfig.musicVolume;
-        if (scene.musicVolume !== undefined && scene.musicVolume !== null) {
-          sceneMusicVolume = scene.musicVolume;
-        } else if (projectConfig.autoDuckNarration) {
-          const hasNarration = projectConfig.isVoiceEnabled && (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0));
-          if (hasNarration) {
-            sceneMusicVolume = Math.min(0.03, projectConfig.musicVolume * 0.25);
-          }
-        }
-
         payloadScenes.push({
           id: scene.id,
           videoUrl: scene.videoUrl || "",
@@ -667,12 +622,20 @@ export default function RenderModal({
         musicUrl: projectConfig.isMusicEnabled ? projectConfig.musicTrack : undefined,
         musicVolume: projectConfig.musicVolume
       };
-
+      
+      addLog("Starting backend compilation...");
+      progressInterval = setInterval(() => {
+        setProgress((p) => p < 90 ? p + Math.random() * 5 : p);
+        addLog("Still baking...");
+      }, 3000);
+      
       const response = await fetch("/api/render-ffmpeg", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+
+      clearInterval(progressInterval);
 
       if (!response.ok) {
         let errMsg = response.statusText;
@@ -685,44 +648,14 @@ export default function RenderModal({
         throw new Error(errMsg || `Cloud render failed: status ${response.status}`);
       }
       
-      const { jobId } = await response.json();
-      
-      addLog(`Job ${jobId} registered. Polling for completion...`);
-      setProgress(40);
-      
-      let pollStatus = "processing";
-      while (pollStatus === "processing") {
-        await new Promise(r => setTimeout(r, 3000));
-        const statusRes = await fetch(`/api/render-status?jobId=${jobId}`);
-        if (!statusRes.ok) {
-           let errTxt = statusRes.statusText;
-           try { const j = await statusRes.json(); if (j.error) errTxt = j.error; } catch(e){}
-           throw new Error(`Failed to check status: HTTP ${statusRes.status} ${errTxt}`);
-        }
-        const statusData = await statusRes.json();
-        if (statusData.status === "error") {
-          throw new Error(statusData.error || "Unknown render error");
-        }
-        pollStatus = statusData.status;
-        setProgress((p) => p < 90 ? p + Math.random() * 5 : p);
-        addLog(`Still baking...`);
-      }
-
-      addLog("✅ [Cloud Render] Remote compilation complete! Fetching master metadata...");
+      addLog("✅ [Cloud Render] Remote compilation complete! Downloading master video...");
       setProgress(95);
 
-      let sizeInMb = "Unknown";
-      try {
-        const headRes = await fetch(`/api/render-download?jobId=${jobId}`, { method: 'HEAD' });
-        const contentLength = headRes.headers.get('content-length');
-        if (contentLength) {
-           sizeInMb = (parseInt(contentLength, 10) / (1024 * 1024)).toFixed(2);
-        }
-      } catch (e) {
-        console.warn("Failed to get file size", e);
-      }
-
-      setRenderedBlobUrl(`/api/render-download?jobId=${jobId}`);
+      const finalBlob = await response.blob();
+      const finalUrl = URL.createObjectURL(finalBlob);
+      setRenderedBlobUrl(finalUrl);
+      
+      const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
       setDownloadExtension("mp4");
       
       const totalDur = scenesToRender.reduce((s, sc) => s + sc.duration, 0);
@@ -732,12 +665,11 @@ export default function RenderModal({
         scenesProcessed: scenesToRender.length,
         fps: 30
       });
-
       setProgress(100);
       setRenderStatus('completed');
       if (onRenderComplete) onRenderComplete();
-
     } catch (err: any) {
+      if (progressInterval) clearInterval(progressInterval);
       console.error(err);
       setRenderStatus('failed');
       addLog(`❌ [Cloud Render] FAILED: ${err.message}`);
