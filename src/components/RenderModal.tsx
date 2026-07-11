@@ -729,14 +729,6 @@ export default function RenderModal({
       };
       
       addLog("Starting backend compilation...");
-      const pInterval = setInterval(() => {
-        setProgress((p) => {
-          const nextVal = p < 90 ? p + 10 : p;
-          return nextVal;
-        });
-        addLog("Still baking...");
-      }, 3000);
-      cloudRenderIntervalRef.current = pInterval;
       
       const response = await fetch("/api/render-ffmpeg", {
         method: "POST",
@@ -744,9 +736,6 @@ export default function RenderModal({
         body: JSON.stringify(payload),
         signal: abortController.signal
       });
-
-      clearInterval(pInterval);
-      cloudRenderIntervalRef.current = null;
 
       if (!response.ok) {
         let errMsg = response.statusText;
@@ -758,28 +747,66 @@ export default function RenderModal({
         } catch (_) {}
         throw new Error(errMsg || `Cloud render failed: status ${response.status}`);
       }
-      
-      addLog("✅ [Cloud Render] Remote compilation complete! Downloading master video...");
-      setProgress(90);
 
-      const finalBlob = await response.blob();
-      const finalUrl = URL.createObjectURL(finalBlob);
-      setRenderedBlobUrl(finalUrl);
-      
-      const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
-      setDownloadExtension("mp4");
-      
-      const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
-      setStatistics({
-        duration: Math.round(totalDur),
-        fileSize: `${sizeInMb} MB`,
-        scenesProcessed: scenes.length,
-        fps: 30
-      });
-      setProgress(100);
-      setRenderStatus('completed');
-      cloudRenderAbortControllerRef.current = null;
-      if (onRenderComplete) onRenderComplete();
+      const { jobId } = await response.json();
+      addLog(`Job submitted. Remote ID: ${jobId}. Waiting for rendering farm...`);
+
+      // Poll for status
+      const pollJob = async () => {
+        if (abortController.signal.aborted) return;
+
+        try {
+          const statusRes = await fetch(`/api/render-status?jobId=${jobId}`, { signal: abortController.signal });
+          if (!statusRes.ok) {
+            const errData = await statusRes.json().catch(() => ({}));
+            throw new Error(errData.error || `Server status check failed: ${statusRes.status}`);
+          }
+          const job = await statusRes.json();
+
+          if (job.status === 'processing') {
+            setProgress(job.progress || 0);
+            if (job.log) addLog(job.log);
+            setTimeout(pollJob, 2500);
+          } else if (job.status === 'done') {
+            addLog("✅ [Cloud Render] Remote compilation complete! Downloading master video...");
+            setProgress(95);
+
+            const downloadRes = await fetch(`/api/render-download?jobId=${jobId}`, { signal: abortController.signal });
+            if (!downloadRes.ok) {
+              const errData = await downloadRes.json().catch(() => ({}));
+              throw new Error(errData.error || "Failed to download rendered file from server");
+            }
+
+            const finalBlob = await downloadRes.blob();
+            const finalUrl = URL.createObjectURL(finalBlob);
+            setRenderedBlobUrl(finalUrl);
+            
+            const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
+            setDownloadExtension("mp4");
+            
+            const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
+            setStatistics({
+              duration: Math.round(totalDur),
+              fileSize: `${sizeInMb} MB`,
+              scenesProcessed: scenes.length,
+              fps: 30
+            });
+            setProgress(100);
+            setRenderStatus('completed');
+            cloudRenderAbortControllerRef.current = null;
+            if (onRenderComplete) onRenderComplete();
+          } else if (job.status === 'error') {
+            throw new Error(job.error || job.log || "Unknown server rendering error");
+          }
+        } catch (pollErr: any) {
+          if (pollErr.name === 'AbortError') return;
+          console.error("Polling error:", pollErr);
+          setRenderStatus('failed');
+          addLog(`❌ [Cloud Render] Polling FAILED: ${pollErr.message}`);
+        }
+      };
+
+      pollJob();
     } catch (err: any) {
       if (cloudRenderIntervalRef.current) {
         clearInterval(cloudRenderIntervalRef.current);

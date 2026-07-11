@@ -9,6 +9,16 @@ import os from "os";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 const execAsync = promisify(exec);
+
+async function runCommand(cmd: string) {
+  try {
+    await execAsync(cmd);
+  } catch (err: any) {
+    const stderr = err.stderr ? err.stderr.toString() : "";
+    const stdout = err.stdout ? err.stdout.toString() : "";
+    throw new Error(`Command failed: ${cmd}\nError: ${err.message}\nStderr: ${stderr}\nStdout: ${stdout}`);
+  }
+}
 // Prefer native system ffmpeg (/usr/bin/ffmpeg) over node_modules binary to guarantee architecture compatibility and executable permissions
 const ffmpegPath = "/usr/bin/ffmpeg";
 
@@ -45,6 +55,23 @@ async function downloadFile(url: string, dest: string) {
   }
 
   // Handle http and relative local URLs
+  if (url.startsWith("/")) {
+    const localPath = path.join(process.cwd(), url);
+    try {
+      await fs.access(localPath);
+      await fs.copyFile(localPath, dest);
+      return;
+    } catch (_) {
+      // Fallback to public folder if it exists
+      const publicPath = path.join(process.cwd(), "public", url);
+      try {
+        await fs.access(publicPath);
+        await fs.copyFile(publicPath, dest);
+        return;
+      } catch (_) {}
+    }
+  }
+
   if (url.startsWith("http") || url.startsWith("/")) {
     const fetchUrl = url.startsWith("/") ? `http://127.0.0.1:3000${url}` : url;
     
@@ -67,7 +94,7 @@ async function downloadFile(url: string, dest: string) {
   throw new Error(`Unsupported URL format: ${url.substring(0, 30)}`);
 }
 
-export async function renderVideo(req: RenderRequest): Promise<string> {
+export async function renderVideo(req: RenderRequest, onProgress?: (msg: string, progress: number) => void): Promise<string> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "yotor-render-"));
   
   try {
@@ -82,6 +109,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
     }
 
     const sceneFiles: string[] = [];
+    if (onProgress) onProgress(`Downloading ${req.scenes.length} scene assets...`, 5);
     console.log(`Downloading ${req.scenes.length} scene assets...`);
     
     // Concurrency limiter function
@@ -96,6 +124,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       await Promise.all(workers);
     };
 
+    let downloadedCount = 0;
     // Download in parallel with concurrency 5
     await runWithConcurrency(req.scenes, 5, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
@@ -119,10 +148,14 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       if (scene.ttsAudioBuffer) {
         await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
       }
+      downloadedCount++;
+      if (onProgress) onProgress(`Downloaded asset ${downloadedCount}/${req.scenes.length}`, 5 + (downloadedCount / req.scenes.length) * 15);
     });
 
     console.log("All assets downloaded successfully. Commencing fast FFmpeg scene processing...");
+    if (onProgress) onProgress("All assets ready. Commencing FFmpeg scene processing...", 20);
 
+    let processedCount = 0;
     // Process scenes in parallel with concurrency 3 (to avoid CPU/Memory overload)
     await runWithConcurrency(req.scenes, 3, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
@@ -135,7 +168,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       // Filter graph for scaling and cropping to fit exactly
       const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
       
-      const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
+      const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
       
       let cmd = `"${ffmpegPath}" -loglevel error -y `;
       if (isImage) {
@@ -153,59 +186,98 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
       
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -pix_fmt yuv420p -r 30 "${outPath}"`;
+      // Use -shortest as an extra safety measure with -t
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
       
       console.log("Running scene", i);
-      await execAsync(cmd);
+      await runCommand(cmd);
+
+      // Verify scene file exists
+      const sceneExists = await fs.access(outPath).then(() => true).catch(() => false);
+      if (!sceneExists) {
+        throw new Error(`Failed to produce processed video file for scene ${i}`);
+      }
+
+      processedCount++;
+      if (onProgress) onProgress(`Processed scene ${processedCount}/${req.scenes.length}`, 20 + (processedCount / req.scenes.length) * 60);
     });
     
     for (let i = 0; i < req.scenes.length; i++) {
       sceneFiles.push(path.join(tempDir, `out_${i}.mp4`));
     }
 
-    // Concatenate all scenes
+    // Concatenate all scenes using absolute paths with safe=0
+    if (onProgress) onProgress("Stitching scenes together...", 85);
     const listPath = path.join(tempDir, "list.txt");
-    const listContent = sceneFiles.map(f => `file '${path.basename(f)}'`).join("\n");
+    const listContent = sceneFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n");
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
     const concatCmd = `"${ffmpegPath}" -loglevel error -y -f concat -safe 0 -i "${listPath}" -c copy "${concatPath}"`;
     console.log("Running concat:", concatCmd);
-    await execAsync(concatCmd);
+    if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
+    await runCommand(concatCmd);
+
+    // Verify concat file exists
+    const concatExists = await fs.access(concatPath).then(() => true).catch(() => false);
+    if (!concatExists) {
+      throw new Error("Failed to produce concatenated video file.");
+    }
 
     let finalPath = concatPath;
 
     if (req.musicUrl) {
-      finalPath = path.join(tempDir, "final.mp4");
+      if (onProgress) onProgress("Downloading background music...", 88);
       const musicPath = path.join(tempDir, "music.mp3");
-      await downloadFile(req.musicUrl, musicPath);
-      
-      const vol = req.musicVolume !== undefined ? req.musicVolume : 0.3;
-      
-      // Compute dynamic volume expression for scenes if there are overrides
-      let expr = `${vol}`;
-      let cumulativeTime = 0;
-      let hasOverrides = false;
-
-      for (const scene of req.scenes) {
-        const sceneVol = scene.musicVolume !== undefined ? scene.musicVolume : vol;
-        if (Math.abs(sceneVol - vol) > 0.001) {
-          hasOverrides = true;
-          const start = cumulativeTime.toFixed(2);
-          const end = (cumulativeTime + scene.duration).toFixed(2);
-          expr = `if(between(t,${start},${end}),${sceneVol.toFixed(3)},${expr})`;
-        }
-        cumulativeTime += scene.duration;
+      try {
+        await downloadFile(req.musicUrl, musicPath);
+      } catch (musicErr: any) {
+        console.warn("Failed to download background music, proceeding without it:", musicErr);
+        if (onProgress) onProgress("Warning: Background music download failed. Proceeding...", 89);
       }
-
-      const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
       
-      // Mix concatenated audio with music audio
-      const mixCmd = `"${ffmpegPath}" -loglevel error -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -c:a aac "${finalPath}"`;
-      console.log("Running music mix:", mixCmd);
-      await execAsync(mixCmd);
+      const musicExists = await fs.access(musicPath).then(() => true).catch(() => false);
+      
+      if (musicExists) {
+        if (onProgress) onProgress("Mixing cinematic background music...", 90);
+        finalPath = path.join(tempDir, "final.mp4");
+        
+        const vol = req.musicVolume !== undefined ? req.musicVolume : 0.3;
+        
+        // Compute dynamic volume expression for scenes if there are overrides
+        let expr = `${vol}`;
+        let cumulativeTime = 0;
+        let hasOverrides = false;
+
+        for (const scene of req.scenes) {
+          const sceneVol = scene.musicVolume !== undefined ? scene.musicVolume : vol;
+          if (Math.abs(sceneVol - vol) > 0.001) {
+            hasOverrides = true;
+            const start = cumulativeTime.toFixed(2);
+            const end = (cumulativeTime + scene.duration).toFixed(2);
+            expr = `if(between(t,${start},${end}),${sceneVol.toFixed(3)},${expr})`;
+          }
+          cumulativeTime += scene.duration;
+        }
+
+        const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
+        
+        // Mix concatenated audio with music audio
+        // Using -shortest to avoid hangs if music is much longer than video
+        // Using aformat to ensure audio compatibility during mix
+        const mixCmd = `"${ffmpegPath}" -loglevel error -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -shortest "${finalPath}"`;
+        console.log("Running music mix:", mixCmd);
+        await runCommand(mixCmd);
+        
+        const finalExists = await fs.access(finalPath).then(() => true).catch(() => false);
+        if (!finalExists) {
+          console.warn("Final mixed file not produced, falling back to concat version.");
+          finalPath = concatPath;
+        }
+      }
     }
 
+    if (onProgress) onProgress("Finalizing render...", 98);
     return finalPath; // Return the path to the final video
 
   } catch (err) {
