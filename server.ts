@@ -423,11 +423,18 @@ app.post("/api/analyze-script", async (req, res) => {
     const lengthInstruction = `SCENIC DENSITY & LANGUAGE SPECIFICS:
 Break the script into logical, complete, and sequential scenes. Aim for a high cinematic density: Target scene durations between 6 and 12 seconds each. Do NOT create long 30+ second scenes as they look static.
 ${isAmharic ? `Since the script contains AMHARIC (Ge'ez) text:
+- First, carefully translate the Amharic segment into English internally to understand its true visual and emotional meaning.
+- Formulate the 'keywords' (which MUST be in English) based on this accurate translation. The keywords must describe the EXACT physical subject or action of the scene.
+- Ensure the English keywords are precise, highly descriptive, and perfect for search queries on stock video sites (like Pexels or Pixabay). For example:
+  * If the script talks about traditional Ethiopian coffee, use "ethiopian coffee ceremony pouring coffee" or "traditional coffee boiling pot".
+  * If the script talks about happiness or celebration, use "cheerful people laughing celebration".
+  * If the script talks about historic places or culture, use "historic ancient obelisk monument" or "traditional ethiopian culture".
+  * If the script mentions work or business, use "modern office meeting" or "person working on computer".
 - Identify sentence boundaries primarily using the Amharic punctuation markers '።' (final period), '፤' (semicolon), or '፧'.
 - Group sentences or clauses matching logical visual arcs so they form highly coherent dramatic sections.
 - Estimation of read/voice time: Amharic is read at approximately 1.7 words per second. Calculate segment durations accurately based on this rate.
-- Captions MUST be in Amharic (verbatim) matching the narration.
-- Visual description 'keywords' MUST be in ENGLISH (e.g. 'sunset over mountains', 'high tech laboratory') to successfully search stock media databases. Do NOT output Amharic keywords.` : `English script guidelines:
+- Captions and 'text' MUST be in Amharic (verbatim) matching the narration.
+- Visual description 'keywords' MUST be in clean, highly specific ENGLISH. Do NOT output Amharic keywords or include Ge'ez characters in the 'keywords' field.` : `English script guidelines:
 - Identify logical transitions, narrative pause points, or sentence markers.
 - Speak pacing timing: 2.3 words per second.
 - Captions must match the segment wording exactly.`}
