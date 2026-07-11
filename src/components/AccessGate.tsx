@@ -650,9 +650,6 @@ export default function AccessGate({ children }: AccessGateProps) {
                       <p className="text-[10.5px] text-zinc-450">
                         ባለ 4-አሃዝ የማረጋገጫ ኮድ (OTP) ወደ <strong className="text-zinc-300 font-mono">{telebirrPhone || currentEmail}</strong> ተልኳል።
                       </p>
-                      <span className="text-[9.5px] text-zinc-550 block italic">
-                        (ማሳሰቢያ፡ ለሙከራ እንዲረዳዎት የይለፍ ኮዱን <strong className="text-cyan-400 font-bold">1234</strong> ብለው ይሙሉ)
-                      </span>
                     </div>
 
                     <div className="space-y-1">
