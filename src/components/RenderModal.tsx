@@ -333,7 +333,7 @@ export default function RenderModal({
         setStatistics({
           duration: Math.round(actualDurationMs / 1000),
           fileSize: `${sizeInMb} MB`,
-          scenesProcessed: scenesToRender.length,
+          scenesProcessed: scenes.length,
           fps: 30
         });
         setRenderStatus('completed');
@@ -591,7 +591,7 @@ export default function RenderModal({
     let progressInterval: any;
     try {
       const payloadScenes = [];
-      for (const scene of scenesToRender) {
+      for (const scene of scenes) {
         let ttsAudioBuffer = undefined;
         let targetDuration = scene.duration;
         if (scene.ttsAudioUrl) {
@@ -604,9 +604,25 @@ export default function RenderModal({
         if (typeof scene.musicVolume === 'number') {
            sceneMusicVolume = scene.musicVolume;
         }
+        let finalVideoUrl = scene.videoUrl || "";
+        if (finalVideoUrl.startsWith('http') || finalVideoUrl.startsWith('blob:')) {
+          try {
+            const fetchUrl = finalVideoUrl.startsWith('/') ? finalVideoUrl : finalVideoUrl.replace("images.pexels.com/video-files/", "videos.pexels.com/video-files/");
+            const blobRes = await fetch(fetchUrl);
+            const blobData = await blobRes.blob();
+            const reader = new FileReader();
+            finalVideoUrl = await new Promise((resolve) => {
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(blobData);
+            });
+          } catch(e) {
+            console.warn("Failed to convert video to base64", e);
+          }
+        }
+
         payloadScenes.push({
           id: scene.id,
-          videoUrl: scene.videoUrl || "",
+          videoUrl: finalVideoUrl,
           ttsAudioBuffer,
           duration: targetDuration,
           musicVolume: sceneMusicVolume
@@ -616,10 +632,25 @@ export default function RenderModal({
       addLog("Uploading structural manifest to remote rendering farm...");
       setProgress(20);
 
+      let finalMusicUrl = projectConfig.isMusicEnabled ? projectConfig.musicTrack : undefined;
+      if (finalMusicUrl && (finalMusicUrl.startsWith('http') || finalMusicUrl.startsWith('blob:'))) {
+        try {
+          const blobRes = await fetch(finalMusicUrl);
+          const blobData = await blobRes.blob();
+          const reader = new FileReader();
+          finalMusicUrl = await new Promise((resolve) => {
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blobData);
+          });
+        } catch(e) {
+          console.warn("Failed to convert music to base64", e);
+        }
+      }
+
       const payload = {
         scenes: payloadScenes,
         aspectRatio: projectConfig.aspectRatio,
-        musicUrl: projectConfig.isMusicEnabled ? projectConfig.musicTrack : undefined,
+        musicUrl: finalMusicUrl,
         musicVolume: projectConfig.musicVolume
       };
       
@@ -658,11 +689,11 @@ export default function RenderModal({
       const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
       setDownloadExtension("mp4");
       
-      const totalDur = scenesToRender.reduce((s, sc) => s + sc.duration, 0);
+      const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
       setStatistics({
         duration: Math.round(totalDur),
         fileSize: `${sizeInMb} MB`,
-        scenesProcessed: scenesToRender.length,
+        scenesProcessed: scenes.length,
         fps: 30
       });
       setProgress(100);
