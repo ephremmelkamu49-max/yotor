@@ -3,8 +3,10 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 const execAsync = promisify(exec);
+const ffmpegPath = ffmpegInstaller.path;
 
 export interface RenderScene {
   id: string;
@@ -101,7 +103,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       
       const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
       
-      let cmd = `ffmpeg -y `;
+      let cmd = `"${ffmpegPath}" -y `;
       if (isImage) {
         cmd += `-loop 1 `;
       } else {
@@ -129,7 +131,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    const concatCmd = `ffmpeg -y -f concat -safe 0 -i "${listPath}" -c copy "${concatPath}"`;
+    const concatCmd = `"${ffmpegPath}" -y -f concat -safe 0 -i "${listPath}" -c copy "${concatPath}"`;
     console.log("Running concat:", concatCmd);
     await execAsync(concatCmd);
 
@@ -160,7 +162,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
       
       // Mix concatenated audio with music audio
-      const mixCmd = `ffmpeg -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -c:a aac "${finalPath}"`;
+      const mixCmd = `"${ffmpegPath}" -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -c:a aac "${finalPath}"`;
       console.log("Running music mix:", mixCmd);
       await execAsync(mixCmd);
     }
