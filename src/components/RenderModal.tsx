@@ -695,7 +695,9 @@ export default function RenderModal({
         await new Promise(r => setTimeout(r, 3000));
         const statusRes = await fetch(`/api/render-status?jobId=${jobId}`);
         if (!statusRes.ok) {
-           throw new Error(`Failed to check status: ${statusRes.statusText}`);
+           let errTxt = statusRes.statusText;
+           try { const j = await statusRes.json(); if (j.error) errTxt = j.error; } catch(e){}
+           throw new Error(`Failed to check status: HTTP ${statusRes.status} ${errTxt}`);
         }
         const statusData = await statusRes.json();
         if (statusData.status === "error") {

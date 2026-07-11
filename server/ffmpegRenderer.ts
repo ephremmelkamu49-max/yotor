@@ -1,6 +1,9 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
+import { Readable } from "stream";
 import path from "path";
 import os from "os";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
@@ -47,9 +50,17 @@ async function downloadFile(url: string, dest: string) {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
       }
     });
+
     if (!response.ok) throw new Error(`Failed to download ${fetchUrl} (status: ${response.status})`);
-    const buffer = await response.arrayBuffer();
-    await fs.writeFile(dest, Buffer.from(buffer));
+
+    // Use streaming to save RAM!
+    if (response.body) {
+      // @ts-ignore - response.body is a web stream in Node 18+ which can be converted
+      await pipeline(Readable.fromWeb(response.body), createWriteStream(dest));
+    } else {
+      const buffer = await response.arrayBuffer();
+      await fs.writeFile(dest, Buffer.from(buffer));
+    }
     return;
   }
   
@@ -71,7 +82,6 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
     }
 
     const sceneFiles: string[] = [];
-
     console.log(`Downloading ${req.scenes.length} scene assets...`);
     
     // Concurrency limiter function
@@ -127,13 +137,14 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       
       const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
       
-      let cmd = `"${ffmpegPath}" -y `;
+      let cmd = `"${ffmpegPath}" -loglevel error -y `;
       if (isImage) {
         cmd += `-loop 1 `;
       } else {
         // Loop the input video infinitely so it matches the voiceover duration perfectly
         cmd += `-stream_loop -1 `;
       }
+
       cmd += `-i "${videoPath}" `;
       
       if (hasAudio) {
@@ -158,7 +169,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    const concatCmd = `"${ffmpegPath}" -y -f concat -safe 0 -i "${listPath}" -c copy "${concatPath}"`;
+    const concatCmd = `"${ffmpegPath}" -loglevel error -y -f concat -safe 0 -i "${listPath}" -c copy "${concatPath}"`;
     console.log("Running concat:", concatCmd);
     await execAsync(concatCmd);
 
@@ -175,6 +186,7 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       let expr = `${vol}`;
       let cumulativeTime = 0;
       let hasOverrides = false;
+
       for (const scene of req.scenes) {
         const sceneVol = scene.musicVolume !== undefined ? scene.musicVolume : vol;
         if (Math.abs(sceneVol - vol) > 0.001) {
@@ -189,12 +201,13 @@ export async function renderVideo(req: RenderRequest): Promise<string> {
       const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
       
       // Mix concatenated audio with music audio
-      const mixCmd = `"${ffmpegPath}" -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -c:a aac "${finalPath}"`;
+      const mixCmd = `"${ffmpegPath}" -loglevel error -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -c:a aac "${finalPath}"`;
       console.log("Running music mix:", mixCmd);
       await execAsync(mixCmd);
     }
 
     return finalPath; // Return the path to the final video
+
   } catch (err) {
     console.error("Render error:", err);
     throw err;
