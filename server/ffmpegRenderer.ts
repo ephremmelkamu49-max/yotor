@@ -186,8 +186,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
       
-      // Use -shortest as an extra safety measure with -t
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -shortest "${outPath}"`;
+      // Use -shortest as an extra safety measure with -t, while forcing constant frame rate and standard 90k timescale
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 -shortest "${outPath}"`;
       
       console.log("Running scene", i);
       await runCommand(cmd);
@@ -213,7 +213,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    const concatCmd = `"${ffmpegPath}" -loglevel error -y -f concat -safe 0 -i "${listPath}" -c copy "${concatPath}"`;
+    // Regenerate PTS and make sure timestamps start at zero and are monotonic
+    const concatCmd = `"${ffmpegPath}" -loglevel error -y -fflags +genpts -f concat -safe 0 -i "${listPath}" -c copy -avoid_negative_ts make_zero -movflags +faststart "${concatPath}"`;
     console.log("Running concat:", concatCmd);
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
     await runCommand(concatCmd);
@@ -263,9 +264,9 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
         
         // Mix concatenated audio with music audio
-        // Using -shortest to avoid hangs if music is much longer than video
-        // Using aformat to ensure audio compatibility during mix
-        const mixCmd = `"${ffmpegPath}" -loglevel error -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -shortest "${finalPath}"`;
+        // Using explicit -t instead of buggy -shortest to ensure perfect MP4 container indexes on Chrome
+        // Using aformat to ensure audio compatibility during mix, and regenerating PTS for perfect sync
+        const mixCmd = `"${ffmpegPath}" -loglevel error -y -fflags +genpts -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -avoid_negative_ts make_zero -t ${cumulativeTime.toFixed(2)} -movflags +faststart "${finalPath}"`;
         console.log("Running music mix:", mixCmd);
         await runCommand(mixCmd);
         

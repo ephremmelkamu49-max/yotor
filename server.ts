@@ -1556,11 +1556,20 @@ app.get("/api/render-status", (req, res) => {
   if (!job) {
     return res.status(404).json({ error: "Job not found" });
   }
+  if (job.status === "done" && job.outPath && fs.existsSync(job.outPath)) {
+    const stats = fs.statSync(job.outPath);
+    const sizeInMb = (stats.size / (1024 * 1024)).toFixed(2);
+    return res.json({
+      ...job,
+      fileSize: `${sizeInMb} MB`
+    });
+  }
   res.json(job);
 });
 
 app.get("/api/render-download", (req, res) => {
   const jobId = req.query.jobId as string;
+  const download = req.query.download === "true";
   const job = renderJobs.get(jobId);
   
   if (!job) {
@@ -1579,18 +1588,48 @@ app.get("/api/render-download", (req, res) => {
     return res.status(500).json({ error: "Rendered file missing on server. It may have been cleaned up." });
   }
 
-  console.log(`Sending rendered file for job ${jobId}: ${job.outPath}`);
-  res.sendFile(job.outPath, (err: any) => {
-    if (err) {
-      if (err.code === 'ECONNABORTED' || err.message?.includes('Request aborted')) {
-        return; // Ignore normal client disconnects
+  console.log(`Sending rendered file for job ${jobId} (download=${download}): ${job.outPath}`);
+  
+  const streamHeaders = {
+    "X-Accel-Buffering": "no",
+    "Cache-Control": "public, max-age=0, must-revalidate",
+    "Connection": "keep-alive"
+  };
+
+  if (download) {
+    res.download(job.outPath, `yotor_official_video_${jobId}.mp4`, { headers: streamHeaders }, (err: any) => {
+      if (err) {
+        const isClientAbort = 
+          err.code === 'ECONNABORTED' || 
+          err.code === 'EPIPE' || 
+          err.code === 'ECONNRESET' || 
+          err.message?.includes('Request aborted') || 
+          err.message?.includes('write EPIPE');
+        if (isClientAbort) {
+          return; // Ignore normal client disconnects/seeking
+        }
+        console.error(`Error sending attachment for job ${jobId}:`, err);
       }
-      console.error(`Error sending rendered file for job ${jobId}:`, err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "File transmission failed" });
+    });
+  } else {
+    res.sendFile(job.outPath, { headers: streamHeaders }, (err: any) => {
+      if (err) {
+        const isClientAbort = 
+          err.code === 'ECONNABORTED' || 
+          err.code === 'EPIPE' || 
+          err.code === 'ECONNRESET' || 
+          err.message?.includes('Request aborted') || 
+          err.message?.includes('write EPIPE');
+        if (isClientAbort) {
+          return; // Ignore normal client disconnects/seeking
+        }
+        console.error(`Error sending inline file for job ${jobId}:`, err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "File transmission failed" });
+        }
       }
-    }
-  });
+    });
+  }
 });
 
 // 5. Vite Dev Server & Static Production Routing

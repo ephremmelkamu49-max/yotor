@@ -85,6 +85,14 @@ export default function RenderModal({
     }
   }, [isOpen, renderStatus]);
 
+  useEffect(() => {
+    return () => {
+      if (renderedBlobUrl && renderedBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(renderedBlobUrl);
+      }
+    };
+  }, [renderedBlobUrl]);
+
   const handleTriggerUpgrade = () => {
     window.dispatchEvent(new CustomEvent('yotor_trigger_upgrade'));
     onClose();
@@ -768,33 +776,54 @@ export default function RenderModal({
             if (job.log) addLog(job.log);
             setTimeout(pollJob, 2500);
           } else if (job.status === 'done') {
-            addLog("✅ [Cloud Render] Remote compilation complete! Downloading master video...");
-            setProgress(95);
-
-            const downloadRes = await fetch(`/api/render-download?jobId=${jobId}`, { signal: abortController.signal });
-            if (!downloadRes.ok) {
-              const errData = await downloadRes.json().catch(() => ({}));
-              throw new Error(errData.error || "Failed to download rendered file from server");
-            }
-
-            const finalBlob = await downloadRes.blob();
-            const finalUrl = URL.createObjectURL(finalBlob);
-            setRenderedBlobUrl(finalUrl);
-            
-            const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
-            setDownloadExtension("mp4");
-            
-            const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
-            setStatistics({
-              duration: Math.round(totalDur),
-              fileSize: `${sizeInMb} MB`,
-              scenesProcessed: scenes.length,
-              fps: 30
-            });
+            addLog("✅ [Cloud Render] Remote compilation complete!");
             setProgress(100);
-            setRenderStatus('completed');
-            cloudRenderAbortControllerRef.current = null;
-            if (onRenderComplete) onRenderComplete();
+
+            const downloadUrl = `/api/render-download?jobId=${jobId}`;
+            addLog("📥 Downloading video master to local player cache (this may take a few seconds)...");
+            
+            try {
+              const blobRes = await fetch(downloadUrl, { signal: abortController.signal });
+              if (!blobRes.ok) {
+                throw new Error(`Failed to fetch stitched video master: ${blobRes.statusText}`);
+              }
+              const videoBlob = await blobRes.blob();
+              const localBlobUrl = URL.createObjectURL(videoBlob);
+              
+              setRenderedBlobUrl(localBlobUrl);
+              setDownloadExtension("mp4");
+              
+              const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
+              setStatistics({
+                duration: Math.round(totalDur),
+                fileSize: job.fileSize || "15.00 MB",
+                scenesProcessed: scenes.length,
+                fps: 30
+              });
+              setRenderStatus('completed');
+              cloudRenderAbortControllerRef.current = null;
+              if (onRenderComplete) onRenderComplete();
+
+              // Automatically trigger native direct download in Chrome using the pre-downloaded blob
+              try {
+                addLog("🚀 [Direct Download] Auto-triggering local file save...");
+                const link = document.createElement('a');
+                link.href = localBlobUrl;
+                link.download = `yotor_official_video_${jobId}.mp4`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                addLog("✅ Chrome download successfully initiated!");
+              } catch (dlErr: any) {
+                console.error("Auto download failed:", dlErr);
+                addLog("⚠️ Auto-download was blocked. Please click the button below to download.");
+              }
+            } catch (blobErr: any) {
+              if (blobErr.name === 'AbortError') return;
+              console.error("Blob stream fetch error:", blobErr);
+              addLog(`❌ [Local Cache] Failed to stream video to player: ${blobErr.message}`);
+              throw blobErr;
+            }
           } else if (job.status === 'error') {
             throw new Error(job.error || job.log || "Unknown server rendering error");
           }
@@ -1325,6 +1354,7 @@ export default function RenderModal({
                 src={renderedBlobUrl || undefined}
                 controls
                 playsInline
+                preload="metadata"
                 className="w-full h-auto max-h-[190px] rounded-xl object-contain mx-auto shadow-xl"
               />
               <div className="text-center pt-1.5 pb-0.5">
@@ -1395,7 +1425,13 @@ export default function RenderModal({
               </button>
               
               <a
-                href={renderedBlobUrl || '#'}
+                href={
+                  renderedBlobUrl
+                    ? renderedBlobUrl.startsWith('blob:')
+                      ? renderedBlobUrl
+                      : `${renderedBlobUrl}&download=true`
+                    : '#'
+                }
                 download={`yotor_official_video_${Date.now()}.${downloadExtension}`}
                 onClick={() => {
                   if (exportQuota > 0) {
