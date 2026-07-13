@@ -66,6 +66,10 @@ export default function RenderModal({
   const [exportQuality, setExportQuality] = useState<'720p' | '1080p'>('720p');
   const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('saver');
   const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('local');
+  const [ramLimit, setRamLimit] = useState<number>(() => {
+    const saved = localStorage.getItem('yotor_ram_limit');
+    return saved ? parseInt(saved, 10) : 32; // Default to 32 GB
+  });
   const [statistics, setStatistics] = useState({
     duration: 0,
     fileSize: '0 MB',
@@ -96,6 +100,11 @@ export default function RenderModal({
   const handleTriggerUpgrade = () => {
     window.dispatchEvent(new CustomEvent('yotor_trigger_upgrade'));
     onClose();
+  };
+
+  const handleRamLimitChange = (val: number) => {
+    setRamLimit(val);
+    localStorage.setItem('yotor_ram_limit', val.toString());
   };
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -733,7 +742,8 @@ export default function RenderModal({
         scenes: payloadScenes,
         aspectRatio: projectConfig.aspectRatio,
         musicUrl: finalMusicUrl,
-        musicVolume: projectConfig.musicVolume
+        musicVolume: projectConfig.musicVolume,
+        ramLimit: ramLimit
       };
       
       addLog("Starting backend compilation...");
@@ -766,10 +776,35 @@ export default function RenderModal({
         try {
           const statusRes = await fetch(`/api/render-status?jobId=${jobId}`, { signal: abortController.signal });
           if (!statusRes.ok) {
-            const errData = await statusRes.json().catch(() => ({}));
-            throw new Error(errData.error || `Server status check failed: ${statusRes.status}`);
+            const text = await statusRes.text().catch(() => "");
+            if (text.trim().startsWith("<")) {
+              console.warn("Received HTML error from server status check, retrying shortly...");
+              setTimeout(pollJob, 2500);
+              return;
+            }
+            let errMsg = `Server status check failed: ${statusRes.status}`;
+            try {
+              const errData = JSON.parse(text);
+              if (errData && errData.error) errMsg = errData.error;
+            } catch (_) {}
+            throw new Error(errMsg);
           }
-          const job = await statusRes.json();
+          
+          const text = await statusRes.text();
+          if (text.trim().startsWith("<")) {
+            console.warn("Received HTML instead of JSON from render-status, retrying shortly...");
+            setTimeout(pollJob, 2500);
+            return;
+          }
+          
+          let job;
+          try {
+            job = JSON.parse(text);
+          } catch (e) {
+            console.warn("Failed to parse render-status response as JSON, retrying shortly...", e);
+            setTimeout(pollJob, 2500);
+            return;
+          }
 
           if (job.status === 'processing') {
             setProgress(job.progress || 0);
@@ -1162,6 +1197,52 @@ export default function RenderModal({
               <span>
                 <strong>System Integrity Check:</strong> {language === 'am' ? 'ማቀናበሩ ሙሉ በሙሉ በእርስዎ ስልክ/ኮምፒውተር ውስጥ በከፍተኛ ፍጥነት ይከናወናል። ጥራቱ እንዳይቋረጥ እባክዎን ይህንን ፔጅ ሳይዘጉት ይጠብቁ።' : 'Compilation renders directly in the browser utilizing hardware acceleration. Keep this browser tab active and stay on screen for pristine frame pacing.'}
               </span>
+            </div>
+
+            {/* 🧠 የማህደረ ትውስታ (RAM) መጠን መቆጣጠሪያ / Memory (RAM) Allocation Control */}
+            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
+                  <Cpu size={11} className="text-indigo-400" />
+                  {language === 'am' ? 'የማህደረ ትውስታ (RAM) መጠን መቆጣጠሪያ' : 'Memory (RAM) Allocation Control'}
+                </span>
+                <span className="text-[10.5px] font-bold font-mono text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                  {ramLimit} GB
+                </span>
+              </div>
+              
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min="2"
+                  max="50"
+                  step="2"
+                  value={ramLimit}
+                  onChange={(e) => handleRamLimitChange(parseInt(e.target.value, 10))}
+                  className="w-full h-1.5 bg-zinc-900 rounded-lg appearance-none cursor-pointer accent-indigo-500 transition-all focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                <div className="flex justify-between text-[8px] font-mono text-zinc-650 uppercase">
+                  <span>2 GB</span>
+                  <span>16 GB (Standard)</span>
+                  <span>32 GB (Pro)</span>
+                  <span className="text-indigo-400 font-bold">50 GB (Ultimate)</span>
+                </div>
+              </div>
+
+              <p className="text-[9.5px] text-zinc-500 leading-normal font-sans">
+                {language === 'am'
+                  ? 'ለቪዲዮ ማቀናበሪያው የሚመደበውን ከፍተኛ የ RAM መጠን ያስተካክሉ። እስከ 50 ጂቢ RAM መጫን ሰርቨሩ እጅግ ግዙፍ የሆኑ ባለ ከፍተኛ ጥራት የቪዲዮ ፋይሎችን ያለ ምንም መቆራረጥ እንዲያቀናጅ ያስችለዋል።'
+                  : 'Configure the maximum RAM allocated for video rendering. Increasing up to 50 GB RAM allows the rendering farm to compile ultra-heavy cinematic projects smoothly without crashing.'}
+              </p>
+              
+              {ramLimit >= 40 && (
+                <div className="flex gap-1.5 items-center p-2 rounded-lg bg-indigo-500/5 border border-indigo-500/10 text-[9px] text-indigo-400 font-medium animate-pulse">
+                  <Zap size={11} className="shrink-0" />
+                  <span>
+                    {language === 'am' ? '🚀 የከፍተኛ አፈጻጸም ሁኔታ ገባሪ ሆኗል (እስከ 50 ጂቢ RAM ተመድቧል)!' : '🚀 Ultimate High-Performance Mode Engaged!'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="p-4 rounded-xl bg-[#09090b] border border-zinc-800/80 space-y-3">

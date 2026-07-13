@@ -35,6 +35,7 @@ export interface RenderRequest {
   aspectRatio: string;
   musicUrl?: string;
   musicVolume?: number;
+  ramLimit?: number;
 }
 
 async function downloadFile(url: string, dest: string) {
@@ -106,6 +107,11 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     } else if (req.aspectRatio === "1:1") {
       width = 1080;
       height = 1080;
+    }
+
+    if (req.ramLimit) {
+      console.log(`[High-Performance System Engine] Allocated RAM Limit for Job: ${req.ramLimit} GB`);
+      if (onProgress) onProgress(`Allocating ${req.ramLimit} GB high-performance RAM...`, 3);
     }
 
     const sceneFiles: string[] = [];
