@@ -780,49 +780,33 @@ export default function RenderModal({
             setProgress(100);
 
             const downloadUrl = `/api/render-download?jobId=${jobId}`;
-            addLog("📥 Downloading video master to local player cache (this may take a few seconds)...");
+            setRenderedBlobUrl(downloadUrl);
+            setDownloadExtension("mp4");
             
-            try {
-              const blobRes = await fetch(downloadUrl, { signal: abortController.signal });
-              if (!blobRes.ok) {
-                throw new Error(`Failed to fetch stitched video master: ${blobRes.statusText}`);
-              }
-              const videoBlob = await blobRes.blob();
-              const localBlobUrl = URL.createObjectURL(videoBlob);
-              
-              setRenderedBlobUrl(localBlobUrl);
-              setDownloadExtension("mp4");
-              
-              const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
-              setStatistics({
-                duration: Math.round(totalDur),
-                fileSize: job.fileSize || "15.00 MB",
-                scenesProcessed: scenes.length,
-                fps: 30
-              });
-              setRenderStatus('completed');
-              cloudRenderAbortControllerRef.current = null;
-              if (onRenderComplete) onRenderComplete();
+            const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
+            setStatistics({
+              duration: Math.round(totalDur),
+              fileSize: job.fileSize || "15.00 MB",
+              scenesProcessed: scenes.length,
+              fps: 30
+            });
+            setRenderStatus('completed');
+            cloudRenderAbortControllerRef.current = null;
+            if (onRenderComplete) onRenderComplete();
 
-              // Automatically trigger native direct download in Chrome using the pre-downloaded blob
-              try {
-                addLog("🚀 [Direct Download] Auto-triggering local file save...");
-                const link = document.createElement('a');
-                link.href = localBlobUrl;
-                link.download = `yotor_official_video_${jobId}.mp4`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                addLog("✅ Chrome download successfully initiated!");
-              } catch (dlErr: any) {
-                console.error("Auto download failed:", dlErr);
-                addLog("⚠️ Auto-download was blocked. Please click the button below to download.");
-              }
-            } catch (blobErr: any) {
-              if (blobErr.name === 'AbortError') return;
-              console.error("Blob stream fetch error:", blobErr);
-              addLog(`❌ [Local Cache] Failed to stream video to player: ${blobErr.message}`);
-              throw blobErr;
+            // Automatically trigger native direct download in Chrome to bypass RAM/blob limits
+            try {
+              addLog("🚀 [Direct Download] Auto-triggering native Chrome download...");
+              const link = document.createElement('a');
+              link.href = `${downloadUrl}&download=true`;
+              link.download = `yotor_official_video_${jobId}.mp4`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              addLog("✅ Chrome download successfully initiated!");
+            } catch (dlErr: any) {
+              console.error("Auto download failed:", dlErr);
+              addLog("⚠️ Auto-download was blocked. Please click the button below to download.");
             }
           } else if (job.status === 'error') {
             throw new Error(job.error || job.log || "Unknown server rendering error");

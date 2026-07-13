@@ -12,11 +12,11 @@ const execAsync = promisify(exec);
 
 async function runCommand(cmd: string) {
   try {
-    await execAsync(cmd);
+    await execAsync(cmd, { maxBuffer: 1024 * 1024 * 100 });
   } catch (err: any) {
     const stderr = err.stderr ? err.stderr.toString() : "";
     const stdout = err.stdout ? err.stdout.toString() : "";
-    throw new Error(`Command failed: ${cmd}\nError: ${err.message}\nStderr: ${stderr}\nStdout: ${stdout}`);
+    throw new Error(`Command failed.\nError: ${err.message}\nStderr: ${stderr}\nStdout: ${stdout}`);
   }
 }
 // Prefer native system ffmpeg (/usr/bin/ffmpeg) over node_modules binary to guarantee architecture compatibility and executable permissions
@@ -170,7 +170,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       
       const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
       
-      let cmd = `"${ffmpegPath}" -loglevel error -y `;
+      let cmd = `"${ffmpegPath}" -loglevel quiet -y `;
       if (isImage) {
         cmd += `-loop 1 `;
       } else {
@@ -189,7 +189,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       // Use -shortest as an extra safety measure with -t, while forcing constant frame rate and standard 90k timescale
       cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 -shortest "${outPath}"`;
       
-      console.log("Running scene", i);
+      console.log(`Processing scene segment ${i}...`);
       await runCommand(cmd);
 
       // Verify scene file exists
@@ -214,8 +214,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
     const concatPath = path.join(tempDir, "concat.mp4");
     // Regenerate PTS and make sure timestamps start at zero and are monotonic
-    const concatCmd = `"${ffmpegPath}" -loglevel error -y -fflags +genpts -f concat -safe 0 -i "${listPath}" -c copy -avoid_negative_ts make_zero -movflags +faststart "${concatPath}"`;
-    console.log("Running concat:", concatCmd);
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -f concat -safe 0 -i "${listPath}" -c copy -avoid_negative_ts make_zero -movflags +faststart "${concatPath}"`;
+    console.log("Stitching video segments...");
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
     await runCommand(concatCmd);
 
@@ -266,8 +266,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         // Mix concatenated audio with music audio
         // Using explicit -t instead of buggy -shortest to ensure perfect MP4 container indexes on Chrome
         // Using aformat to ensure audio compatibility during mix, and regenerating PTS for perfect sync
-        const mixCmd = `"${ffmpegPath}" -loglevel error -y -fflags +genpts -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -avoid_negative_ts make_zero -t ${cumulativeTime.toFixed(2)} -movflags +faststart "${finalPath}"`;
-        console.log("Running music mix:", mixCmd);
+        const mixCmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -avoid_negative_ts make_zero -t ${cumulativeTime.toFixed(2)} -movflags +faststart "${finalPath}"`;
+        console.log("Mixing background music...");
         await runCommand(mixCmd);
         
         const finalExists = await fs.access(finalPath).then(() => true).catch(() => false);

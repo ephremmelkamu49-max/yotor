@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/genai";
@@ -1519,7 +1520,45 @@ ${scenesText.substring(0, 5000)}` }] }]
   }
 });
 
-const renderJobs = new Map<string, { status: "processing" | "done" | "error", progress: number, log: string, outPath?: string, error?: string }>();
+const JOBS_FILE = path.join(os.tmpdir(), "yotor_render_jobs.json");
+
+const getPersistedJobs = (): Map<string, any> => {
+  try {
+    if (fs.existsSync(JOBS_FILE)) {
+      const content = fs.readFileSync(JOBS_FILE, "utf-8");
+      const obj = JSON.parse(content);
+      return new Map(Object.entries(obj));
+    }
+  } catch (err) {
+    console.error("Error reading render jobs file:", err);
+  }
+  return new Map();
+};
+
+const savePersistedJobs = (map: Map<string, any>) => {
+  try {
+    const obj = Object.fromEntries(map.entries());
+    fs.writeFileSync(JOBS_FILE, JSON.stringify(obj, null, 2));
+  } catch (err) {
+    console.error("Error saving render jobs file:", err);
+  }
+};
+
+const renderJobs = {
+  get(jobId: string) {
+    const map = getPersistedJobs();
+    return map.get(jobId);
+  },
+  set(jobId: string, value: any) {
+    const map = getPersistedJobs();
+    map.set(jobId, value);
+    savePersistedJobs(map);
+  },
+  entries() {
+    const map = getPersistedJobs();
+    return map.entries();
+  }
+};
 
 app.post("/api/render-ffmpeg", express.json({ limit: '500mb' }), async (req, res) => {
   const jobId = Math.random().toString(36).substring(2, 15);
