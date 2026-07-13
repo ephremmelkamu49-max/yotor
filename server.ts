@@ -1186,6 +1186,7 @@ app.get("/api/tts", async (req, res) => {
     }
   } catch (err: any) {
     console.error("Audio generation proxy failure:", err);
+    res.setHeader("Access-Control-Allow-Origin", "*");
     res.status(500).json({ error: err.message });
   }
 });

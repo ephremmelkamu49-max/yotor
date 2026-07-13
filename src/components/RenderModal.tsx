@@ -664,12 +664,19 @@ export default function RenderModal({
         let targetDuration = scene.duration;
         
         // Fetch the voiceover URL if voice is enabled and convert it to base64 for reliable server-side mixing
-        if (projectConfig.isVoiceEnabled) {
+        if (projectConfig.isVoiceEnabled && scene.text && scene.text.trim().length > 0) {
           const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
           if (ttsUrl) {
             try {
               addLog(`  -> Preparing voiceover narrative...`);
               const audioRes = await fetch(ttsUrl, { signal: abortController.signal });
+              if (!audioRes.ok) {
+                throw new Error(`TTS server returned status ${audioRes.status}`);
+              }
+              const contentType = audioRes.headers.get("content-type") || "";
+              if (!contentType.includes("audio") && !contentType.includes("octet-stream")) {
+                throw new Error(`TTS server returned unexpected content-type: ${contentType}`);
+              }
               const audioBlob = await audioRes.blob();
               const reader = new FileReader();
               const base64Audio = await new Promise<string>((resolve, reject) => {
@@ -689,7 +696,8 @@ export default function RenderModal({
               }
             } catch (e: any) {
               if (e.name === 'AbortError') throw e;
-              console.warn("Failed to fetch and convert TTS to base64", e);
+              console.warn("Failed to fetch and convert TTS to base64, using silent fallback for this scene", e);
+              addLog(`  ⚠️ Voiceover prepare skipped for scene ${currentIdx} (using fallback silence).`);
             }
           }
         }

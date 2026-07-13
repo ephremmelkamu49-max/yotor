@@ -2592,21 +2592,37 @@ export default function VideoCanvas({
         {scenes.map((s, idx) => {
           const isNear = Math.abs(idx - playbackIndex) <= 2;
           const audioUrl = s.voiceoverUrl || (s.text && s.text.trim().length > 0 ? getTtsUrl(s.text, projectConfig.voiceLanguage) : "");
-          const audioSrcProps = isNear && audioUrl ? { src: audioUrl } : {};
+          
+          if (!audioUrl || !isNear) {
+            if (audioRefs.current[s.id] && !isNear) {
+              try {
+                audioRefs.current[s.id].pause();
+              } catch (_) {}
+            }
+            delete audioRefs.current[s.id];
+            return null;
+          }
+
           return (
           <audio
             key={`audio_${s.id}`}
             ref={(el) => {
-              if (el) audioRefs.current[s.id] = el;
+              if (el) {
+                audioRefs.current[s.id] = el;
+              } else {
+                delete audioRefs.current[s.id];
+              }
             }}
-            {...audioSrcProps}
+            src={audioUrl}
             muted={isMuted}
             className="hidden"
             crossOrigin="anonymous"
-            preload={isNear ? "auto" : "none"}
-            onError={(e) =>
-              console.error(`[TTS] Error loading audio for scene ${s.id}:`, e)
-            }
+            preload="auto"
+            onError={(e) => {
+              if (audioUrl) {
+                console.warn(`[TTS] Note: Audio preloading skipped or delayed for scene ${s.id} (browser policy or loading):`, e);
+              }
+            }}
             onLoadedMetadata={(e) => {
               // Update scene duration if audio length differs from current scene duration
               const aud = e.currentTarget;
