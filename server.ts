@@ -1632,14 +1632,13 @@ app.get("/api/render-download", (req, res) => {
   
   const streamHeaders = {
     "Content-Type": "video/mp4",
-    "Accept-Ranges": "bytes",
     "X-Accel-Buffering": "no",
     "Cache-Control": "public, max-age=0, must-revalidate",
     "Connection": "keep-alive"
   };
 
   if (download) {
-    res.download(job.outPath, `yotor_official_video_${jobId}.mp4`, { headers: streamHeaders }, (err: any) => {
+    res.download(job.outPath, `yotor_official_video_${jobId}.mp4`, { headers: { ...streamHeaders, "Accept-Ranges": "bytes" } }, (err: any) => {
       if (err) {
         const isClientAbort = 
           err.code === 'ECONNABORTED' || 
@@ -1654,23 +1653,55 @@ app.get("/api/render-download", (req, res) => {
       }
     });
   } else {
-    res.sendFile(job.outPath, { headers: streamHeaders }, (err: any) => {
-      if (err) {
-        const isClientAbort = 
-          err.code === 'ECONNABORTED' || 
-          err.code === 'EPIPE' || 
-          err.code === 'ECONNRESET' || 
-          err.message?.includes('Request aborted') || 
-          err.message?.includes('write EPIPE');
-        if (isClientAbort) {
-          return; // Ignore normal client disconnects/seeking
-        }
-        console.error(`Error sending inline file for job ${jobId}:`, err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "File transmission failed" });
-        }
+    // Custom, rock-solid, browser-optimized chunked/range-based video streaming
+    const stat = fs.statSync(job.outPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (start >= fileSize || end >= fileSize) {
+        res.writeHead(416, {
+          "Content-Range": `bytes */${fileSize}`,
+          "Content-Type": "video/mp4"
+        });
+        return res.end();
       }
-    });
+
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(job.outPath, { start, end });
+      const head = {
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunksize,
+        "Content-Type": "video/mp4",
+        ...streamHeaders
+      };
+
+      res.writeHead(206, head);
+      file.pipe(res);
+
+      file.on("error", (err: any) => {
+        console.error(`Streaming error for job ${jobId}:`, err);
+      });
+    } else {
+      const head = {
+        "Content-Length": fileSize,
+        "Content-Type": "video/mp4",
+        "Accept-Ranges": "bytes",
+        ...streamHeaders
+      };
+      res.writeHead(200, head);
+      const file = fs.createReadStream(job.outPath);
+      file.pipe(res);
+
+      file.on("error", (err: any) => {
+        console.error(`Streaming error for job ${jobId}:`, err);
+      });
+    }
   }
 });
 

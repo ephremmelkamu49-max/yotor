@@ -1,0 +1,13 @@
+# This file defines which files and directories to ignore when uploading to Cloud Run / Cloud Build.
+# Creating this file prevents gcloud from falling back to .gitignore, which would ignore our dist/ directory.
+
+.gcloudignore
+.git
+.gitignore
+node_modules/
+android/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
