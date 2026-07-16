@@ -678,6 +678,35 @@ export default function RenderModal({
                 throw new Error(`TTS server returned unexpected content-type: ${contentType}`);
               }
               const audioBlob = await audioRes.blob();
+              
+              // Pre-calculate exact audio duration for flawless server-side video alignment
+              const audioUrl = URL.createObjectURL(audioBlob);
+              const tempAudio = new Audio(audioUrl);
+              tempAudio.crossOrigin = "anonymous";
+              
+              const calculatedDuration = await new Promise<number>((resolve) => {
+                const timeout = setTimeout(() => {
+                  resolve(scene.duration || 4.5);
+                }, 3000); // 3-second load timeout
+                
+                tempAudio.onloadedmetadata = () => {
+                  clearTimeout(timeout);
+                  if (tempAudio.duration && !isNaN(tempAudio.duration) && tempAudio.duration > 0 && tempAudio.duration !== Infinity) {
+                    resolve(tempAudio.duration + 0.15);
+                  } else {
+                    resolve(scene.duration || 4.5);
+                  }
+                };
+                tempAudio.onerror = () => {
+                  clearTimeout(timeout);
+                  resolve(scene.duration || 4.5);
+                };
+              });
+              
+              URL.revokeObjectURL(audioUrl);
+              targetDuration = calculatedDuration;
+              addLog(`  -> Narrative duration: ${targetDuration.toFixed(2)}s`);
+
               const reader = new FileReader();
               const base64Audio = await new Promise<string>((resolve, reject) => {
                 if (abortController.signal.aborted) {
@@ -700,6 +729,12 @@ export default function RenderModal({
               addLog(`  ⚠️ Voiceover prepare skipped for scene ${currentIdx} (using fallback silence).`);
             }
           }
+        }
+
+        if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
+          const BEAT_INTERVAL = 0.5;
+          targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
+          addLog(`  -> Beat Sync aligned duration: ${targetDuration.toFixed(2)}s`);
         }
 
         let sceneMusicVolume = undefined;
@@ -777,19 +812,22 @@ export default function RenderModal({
       const { jobId } = await response.json();
       addLog(`Job submitted. Remote ID: ${jobId}. Waiting for rendering farm...`);
 
-      // Poll for status
+      // Poll for status with connection robustness/glitch tolerance for long video renderings
+      let consecutiveErrors = 0;
       const pollJob = async () => {
         if (abortController.signal.aborted) return;
 
         try {
           const statusRes = await fetch(`/api/render-status?jobId=${jobId}`, { signal: abortController.signal });
+          
           if (!statusRes.ok) {
-            const text = await statusRes.text().catch(() => "");
-            if (text.trim().startsWith("<")) {
-              console.warn("Received HTML error from server status check, retrying shortly...");
-              setTimeout(pollJob, 2500);
+            consecutiveErrors++;
+            if (consecutiveErrors < 15) {
+              console.warn(`[Render Poll] status is ${statusRes.status}, retrying shortly (attempt ${consecutiveErrors}/15)...`);
+              setTimeout(pollJob, 3500);
               return;
             }
+            const text = await statusRes.text().catch(() => "");
             let errMsg = `Server status check failed: ${statusRes.status}`;
             try {
               const errData = JSON.parse(text);
@@ -800,19 +838,30 @@ export default function RenderModal({
           
           const text = await statusRes.text();
           if (text.trim().startsWith("<")) {
-            console.warn("Received HTML instead of JSON from render-status, retrying shortly...");
-            setTimeout(pollJob, 2500);
-            return;
+            consecutiveErrors++;
+            if (consecutiveErrors < 15) {
+              console.warn(`[Render Poll] received HTML instead of JSON, retrying shortly (attempt ${consecutiveErrors}/15)...`);
+              setTimeout(pollJob, 3500);
+              return;
+            }
+            throw new Error("Received invalid HTML page instead of status JSON from server");
           }
           
           let job;
           try {
             job = JSON.parse(text);
           } catch (e) {
-            console.warn("Failed to parse render-status response as JSON, retrying shortly...", e);
-            setTimeout(pollJob, 2500);
-            return;
+            consecutiveErrors++;
+            if (consecutiveErrors < 15) {
+              console.warn(`[Render Poll] failed to parse JSON, retrying shortly (attempt ${consecutiveErrors}/15)...`);
+              setTimeout(pollJob, 3500);
+              return;
+            }
+            throw new Error("Failed to parse server status JSON");
           }
+
+          // Reset error counter upon receiving a valid, parsed status
+          consecutiveErrors = 0;
 
           if (job.status === 'processing') {
             setProgress(job.progress || 0);
@@ -856,9 +905,15 @@ export default function RenderModal({
           }
         } catch (pollErr: any) {
           if (pollErr.name === 'AbortError') return;
-          console.error("Polling error:", pollErr);
-          setRenderStatus('failed');
-          addLog(`❌ [Cloud Render] Polling FAILED: ${pollErr.message}`);
+          console.warn("Polling connection glitch:", pollErr);
+          consecutiveErrors++;
+          if (consecutiveErrors < 15) {
+            addLog(`⚠️ Connection glitch (retrying status check... attempt ${consecutiveErrors}/15)`);
+            setTimeout(pollJob, 3500);
+          } else {
+            setRenderStatus('failed');
+            addLog(`❌ [Cloud Render] Polling FAILED after 15 consecutive attempts: ${pollErr.message}`);
+          }
         }
       };
 

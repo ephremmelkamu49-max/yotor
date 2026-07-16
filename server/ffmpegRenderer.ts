@@ -76,12 +76,12 @@ async function downloadFile(url: string, dest: string) {
   if (url.startsWith("http") || url.startsWith("/")) {
     const fetchUrl = url.startsWith("/") ? `http://127.0.0.1:3000${url}` : url;
     
-    // Add AbortSignal timeout to prevent hanging forever on unresponsive CDN nodes
+    // Add AbortSignal timeout to prevent hanging forever on unresponsive CDN nodes (increased to 180 seconds for long video downloads)
     const response = await fetch(fetchUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
       },
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(180000)
     });
 
     if (!response.ok) throw new Error(`Failed to download ${fetchUrl} (status: ${response.status})`);
@@ -131,8 +131,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     };
 
     let downloadedCount = 0;
-    // Download in parallel with concurrency 5
-    await runWithConcurrency(req.scenes, 5, async (scene, i) => {
+    // Download in parallel with concurrency 2 to avoid rate limits / connection choking on long videos
+    await runWithConcurrency(req.scenes, 2, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
       
@@ -162,8 +162,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     if (onProgress) onProgress("All assets ready. Commencing FFmpeg scene processing...", 20);
 
     let processedCount = 0;
-    // Process scenes in parallel with concurrency 3 (to avoid CPU/Memory overload)
-    await runWithConcurrency(req.scenes, 3, async (scene, i) => {
+    // Process scenes sequentially with concurrency 1 (to avoid CPU/Memory spikes on long videos)
+    await runWithConcurrency(req.scenes, 1, async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
       const outPath = path.join(tempDir, `out_${i}.mp4`);
@@ -192,8 +192,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
       
-      // Use -shortest as an extra safety measure with -t, while forcing constant frame rate and standard 90k timescale
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 -shortest "${outPath}"`;
+      // Rely on precise duration constraint via -t while forcing constant frame rate and standard 90k timescale
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
       
       console.log(`Processing scene segment ${i}...`);
       await runCommand(cmd);

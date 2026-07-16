@@ -186,75 +186,88 @@ export default function Timeline({
       let foundRemote = false;
 
       // Try Pexels first
-      if (pKey) {
-        try {
-          const response = await fetch(`/api/pexels/search?query=${encodeURIComponent(queryText)}`, {
-            headers: { 'x-pexels-key': pKey }
-          });
-          const data = await response.json();
-          if (response.ok && data.videos && data.videos.length > 0) {
-            remoteVideos = data.videos;
-            foundRemote = true;
+      try {
+        const response = await fetch(`/api/pexels/search?query=${encodeURIComponent(queryText)}`, {
+          headers: pKey ? { 'x-pexels-key': pKey } : {}
+        });
+        if (response.ok) {
+          const text = await response.text();
+          if (text && !text.trim().startsWith("<")) {
+            const data = JSON.parse(text);
+            if (data && data.videos && data.videos.length > 0) {
+              remoteVideos = data.videos;
+              foundRemote = true;
+            }
           }
-        } catch (e) {
-          console.error('Pexels search failed', e);
         }
+      } catch (e) {
+        console.warn('Pexels search failed or skipped', e);
       }
 
       // Try Pixabay if Pexels finds nothing
-      if (!foundRemote && pixKey) {
+      if (!foundRemote) {
         try {
           const response = await fetch(`/api/pixabay/search?query=${encodeURIComponent(queryText)}`, {
-            headers: { 'x-pixabay-key': pixKey }
+            headers: pixKey ? { 'x-pixabay-key': pixKey } : {}
           });
-          const data = await response.json();
-          if (response.ok && data.hits && data.hits.length > 0) {
-            // Map Pixabay format to dummy Pexels format for compatibility with UI
-            remoteVideos = data.hits.map((hit: any) => {
-              const selectedVid = hit.videos?.large || hit.videos?.medium || hit.videos?.small || hit.videos?.tiny;
-              const link = selectedVid ? selectedVid.url : '';
-              const pic = hit.picture_id 
-                ? `https://i.vimeocdn.com/video/${hit.picture_id}_295x166.jpg`
-                : hit.placeholderUrl || '';
+          if (response.ok) {
+            const text = await response.text();
+            if (text && !text.trim().startsWith("<")) {
+              const data = JSON.parse(text);
+              if (data && data.hits && data.hits.length > 0) {
+                // Map Pixabay format to dummy Pexels format for compatibility with UI
+                remoteVideos = data.hits.map((hit: any) => {
+                  const selectedVid = hit.videos?.large || hit.videos?.medium || hit.videos?.small || hit.videos?.tiny;
+                  const link = selectedVid ? selectedVid.url : '';
+                  const pic = hit.picture_id 
+                    ? `https://i.vimeocdn.com/video/${hit.picture_id}_295x166.jpg`
+                    : hit.placeholderUrl || '';
 
-              return {
-                id: hit.id,
-                video_files: [{ type: 'video/mp4', link }],
-                video_pictures: [{ picture: pic }],
-                user: { name: hit.user || 'Pixabay Creator', url: '#' },
-              };
-            }).filter((v: any) => v.video_files[0].link);
-            foundRemote = true;
+                  return {
+                    id: hit.id,
+                    video_files: [{ type: 'video/mp4', link }],
+                    video_pictures: [{ picture: pic }],
+                    user: { name: hit.user || 'Pixabay Creator', url: '#' },
+                  };
+                }).filter((v: any) => v.video_files[0].link);
+                foundRemote = true;
+              }
+            }
           }
         } catch (e) {
-          console.error('Pixabay search failed', e);
+          console.warn('Pixabay search failed or skipped', e);
         }
       }
 
       // Try Coverr if Pixabay & Pexels find nothing
       const coverrKey = localStorage.getItem('coverr_api_key') || '';
-      if (!foundRemote && coverrKey) {
+      if (!foundRemote) {
         try {
           const response = await fetch(`/api/coverr/search?query=${encodeURIComponent(queryText)}`, {
-            headers: { 'x-coverr-key': coverrKey }
+            headers: coverrKey ? { 'x-coverr-key': coverrKey } : {}
           });
-          const data = await response.json();
-          if (response.ok && data.hits && data.hits.length > 0) {
-            // Map Coverr format to dummy Pexels format for compatibility with UI
-            remoteVideos = data.hits.map((hit: any) => {
-              const selectedVid = hit.urls?.mp4 || hit.urls?.mp4_download || '';
-              const pic = hit.thumbnail || '';
-              return {
-                id: hit.id,
-                video_files: [{ type: 'video/mp4', link: selectedVid }],
-                video_pictures: [{ picture: pic }],
-                user: { name: hit.author?.name || 'Coverr Creator', url: '#' },
-              };
-            }).filter((v: any) => v.video_files[0].link);
-            foundRemote = true;
+          if (response.ok) {
+            const text = await response.text();
+            if (text && !text.trim().startsWith("<")) {
+              const data = JSON.parse(text);
+              if (data && data.hits && data.hits.length > 0) {
+                // Map Coverr format to dummy Pexels format for compatibility with UI
+                remoteVideos = data.hits.map((hit: any) => {
+                  const selectedVid = hit.urls?.mp4 || hit.urls?.mp4_download || '';
+                  const pic = hit.thumbnail || '';
+                  return {
+                    id: hit.id,
+                    video_files: [{ type: 'video/mp4', link: selectedVid }],
+                    video_pictures: [{ picture: pic }],
+                    user: { name: hit.author?.name || 'Coverr Creator', url: '#' },
+                  };
+                }).filter((v: any) => v.video_files[0].link);
+                foundRemote = true;
+              }
+            }
           }
         } catch (e) {
-          console.error('Coverr search failed', e);
+          console.warn('Coverr search failed or skipped', e);
         }
       }
 

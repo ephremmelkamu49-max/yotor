@@ -516,21 +516,26 @@ export default function App() {
                       },
                     );
                     clearTimeout(timeout);
-                    const pexelsData = await pexelsResponse.json();
-                    if (pexelsResponse.ok && pexelsData.videos?.length > 0) {
-                      const bestClip = pexelsData.videos[0];
-                      const files = bestClip.video_files || [];
-                      const mp4Files = files.filter(
-                        (f: any) =>
-                          f.file_type === "video/mp4" || f.link.includes(".mp4"),
-                      );
-                      const hd = mp4Files.find(
-                        (f: any) => f.width >= 1280 && f.width <= 1920,
-                      );
-                      const sd = mp4Files.find((f: any) => f.width < 1280);
-                      videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || "";
-                      videoThumb = bestClip.video_pictures?.[0]?.picture || "";
-                      author = bestClip.user?.name || "Stock Creator";
+                    if (pexelsResponse.ok) {
+                      const text = await pexelsResponse.text();
+                      if (text && !text.trim().startsWith("<")) {
+                        const pexelsData = JSON.parse(text);
+                        if (pexelsData.videos?.length > 0) {
+                          const bestClip = pexelsData.videos[0];
+                          const files = bestClip.video_files || [];
+                          const mp4Files = files.filter(
+                            (f: any) =>
+                              f.file_type === "video/mp4" || f.link.includes(".mp4"),
+                          );
+                          const hd = mp4Files.find(
+                            (f: any) => f.width >= 1280 && f.width <= 1920,
+                          );
+                          const sd = mp4Files.find((f: any) => f.width < 1280);
+                          videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || "";
+                          videoThumb = bestClip.video_pictures?.[0]?.picture || "";
+                          author = bestClip.user?.name || "Stock Creator";
+                        }
+                      }
                     }
                   } catch (e) {
                     console.warn(`Pexels try for "${query}" failed/timed out:`, e);
@@ -550,21 +555,26 @@ export default function App() {
                       },
                     );
                     clearTimeout(timeout);
-                    const pixabayData = await pixabayResponse.json();
-                    if (pixabayResponse.ok && pixabayData.hits?.length > 0) {
-                      const bestClip = pixabayData.hits[0];
-                      const videos = bestClip.videos || {};
-                      const selectedVid =
-                        videos.large ||
-                        videos.medium ||
-                        videos.small ||
-                        videos.tiny;
-                      if (selectedVid) {
-                        videoUrl = selectedVid.url;
-                        videoThumb = bestClip.picture_id
-                          ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
-                          : "";
-                        author = bestClip.user || "Pixabay Creator";
+                    if (pixabayResponse.ok) {
+                      const text = await pixabayResponse.text();
+                      if (text && !text.trim().startsWith("<")) {
+                        const pixabayData = JSON.parse(text);
+                        if (pixabayData.hits?.length > 0) {
+                          const bestClip = pixabayData.hits[0];
+                          const videos = bestClip.videos || {};
+                          const selectedVid =
+                            videos.large ||
+                            videos.medium ||
+                            videos.small ||
+                            videos.tiny;
+                          if (selectedVid) {
+                            videoUrl = selectedVid.url;
+                            videoThumb = bestClip.picture_id
+                              ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
+                              : "";
+                            author = bestClip.user || "Pixabay Creator";
+                          }
+                        }
                       }
                     }
                   } catch (e) {
@@ -585,14 +595,19 @@ export default function App() {
                       },
                     );
                     clearTimeout(timeout);
-                    const coverrData = await coverrResponse.json();
-                    if (coverrResponse.ok && coverrData.hits?.length > 0) {
-                      const bestClip = coverrData.hits[0];
-                      const selectedVid = bestClip.urls?.mp4 || bestClip.urls?.mp4_download || '';
-                      if (selectedVid) {
-                        videoUrl = selectedVid;
-                        videoThumb = bestClip.thumbnail || "";
-                        author = bestClip.author?.name || "Coverr Creator";
+                    if (coverrResponse.ok) {
+                      const text = await coverrResponse.text();
+                      if (text && !text.trim().startsWith("<")) {
+                        const coverrData = JSON.parse(text);
+                        if (coverrData.hits?.length > 0) {
+                          const bestClip = coverrData.hits[0];
+                          const selectedVid = bestClip.urls?.mp4 || bestClip.urls?.mp4_download || '';
+                          if (selectedVid) {
+                            videoUrl = selectedVid;
+                            videoThumb = bestClip.thumbnail || "";
+                            author = bestClip.author?.name || "Coverr Creator";
+                          }
+                        }
                       }
                     }
                   } catch (e) {
