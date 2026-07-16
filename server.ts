@@ -1561,11 +1561,62 @@ const renderJobs = {
   }
 };
 
+const cleanupOldJobs = async () => {
+  try {
+    const jobsMap = getPersistedJobs();
+    const now = Date.now();
+    const maxAgeMs = 15 * 60 * 1000; // 15 minutes is plenty for downloading/previewing
+    const jobsList = Array.from(jobsMap.entries());
+
+    let changed = false;
+
+    // Sort jobs by creation time descending (newest first)
+    const sortedJobs = [...jobsList].sort((a, b) => {
+      const timeA = a[1].createdAt || 0;
+      const timeB = b[1].createdAt || 0;
+      return timeB - timeA;
+    });
+
+    for (let index = 0; index < sortedJobs.length; index++) {
+      const [id, job] = sortedJobs[index];
+      const createdAt = job.createdAt || 0;
+      const isTooOld = now - createdAt > maxAgeMs;
+      // Restrict active storage: keep at most the 2 most recent completed/processing jobs
+      const isExcess = index >= 2;
+
+      if (isTooOld || isExcess) {
+        if (job.outPath) {
+          try {
+            const dirPath = path.dirname(job.outPath);
+            if (dirPath && dirPath.includes("yotor-render-") && fs.existsSync(dirPath)) {
+              await fs.promises.rm(dirPath, { recursive: true, force: true }).catch(() => {});
+              console.log(`[Storage Cleanup] Successfully purged excess/stale job folder: ${dirPath}`);
+            }
+          } catch (e) {
+            console.warn(`[Storage Cleanup] Failed to delete directory for job ${id}:`, e);
+          }
+        }
+        jobsMap.delete(id);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      savePersistedJobs(jobsMap);
+    }
+  } catch (err) {
+    console.error("[Storage Cleanup] Error during background job cleanup:", err);
+  }
+};
+
 app.post("/api/render-ffmpeg", express.json({ limit: '500mb' }), async (req, res) => {
   const jobId = Math.random().toString(36).substring(2, 15);
   const payload = req.body as RenderRequest;
   
-  renderJobs.set(jobId, { status: "processing", progress: 0, log: "Starting render job..." });
+  // Trigger cleanup in background to proactively free memory/disk before starting the next compile
+  cleanupOldJobs().catch(err => console.error("Background cleanup error:", err));
+
+  renderJobs.set(jobId, { status: "processing", progress: 0, log: "Starting render job...", createdAt: Date.now() });
   
   // Respond immediately with the jobId
   res.json({ jobId });
@@ -1581,10 +1632,12 @@ app.post("/api/render-ffmpeg", express.json({ limit: '500mb' }), async (req, res
         }
       });
       console.log(`Background render job complete: ${jobId}`, outPath);
-      renderJobs.set(jobId, { status: "done", progress: 100, log: "Compilation SUCCESS", outPath });
+      const currentJob = renderJobs.get(jobId) || {};
+      renderJobs.set(jobId, { ...currentJob, status: "done", progress: 100, log: "Compilation SUCCESS", outPath });
     } catch (err: any) {
       console.error(`Background FFmpeg render job ${jobId} failed:`, err);
-      renderJobs.set(jobId, { status: "error", progress: 0, log: `Error: ${err.message}`, error: err.message });
+      const currentJob = renderJobs.get(jobId) || {};
+      renderJobs.set(jobId, { ...currentJob, status: "error", progress: 0, log: `Error: ${err.message}`, error: err.message });
     }
   })();
 });
@@ -1637,7 +1690,10 @@ app.get("/api/render-download", (req, res) => {
 
   console.log(`Sending rendered file for job ${jobId} (download=${download}): ${job.outPath}`);
   
-  const streamHeaders = {
+  const stat = fs.statSync(job.outPath);
+  const fileSize = stat.size;
+
+  const streamHeaders: Record<string, any> = {
     "Content-Type": "video/mp4",
     "X-Accel-Buffering": "no",
     "Cache-Control": "public, max-age=0, must-revalidate",
@@ -1648,70 +1704,72 @@ app.get("/api/render-download", (req, res) => {
   };
 
   if (download) {
-    res.download(job.outPath, `yotor_official_video_${jobId}.mp4`, { headers: { ...streamHeaders, "Accept-Ranges": "bytes" } }, (err: any) => {
-      if (err) {
-        const isClientAbort = 
-          err.code === 'ECONNABORTED' || 
-          err.code === 'EPIPE' || 
-          err.code === 'ECONNRESET' || 
-          err.message?.includes('Request aborted') || 
-          err.message?.includes('write EPIPE');
-        if (isClientAbort) {
-          return; // Ignore normal client disconnects/seeking
-        }
-        console.error(`Error sending attachment for job ${jobId}:`, err);
-      }
+    res.setHeader("Content-Disposition", `attachment; filename="yotor_official_video_${jobId}.mp4"`);
+  }
+
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    let start = parseInt(parts[0], 10);
+    let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (isNaN(start)) start = 0;
+    if (isNaN(end)) end = fileSize - 1;
+
+    // Clamp end to fileSize - 1 to handle overshoot requests from browsers safely
+    if (end >= fileSize) {
+      end = fileSize - 1;
+    }
+
+    // If start exceeds file boundaries, return 416
+    if (start >= fileSize || start < 0 || end < start) {
+      res.writeHead(416, {
+        "Content-Range": `bytes */${fileSize}`,
+        "Content-Type": "video/mp4",
+        "Accept-Ranges": "bytes"
+      });
+      return res.end();
+    }
+
+    const chunksize = (end - start) + 1;
+    const file = fs.createReadStream(job.outPath, { start, end });
+    const head = {
+      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": chunksize,
+      "Content-Type": "video/mp4",
+      ...streamHeaders
+    };
+
+    res.writeHead(206, head);
+    file.pipe(res);
+
+    req.on("close", () => {
+      file.destroy();
+    });
+
+    file.on("error", (err: any) => {
+      console.error(`Streaming error for job ${jobId}:`, err);
     });
   } else {
-    // Custom, rock-solid, browser-optimized chunked/range-based video streaming
-    const stat = fs.statSync(job.outPath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
+    const head = {
+      "Content-Length": fileSize,
+      "Content-Type": "video/mp4",
+      "Accept-Ranges": "bytes",
+      ...streamHeaders
+    };
+    res.writeHead(200, head);
+    const file = fs.createReadStream(job.outPath);
+    file.pipe(res);
 
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    req.on("close", () => {
+      file.destroy();
+    });
 
-      if (start >= fileSize || end >= fileSize) {
-        res.writeHead(416, {
-          "Content-Range": `bytes */${fileSize}`,
-          "Content-Type": "video/mp4"
-        });
-        return res.end();
-      }
-
-      const chunksize = (end - start) + 1;
-      const file = fs.createReadStream(job.outPath, { start, end });
-      const head = {
-        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-        "Accept-Ranges": "bytes",
-        "Content-Length": chunksize,
-        "Content-Type": "video/mp4",
-        ...streamHeaders
-      };
-
-      res.writeHead(206, head);
-      file.pipe(res);
-
-      file.on("error", (err: any) => {
-        console.error(`Streaming error for job ${jobId}:`, err);
-      });
-    } else {
-      const head = {
-        "Content-Length": fileSize,
-        "Content-Type": "video/mp4",
-        "Accept-Ranges": "bytes",
-        ...streamHeaders
-      };
-      res.writeHead(200, head);
-      const file = fs.createReadStream(job.outPath);
-      file.pipe(res);
-
-      file.on("error", (err: any) => {
-        console.error(`Streaming error for job ${jobId}:`, err);
-      });
-    }
+    file.on("error", (err: any) => {
+      console.error(`Streaming error for job ${jobId}:`, err);
+    });
   }
 });
 

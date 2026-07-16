@@ -115,28 +115,21 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     }
 
     const sceneFiles: string[] = [];
-    if (onProgress) onProgress(`Downloading ${req.scenes.length} scene assets...`, 5);
-    console.log(`Downloading ${req.scenes.length} scene assets...`);
-    
-    // Concurrency limiter function
-    const runWithConcurrency = async <T,>(items: T[], concurrency: number, task: (item: T, index: number) => Promise<void>) => {
-      const queue = items.map((item, index) => ({ item, index }));
-      const workers = Array(concurrency).fill(null).map(async () => {
-        while (queue.length > 0) {
-          const { item, index } = queue.shift()!;
-          await task(item, index);
-        }
-      });
-      await Promise.all(workers);
-    };
+    let processedCount = 0;
 
-    let downloadedCount = 0;
-    // Download in parallel with concurrency 2 to avoid rate limits / connection choking on long videos
-    await runWithConcurrency(req.scenes, 2, async (scene, i) => {
+    // Process scenes one-by-one sequentially to keep memory & disk usage strictly minimal (max 1 raw asset at any point)
+    for (let i = 0; i < req.scenes.length; i++) {
+      const scene = req.scenes[i];
+      if (onProgress) {
+        onProgress(`Processing scene ${i + 1}/${req.scenes.length} (Downloading asset...)`, 5 + (i / req.scenes.length) * 75);
+      }
+      console.log(`Processing scene ${i + 1}/${req.scenes.length}...`);
+
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
       const audioPath = path.join(tempDir, `aud_${i}.wav`);
-      
-      // Download video with retry
+      const outPath = path.join(tempDir, `out_${i}.mp4`);
+
+      // 1. Download only this single scene video with retry logic
       let retries = 3;
       while (retries > 0) {
         try {
@@ -149,53 +142,36 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
           await new Promise(r => setTimeout(r, 1000));
         }
       }
-      
-      // If there's TTS, write it
+
+      // 2. If there's TTS, write it
       if (scene.ttsAudioBuffer) {
         await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
       }
-      downloadedCount++;
-      if (onProgress) onProgress(`Downloaded asset ${downloadedCount}/${req.scenes.length}`, 5 + (downloadedCount / req.scenes.length) * 15);
-    });
 
-    console.log("All assets downloaded successfully. Commencing fast FFmpeg scene processing...");
-    if (onProgress) onProgress("All assets ready. Commencing FFmpeg scene processing...", 20);
-
-    let processedCount = 0;
-    // Process scenes sequentially with concurrency 1 (to avoid CPU/Memory spikes on long videos)
-    await runWithConcurrency(req.scenes, 1, async (scene, i) => {
-      const videoPath = path.join(tempDir, `vid_${i}.mp4`);
-      const audioPath = path.join(tempDir, `aud_${i}.wav`);
-      const outPath = path.join(tempDir, `out_${i}.mp4`);
-      
+      // 3. Format video: crop/scale, set duration, add audio if exists
       const hasAudio = !!scene.ttsAudioBuffer;
-
-      // Format video: crop/scale, set duration, add audio if exists
-      // Filter graph for scaling and cropping to fit exactly
       const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
-      
       const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
-      
+
       let cmd = `"${ffmpegPath}" -loglevel quiet -y `;
       if (isImage) {
         cmd += `-loop 1 `;
       } else {
-        // Loop the input video infinitely so it matches the voiceover duration perfectly
         cmd += `-stream_loop -1 `;
       }
 
       cmd += `-i "${videoPath}" `;
-      
+
       if (hasAudio) {
         cmd += `-i "${audioPath}" `;
       } else {
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
-      
-      // Rely on precise duration constraint via -t while forcing constant frame rate and standard 90k timescale
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
-      
-      console.log(`Processing scene segment ${i}...`);
+
+      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -crf 28 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+
+      console.log(`Running FFmpeg for scene segment ${i}...`);
       await runCommand(cmd);
 
       // Verify scene file exists
@@ -204,12 +180,21 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         throw new Error(`Failed to produce processed video file for scene ${i}`);
       }
 
+      // 4. IMMEDIATELY clean up raw downloaded asset and TTS WAV audio for this segment
+      try {
+        await fs.unlink(videoPath).catch(() => {});
+        if (hasAudio) {
+          await fs.unlink(audioPath).catch(() => {});
+        }
+      } catch (cleanupErr) {
+        console.warn(`Eager scene ${i} asset cleanup failed:`, cleanupErr);
+      }
+
+      sceneFiles.push(outPath);
       processedCount++;
-      if (onProgress) onProgress(`Processed scene ${processedCount}/${req.scenes.length}`, 20 + (processedCount / req.scenes.length) * 60);
-    });
-    
-    for (let i = 0; i < req.scenes.length; i++) {
-      sceneFiles.push(path.join(tempDir, `out_${i}.mp4`));
+      if (onProgress) {
+        onProgress(`Processed scene ${processedCount}/${req.scenes.length}`, 5 + (processedCount / req.scenes.length) * 75);
+      }
     }
 
     // Concatenate all scenes using absolute paths with safe=0
@@ -219,8 +204,9 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    // Re-encode during concat to ensure unified PTS timestamps and smooth seeking in all web browsers
-    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
+    // Re-encode during concat to ensure unified PTS timestamps and smooth seeking in all web browsers.
+    // Specified -crf 28 here as well to maintain compact file size.
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
     console.log("Stitching video segments...");
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
     await runCommand(concatCmd);
@@ -229,6 +215,14 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     const concatExists = await fs.access(concatPath).then(() => true).catch(() => false);
     if (!concatExists) {
       throw new Error("Failed to produce concatenated video file.");
+    }
+
+    // Eagerly delete all individual scene MP4 files as the concatenated master is successfully ready
+    console.log("Eagerly cleaning up intermediate scene files...");
+    for (const f of sceneFiles) {
+      try {
+        await fs.unlink(f).catch(() => {});
+      } catch (e) {}
     }
 
     let finalPath = concatPath;
@@ -280,6 +274,12 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         if (!finalExists) {
           console.warn("Final mixed file not produced, falling back to concat version.");
           finalPath = concatPath;
+        } else {
+          // Eagerly delete the unmixed concatPath and background musicPath to save critical memory/disk space
+          try {
+            await fs.unlink(concatPath).catch(() => {});
+            await fs.unlink(musicPath).catch(() => {});
+          } catch (e) {}
         }
       }
     }
