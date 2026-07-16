@@ -1607,6 +1607,13 @@ app.get("/api/render-status", (req, res) => {
   res.json(job);
 });
 
+app.options("/api/render-download", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.sendStatus(204);
+});
+
 app.get("/api/render-download", (req, res) => {
   const jobId = req.query.jobId as string;
   const download = req.query.download === "true";
@@ -1634,7 +1641,10 @@ app.get("/api/render-download", (req, res) => {
     "Content-Type": "video/mp4",
     "X-Accel-Buffering": "no",
     "Cache-Control": "public, max-age=0, must-revalidate",
-    "Connection": "keep-alive"
+    "Connection": "keep-alive",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "*"
   };
 
   if (download) {

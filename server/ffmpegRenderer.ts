@@ -219,8 +219,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    // Regenerate PTS and make sure timestamps start at zero and are monotonic
-    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -f concat -safe 0 -i "${listPath}" -c copy -avoid_negative_ts make_zero -movflags +faststart "${concatPath}"`;
+    // Re-encode during concat to ensure unified PTS timestamps and smooth seeking in all web browsers
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
     console.log("Stitching video segments...");
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
     await runCommand(concatCmd);

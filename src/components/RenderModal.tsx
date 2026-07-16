@@ -871,7 +871,7 @@ export default function RenderModal({
             addLog("✅ [Cloud Render] Remote compilation complete!");
             setProgress(100);
 
-            const downloadUrl = `/api/render-download?jobId=${jobId}`;
+            const downloadUrl = `${window.location.origin}/api/render-download?jobId=${jobId}`;
             setRenderedBlobUrl(downloadUrl);
             setDownloadExtension("mp4");
             
@@ -883,21 +883,7 @@ export default function RenderModal({
               fps: 30
             });
 
-            // programmatically download video to local blob url in background for reliable frame isolation
-            addLog("📥 [Preview Engine] Caching render output to local browser memory for smooth offline playback...");
-            fetch(downloadUrl)
-              .then(res => {
-                if (!res.ok) throw new Error(`HTTP status ${res.status}`);
-                return res.blob();
-              })
-              .then(videoBlob => {
-                const blobUrl = URL.createObjectURL(videoBlob);
-                setRenderedBlobUrl(blobUrl);
-                addLog("✅ [Preview Engine] Video fully cached in local browser memory!");
-              })
-              .catch(blobErr => {
-                console.warn("Local video cache failed, continuing with direct streaming stream:", blobErr);
-              });
+            addLog("✅ [Preview Engine] Streaming player ready!");
 
             setRenderStatus('completed');
             cloudRenderAbortControllerRef.current = null;
@@ -1573,7 +1559,7 @@ export default function RenderModal({
               <a
                 href={
                   renderedBlobUrl
-                    ? renderedBlobUrl.startsWith('blob:')
+                    ? renderedBlobUrl.includes('download=true')
                       ? renderedBlobUrl
                       : `${renderedBlobUrl}&download=true`
                     : '#'
