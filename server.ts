@@ -1631,6 +1631,8 @@ app.get("/api/render-download", (req, res) => {
   console.log(`Sending rendered file for job ${jobId} (download=${download}): ${job.outPath}`);
   
   const streamHeaders = {
+    "Content-Type": "video/mp4",
+    "Accept-Ranges": "bytes",
     "X-Accel-Buffering": "no",
     "Cache-Control": "public, max-age=0, must-revalidate",
     "Connection": "keep-alive"

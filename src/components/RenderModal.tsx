@@ -1479,6 +1479,7 @@ export default function RenderModal({
             {/* Real-time Inline Web Video Player Preview */}
             <div className="relative overflow-hidden rounded-2xl border border-zinc-900 bg-[#040406] p-1.5">
               <video
+                key={renderedBlobUrl || 'empty'}
                 src={renderedBlobUrl || undefined}
                 controls
                 playsInline
