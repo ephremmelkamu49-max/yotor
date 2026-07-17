@@ -286,6 +286,159 @@ app.get("/api/video-download-get", async (req, res) => {
   }
 });
 
+// Dynamic prompt generation endpoint supporting English & Amharic
+app.post("/api/generate-prompt", async (req, res) => {
+  const { category, language, duration } = req.body;
+  const isAmharic = language === "am";
+
+  // Pre-baked adaptive fallback system for when the API is rate-limited or unavailable
+  const getAdaptiveFallback = (cat: string, lang: string, dur: string) => {
+    const isAmh = lang === "am";
+    const shortEN: Record<string, string[]> = {
+      "trending-shorts": [
+        "Did you know that honey never spoils? You could theoretically eat 3000-year-old honey from ancient Egyptian tombs! Also, octopuses have three hearts and blue blood. And a day on Venus is longer than a year on Venus!",
+        "Here are three quick space facts! First, space is completely silent. Second, there are more trees on Earth than stars in the Milky Way. Third, one day on Neptune is only 16 hours, but its year lasts 165 Earth years!"
+      ],
+      "motivational-tiktok": [
+        "Don't wait for opportunity. Create it. Every step you take today, no matter how small, is bringing you closer to your dreams. Believe in yourself, work hard, and never give up. You've got this!",
+        "The only limit to our realization of tomorrow is our doubts of today. Rise up, dust yourself off, and show the world what you are made of. Your time is now!"
+      ],
+      "scary-story": [
+        "I woke up in the middle of the night to hear my wife whispering 'go back to sleep' from under the bed. But as I rolled over, I saw her sleeping peacefully right next to me.",
+        "My smart speaker suddenly activated at 3 AM and whispered: 'Please don't look behind you, it doesn't like being watched.' I haven't moved an inch since."
+      ]
+    };
+
+    const shortAM: Record<string, string[]> = {
+      "trending-shorts": [
+        "የማይታመን እውነታዎች! ማር መቼም እንደማይበላሽ ያውቃሉ? ከሶስት ሺህ ዓመት በፊት የተቀበረን ማር ዛሬ መብላት ይቻላል። እንዲሁም፣ ኦክቶፐስ ሶስት ልቦች እና ሰማያዊ ደም አለው። በቬኑስ ላይ ደግሞ አንድ ቀን ከአንድ አመቷ ይረዝማል!",
+        "ስለ ጠፈር ሦስት ፈጣን እውነታዎች! አንደኛ፣ ጠፈር ሙሉ በሙሉ ጸጥተኛ ነው። ሁለተኛ፣ በምድር ላይ ካሉት ዛፎች ብዛት በጋላክሲያችን ካሉት ከዋክብት ይበልጣል። ሶስተኛ፣ በኔፕቱን ላይ አንድ ቀን አስራ ስድስት ሰአት ብቻ ነው!"
+      ],
+      "motivational-tiktok": [
+        "እድልን አትጠብቅ፣ ራስህ ፍጠራት። ዛሬ የምትወስደው እያንዳንዱ እርምጃ ምንም ያህል ትንሽ ቢሆን ወደ ህልምህ ያቀርብሃል። በራስህ እመን፣ ጠንክረህ ስራ እና ተስፋ አትቁረጥ። ትችላለህ!",
+        "ለነገው ስኬታችን ብቸኛው እንቅፋት የዛሬው ጥርጣሬያችን ነው። ተነሳ፣ እራስህን አራግፍ እና ምን መሆን እንደምትችል ለአለም አሳይ። ጊዜህ አሁን ነው!"
+      ],
+      "scary-story": [
+        "እኩለ ሌሊት ላይ ከእንቅልፌ ስነቃ ባለቤቴ ከአልጋው ስር ሆና 'ተመልሰህ ተኛ' ስትለኝ ሰማኋት። ነገር ግን ወደ ጎን ስዞር፣ እሷ እቅፌ ውስጥ በሰላም ተኝታ አየኋት።",
+        "የቤቴ ስማርት ስፒከር ከሌሊቱ 9 ሰዓት ላይ በድንገት በርቶ በሹክሹክታ፡ 'እባክህ ወደ ኋላህ አትመልከት፣ ሲያዩት አይወድም' አለኝ። ከዚያን ጊዜ ጀምሮ አንዲት ኢንች እንኳን መንቀሳቀስ አልቻልኩም።"
+      ]
+    };
+
+    const activeCat = (cat === "motivational-tiktok" || cat === "trending-shorts" || cat === "scary-story") ? cat : "trending-shorts";
+    const baseList = isAmh ? shortAM[activeCat] : shortEN[activeCat];
+    const baseText = baseList[Math.floor(Math.random() * baseList.length)];
+
+    if (dur === "short" || !dur) {
+      return baseText;
+    }
+
+    // Generate appropriately long and detailed multi-paragraph stories for fallbacks
+    let paragraphsCount = 1;
+    if (dur === "medium") paragraphsCount = 3;
+    if (dur === "long") paragraphsCount = 8;
+    if (dur === "docu_15min") paragraphsCount = 18;
+
+    let result = "";
+    for (let i = 1; i <= paragraphsCount; i++) {
+      if (isAmh) {
+        if (activeCat === "trending-shorts") {
+          result += `ክፍል ${i}፡ ሌላው አስደናቂ እውነታ ይኸው ነው። በዓለማችን ላይ ስፍር ቁጥር የሌላቸው ሚስጥሮች አሉ። ሳይንቲስቶች እንደሚሉት ከሆነ ይህ ክስተት በሰው ልጅ ታሪክ ውስጥ ታላቅ ተፅዕኖ አሳድሯል። ሁላችንም ልንገነዘበው የሚገባ እጅግ አስደናቂ የሆነ የፍጥረት ምስጢር ነው። ጥናትና ምርምር ስናደርግ ህይወታችን የበለጠ እውቀት ይሞላል።\n\n`;
+        } else if (activeCat === "motivational-tiktok") {
+          result += `ምዕራፍ ${i}፡ ሁልጊዜም ጥረትህን ቀጥል። በህይወትህ ውስጥ የሚገጥሙህን ፈተናዎች በሙሉ በጽናት ማለፍ አለብህ። ጠንክረህ ስትሰራ እና ተስፋ ሳትቆርጥ በነፃነት ስትጓዝ፣ ያሰብከውን ታላቅ ስኬት በእርግጠኝነት ታገኛለህ። ዛሬ አዲስ ቀን ነው፣ ትልቅ ቦታ ላይ ለመድረስ ተነሳና ጥረትህን ቀጥል።\n\n`;
+        } else {
+          result += `ትዕይንት ${i}፡ ጨለማው እጅግ እየጠነከረ ሄደ። የሚሰማው ያ አስፈሪ እና እንግዳ ድምፅ ከክፍሉ ጥግ እየቀረበ መጣ። ልቤ በፍጥነት መምታት ጀመረ። እዚያ ጥቁር ጥላ ውስጥ ምን ዓይነት ሚስጥራዊ ፍጡር እንዳለ ለማየት ስሞክር በድንገት መብራቱ ጠፋ። ፍርሃት መላ ሰውነቴን ወረረኝ፣ መተንፈስ እንኳን አቃተኝ።\n\n`;
+        }
+      } else {
+        if (activeCat === "trending-shorts") {
+          result += `Chapter ${i}: Here is another mind-blowing historical fact. Modern science continues to discover incredible secrets about our universe and Earth. Every single exploration reveals how little we truly understand about the complex mechanisms of reality. This is why learning is so vital for humanity's future.\n\n`;
+        } else if (activeCat === "motivational-tiktok") {
+          result += `Phase ${i}: Never let down your absolute ambition. The path to ultimate greatness is paved with heavy failures and persistent actions. Every obstacle is a stepping stone to help you rise higher. Wake up with a burning passion, focus, and let your amazing consistency speak for itself.\n\n`;
+        } else {
+          result += `Act ${i}: The cold draft in the room grew noticeably colder. I could hear slow, deliberate steps coming closer down the silent hallway, pausing right outside my bedroom door. My heart pounded so hard I could feel it in my throat. I couldn't scream, and the doorknob turned slowly.\n\n`;
+        }
+      }
+    }
+    return result.trim();
+  };
+
+  if (!ai) {
+    console.log("[Generate Prompt API] No Gemini AI configured, using creative local random fallback.");
+    return res.json({ prompt: getAdaptiveFallback(category, language, duration) });
+  }
+
+  try {
+    const categoryName = category === "trending-shorts" ? "Amazing Facts" :
+                         category === "motivational-tiktok" ? "Deep Motivation" :
+                         category === "scary-story" ? "Scary Thriller Story" : category;
+
+    let lengthInstruction = "Length: Around 50 to 85 words. A single highly engaging and punchy paragraph. Perfect for a 15-45 second video.";
+    let maxTokens = 350;
+
+    if (duration === "medium") {
+      lengthInstruction = "Length: Write at least 4 detailed paragraphs (totaling 250-350 words). Ensure the story flows with continuous detailed depth and rhythmic progression. Perfect for a standard 1-2 minute video.";
+      maxTokens = 800;
+    } else if (duration === "long") {
+      lengthInstruction = "Length: Write at least 8 to 10 long, highly detailed paragraphs (totaling 800-1100 words) with deep storyline, historical or factual depth. DO NOT make it brief; we need an extensive, fully-realized story. Perfect for a 5-minute video.";
+      maxTokens = 2000;
+    } else if (duration === "docu_15min") {
+      lengthInstruction = "Length: Write at least 15 to 22 extremely comprehensive, long, detailed paragraphs (totaling 2000-2600 words) explaining the subject or story in extremely deep depth. Ensure every single paragraph has at least 5 to 7 sentences and deep narrative details. DO NOT summarize or truncate. We need a massive, complete, movie-length documentary script with detailed narration. Perfect for an immersive 15-minute documentary.";
+      maxTokens = 4500;
+    }
+
+    const userPrompt = `You are a world-class, professional video scriptwriter and master storyteller specializing in highly engaging video scripts.
+
+Generate an incredibly creative, fresh, and captivating narration script.
+Category: "${categoryName}"
+Language: ${isAmharic ? "Amharic (አማርኛ) using natural Ge'ez script" : "English"}
+
+Ensure the script strictly follows this high-performance storytelling structure:
+1. THE POWERFUL HOOK: Start with an incredibly powerful, surprising, or curiosity-inducing opening sentence. Grab attention immediately!
+2. ENGAGING NARRATIVE FLOW: Write in rhythmic, beautifully-connected, and easily-spoken sentences. Each paragraph should be highly engaging.
+3. VISUALIZABLE IMAGERY: Use descriptive nouns and active verbs that spark vivid mental imagery, allowing directors to place fitting stock clips.
+4. OUTRO: Conclude with a strong, memorable, and high-impact closing statement.
+5. ${lengthInstruction}
+
+CRITICAL FORMATTING INSTRUCTIONS:
+- You MUST only output the raw, clean, spoken text verbatim.
+- NEVER include brackets, parentheses, music cues (like [Music]), scene headers (like Scene 1, Scene 2, Chapter 1), roles (like Narrator:, Voiceover:), bullet points, or numbering.
+- Do NOT repeat old templates. Generate a completely brand-new, original, and mind-blowing narrative angle.
+- You MUST write the complete requested length. If medium, long, or 15-minute documentary duration is chosen, write many long, fully developed paragraphs!
+
+${isAmharic ? `የአማርኛ ልዩ መመሪያ (Amharic Optimization):
+- ተፈጥሯዊ፣ ማራኪ፣ በስነ-ስርዓት የተቀናበረ እና ሰዋሰዋዊ ውበት ያለው አማርኛ ተጠቀም።
+- የእንግሊዝኛ ፈሊጦችን በቀጥታ ከመተርጎም ይልቅ በባህላዊ እና በስነ-ጽሁፍ እጅግ የተዋቡ ቃላትን ምረጡ።
+- ንባቡ ለጆሮ እጅግ የሚስማማ፣ ለተራኪ የሚመች እና ስሜት የሚቀሰቅስ ይሁን።
+- ርዝማኔው በትክክል እጅግ በጣም ረጅም መሆን አለበት። ለተመረጠው ርዝመት በተለይም ለ15 ደቂቃ ፊልም/ሰነድ ፅሁፍ ቢያንስ ከ15 እስከ 22 ረጅም አንቀጾችን በዝርዝር ጻፍ። በአጭር ቃላት አትጨርሰው።` : ""}`;
+
+    const response = await generateContentWithFallback(ai, {
+      model: "gemini-2.5-flash",
+      contents: userPrompt,
+      config: {
+        temperature: 1.0, // high temperature for maximum creativity and diversity on every request!
+        maxOutputTokens: maxTokens,
+      }
+    });
+
+    const generatedText = response?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || response?.text?.trim();
+    if (!generatedText) {
+      throw new Error("Empty response from Gemini API");
+    }
+
+    // Clean up any potential markdown or labels that could slip through
+    const cleanedText = generatedText
+      .replace(/^"|"$/g, '') // remove surrounding quotes
+      .replace(/\[.*?\]/g, '') // remove brackets
+      .replace(/\(.*?\)/g, '') // remove parentheses
+      .replace(/^(Voiceover|NARRATOR|Narrator|VO|Prompt|Script|ቁምፊ|ተራኪ):\s*/i, '')
+      .trim();
+
+    return res.json({ prompt: cleanedText });
+  } catch (err: any) {
+    console.error("[Generate Prompt API] Error calling Gemini API, falling back safely:", err.message);
+    return res.json({ prompt: getAdaptiveFallback(category, language, duration) });
+  }
+});
+
 // 1. Script Analysis API - uses Gemini to split user text into structured cinematic scenes
 app.post("/api/analyze-script", async (req, res) => {
   const { script, visualStyle, isKeywordsOnly } = req.body;

@@ -15,6 +15,7 @@ import {
   Bot,
   Save,
   Check,
+  Clock,
 } from "lucide-react";
 import { Language, translations } from "../translations";
 import { GOOGLE_TTS_LANGUAGES, VIDEO_TEMPLATES } from "../data";
@@ -73,6 +74,35 @@ export default function ScriptInput({
   const [pixabaySaved, setPixabaySaved] = useState(false);
   const [coverrSaved, setCoverrSaved] = useState(false);
   const [openaiSaved, setOpenaiSaved] = useState(false);
+  const [generatingTemplateId, setGeneratingTemplateId] = useState<string | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<"short" | "medium" | "long" | "docu_15min">("short");
+
+  const handleTemplateClick = async (tmpId: string) => {
+    setGeneratingTemplateId(tmpId);
+    try {
+      const res = await fetch("/api/generate-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: tmpId, language, duration: selectedDuration }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.prompt) {
+          setScript(data.prompt);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to generate dynamic prompt:", e);
+    } finally {
+      setGeneratingTemplateId(null);
+    }
+    // Fallback if everything fails
+    const found = VIDEO_TEMPLATES.find((t) => t.id === tmpId);
+    if (found) {
+      setScript(found.prompt);
+    }
+  };
 
   const runDiagnostics = async () => {
     setLoadingDiagnostic(true);
@@ -548,27 +578,79 @@ export default function ScriptInput({
             </button>
           </div>
 
+          <div className="flex flex-col gap-2 mt-4 mb-3">
+            <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
+              <Clock size={13} className="text-cyan-400 animate-pulse" />
+              {language === "am" ? "የታሪክ ርዝማኔ (Duration)" : "Story Duration / Length"}
+            </label>
+            <div className="grid grid-cols-4 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-900">
+              {(
+                [
+                  { id: "short", en: "30s Short", am: "አጭር (30ሰ)" },
+                  { id: "medium", en: "1-2 Min", am: "1-2 ደቂቃ" },
+                  { id: "long", en: "5 Min", am: "5 ደቂቃ" },
+                  { id: "docu_15min", en: "15 Min", am: "15 ደቂቃ" },
+                ] as const
+              ).map((dur) => (
+                <button
+                  key={dur.id}
+                  type="button"
+                  onClick={() => setSelectedDuration(dur.id)}
+                  className={`py-1.5 px-1 rounded-lg text-[9px] font-bold uppercase transition-all ${
+                    selectedDuration === dur.id
+                      ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.15)]"
+                      : "text-zinc-500 hover:text-zinc-300 border border-transparent"
+                  }`}
+                >
+                  {language === "am" ? dur.am : dur.en}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between mb-3 mt-4">
             <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-slate-400">
               <TrendingUp size={13} className="text-amber-400" />
-              {t.trending_templates}
+              {t.trending_templates} <span className="text-[9px] text-zinc-500 font-normal normal-case">({language === "am" ? "አዲስ ታሪክ ይፈጥራል" : "generates fresh script"})</span>
             </label>
           </div>
           <div className="grid grid-cols-3 gap-2 mb-6">
-            {VIDEO_TEMPLATES.map((tmp) => (
-              <button
-                key={tmp.id}
-                type="button"
-                onClick={() => {
-                  setScript(tmp.prompt);
-                }}
-                className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all text-center group shadow-inner"
-              >
-                <span className="text-[10px] font-bold text-slate-300 group-hover:text-amber-400">
-                  {tmp.am}
-                </span>
-              </button>
-            ))}
+            {VIDEO_TEMPLATES.map((tmp) => {
+              const isGeneratingThis = generatingTemplateId === tmp.id;
+              const isGeneratingAny = generatingTemplateId !== null;
+              return (
+                <button
+                  key={tmp.id}
+                  type="button"
+                  disabled={isGeneratingAny}
+                  onClick={() => handleTemplateClick(tmp.id)}
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all text-center group shadow-inner relative overflow-hidden ${
+                    isGeneratingThis
+                      ? "bg-amber-500/10 border-amber-500/60 text-amber-400 animate-pulse"
+                      : isGeneratingAny
+                        ? "bg-zinc-950 border-zinc-900/60 text-zinc-600 opacity-40 cursor-not-allowed"
+                        : "bg-slate-900 border-slate-800 hover:border-amber-500/50 hover:bg-amber-500/5 cursor-pointer text-slate-300"
+                  }`}
+                  title={language === "am" ? "አዲስ ኦሪጅናል ታሪክ ለመፍጠር ይጫኑ" : "Click to generate a unique, fresh story"}
+                >
+                  {isGeneratingThis ? (
+                    <div className="flex flex-col items-center justify-center gap-1">
+                      <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-[8.5px] font-medium text-amber-300 font-sans">
+                        {language === "am" ? "እያዘጋጀ..." : "Generating..."}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <Sparkles size={13} className="text-amber-500/60 group-hover:text-amber-400 group-hover:scale-110 transition-transform mb-1" />
+                      <span className="text-[10px] font-bold group-hover:text-amber-400">
+                        {language === "am" ? tmp.am : tmp.name}
+                      </span>
+                    </>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex items-center justify-between mb-1.5 mt-0">

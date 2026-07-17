@@ -138,20 +138,20 @@ export const DEFAULT_MUSIC: AudioTrack[] = [
 export const VIDEO_TEMPLATES = [
   { 
     id: 'trending-shorts', 
-    name: 'Top 3 Mind-Blowing Facts', 
-    am: 'Top 3 Mind-Blowing Facts', 
+    name: 'Amazing Facts', 
+    am: 'ድንቅ እውነታዎች', 
     prompt: 'Here are 3 mind-blowing facts that will leave you speechless! Number one, honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old! Number two, water can boil and freeze at the same time. And number three, bananas are berries, but strawberries aren\'t. Follow for more crazy facts!'
   },
   { 
     id: 'motivational-tiktok', 
-    name: 'Morning Motivation', 
-    am: 'Morning Motivation', 
+    name: 'Motivation', 
+    am: 'የልብ መነቃቃት', 
     prompt: 'Strength doesn\'t come from winning. Your struggles develop your strengths. When you go through hardships and decide not to surrender, that is strength. Wake up every day and choose to be unstoppable.'
   },
   { 
     id: 'scary-story', 
-    name: 'Creepy Story', 
-    am: 'Creepy Story', 
+    name: 'Scary Story', 
+    am: 'አስፈሪ ታሪኮች', 
     prompt: 'I was home alone when I heard a knock at the door. I looked through the peephole, but no one was there. Then, my phone buzzed with a text message from an unknown number: "I can see you through the peephole." My blood ran cold.'
   }
 ];
