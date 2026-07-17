@@ -86,9 +86,14 @@ async function downloadFile(url: string, dest: string) {
 
     if (!response.ok) throw new Error(`Failed to download ${fetchUrl} (status: ${response.status})`);
 
-    // Use streaming to save RAM!
-    const buffer = await response.arrayBuffer();
-    await fs.writeFile(dest, Buffer.from(buffer));
+    if (!response.body) {
+      throw new Error(`Response body is null for ${fetchUrl}`);
+    }
+
+    // Pipe the response body stream directly to disk file stream to completely bypass RAM buffering
+    const fileStream = createWriteStream(dest);
+    const nodeReadable = Readable.fromWeb(response.body as any);
+    await pipeline(nodeReadable, fileStream);
     return;
   }
   
@@ -264,9 +269,9 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
         
         // Mix concatenated audio with music audio
-        // Using explicit -t instead of buggy -shortest to ensure perfect MP4 container indexes on Chrome
-        // Using aformat to ensure audio compatibility during mix, and regenerating PTS for perfect sync
-        const mixCmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -avoid_negative_ts make_zero -t ${cumulativeTime.toFixed(2)} -movflags +faststart "${finalPath}"`;
+        // amix with duration=first ensures the mixed audio stream terminates exactly when the video terminates
+        // Using -c:v copy allows lightning-fast rendering while preserving the perfect CFR and PTS structure of the input video
+        const mixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -movflags +faststart "${finalPath}"`;
         console.log("Mixing background music...");
         await runCommand(mixCmd);
         

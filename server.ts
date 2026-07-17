@@ -1545,28 +1545,27 @@ const savePersistedJobs = (map: Map<string, any>) => {
   }
 };
 
+// Initialize an in-memory cache from the persisted JSON to eliminate concurrent disk reading bottlenecks
+const memoryJobs = getPersistedJobs();
+
 const renderJobs = {
   get(jobId: string) {
-    const map = getPersistedJobs();
-    return map.get(jobId);
+    return memoryJobs.get(jobId);
   },
   set(jobId: string, value: any) {
-    const map = getPersistedJobs();
-    map.set(jobId, value);
-    savePersistedJobs(map);
+    memoryJobs.set(jobId, value);
+    savePersistedJobs(memoryJobs);
   },
   entries() {
-    const map = getPersistedJobs();
-    return map.entries();
+    return memoryJobs.entries();
   }
 };
 
 const cleanupOldJobs = async () => {
   try {
-    const jobsMap = getPersistedJobs();
     const now = Date.now();
     const maxAgeMs = 15 * 60 * 1000; // 15 minutes is plenty for downloading/previewing
-    const jobsList = Array.from(jobsMap.entries());
+    const jobsList = Array.from(memoryJobs.entries());
 
     let changed = false;
 
@@ -1596,13 +1595,13 @@ const cleanupOldJobs = async () => {
             console.warn(`[Storage Cleanup] Failed to delete directory for job ${id}:`, e);
           }
         }
-        jobsMap.delete(id);
+        memoryJobs.delete(id);
         changed = true;
       }
     }
 
     if (changed) {
-      savePersistedJobs(jobsMap);
+      savePersistedJobs(memoryJobs);
     }
   } catch (err) {
     console.error("[Storage Cleanup] Error during background job cleanup:", err);
@@ -1690,86 +1689,45 @@ app.get("/api/render-download", (req, res) => {
 
   console.log(`Sending rendered file for job ${jobId} (download=${download}): ${job.outPath}`);
   
-  const stat = fs.statSync(job.outPath);
-  const fileSize = stat.size;
-
   const streamHeaders: Record<string, any> = {
-    "Content-Type": "video/mp4",
     "X-Accel-Buffering": "no",
     "Cache-Control": "public, max-age=0, must-revalidate",
-    "Connection": "keep-alive",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "*"
   };
 
   if (download) {
-    res.setHeader("Content-Disposition", `attachment; filename="yotor_official_video_${jobId}.mp4"`);
-  }
-
-  const range = req.headers.range;
-
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    let start = parseInt(parts[0], 10);
-    let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-    if (isNaN(start)) start = 0;
-    if (isNaN(end)) end = fileSize - 1;
-
-    // Clamp end to fileSize - 1 to handle overshoot requests from browsers safely
-    if (end >= fileSize) {
-      end = fileSize - 1;
-    }
-
-    // If start exceeds file boundaries, return 416
-    if (start >= fileSize || start < 0 || end < start) {
-      res.writeHead(416, {
-        "Content-Range": `bytes */${fileSize}`,
-        "Content-Type": "video/mp4",
-        "Accept-Ranges": "bytes"
-      });
-      return res.end();
-    }
-
-    const chunksize = (end - start) + 1;
-    const file = fs.createReadStream(job.outPath, { start, end });
-    const head = {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": chunksize,
-      "Content-Type": "video/mp4",
-      ...streamHeaders
-    };
-
-    res.writeHead(206, head);
-    file.pipe(res);
-
-    req.on("close", () => {
-      file.destroy();
-    });
-
-    file.on("error", (err: any) => {
-      console.error(`Streaming error for job ${jobId}:`, err);
-    });
+    console.log(`Using res.download for job ${jobId}`);
+    return res.download(
+      job.outPath,
+      `yotor_official_video_${jobId}.mp4`,
+      { headers: streamHeaders },
+      (err) => {
+        if (err) {
+          if (res.headersSent) return;
+          console.error(`Download error for job ${jobId}:`, err);
+        }
+      }
+    );
   } else {
-    const head = {
-      "Content-Length": fileSize,
-      "Content-Type": "video/mp4",
-      "Accept-Ranges": "bytes",
-      ...streamHeaders
-    };
-    res.writeHead(200, head);
-    const file = fs.createReadStream(job.outPath);
-    file.pipe(res);
-
-    req.on("close", () => {
-      file.destroy();
-    });
-
-    file.on("error", (err: any) => {
-      console.error(`Streaming error for job ${jobId}:`, err);
-    });
+    console.log(`Using res.sendFile for job ${jobId}`);
+    return res.sendFile(
+      job.outPath,
+      {
+        acceptRanges: true,
+        headers: {
+          ...streamHeaders,
+          "Content-Type": "video/mp4"
+        }
+      },
+      (err) => {
+        if (err) {
+          if (res.headersSent) return;
+          console.error(`Playback streaming error for job ${jobId}:`, err);
+        }
+      }
+    );
   }
 });
 

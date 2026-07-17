@@ -872,7 +872,6 @@ export default function RenderModal({
             setProgress(100);
 
             const downloadUrl = `${window.location.origin}/api/render-download?jobId=${jobId}`;
-            setRenderedBlobUrl(downloadUrl);
             setDownloadExtension("mp4");
             
             const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
@@ -883,26 +882,60 @@ export default function RenderModal({
               fps: 30
             });
 
-            addLog("✅ [Preview Engine] Streaming player ready!");
+            // Start pre-fetching the video file as a local browser Blob to bypass Chrome iframe sandbox blocks
+            (async () => {
+              try {
+                addLog("📥 [Browser Cache] ቪዲዮውን ወደ ስልክዎ ማዘጋጀት ተጀምሯል (Pre-fetching video to local browser memory)...");
+                const response = await fetch(`${downloadUrl}&download=true`);
+                if (!response.ok) throw new Error(`HTTP status ${response.status}`);
+                
+                const reader = response.body?.getReader();
+                const contentLength = +(response.headers.get('Content-Length') || '0');
+                
+                if (!reader) {
+                  const blob = await response.blob();
+                  const localUrl = URL.createObjectURL(blob);
+                  setRenderedBlobUrl(localUrl);
+                } else {
+                  let receivedLength = 0;
+                  const chunks: Uint8Array[] = [];
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    receivedLength += value.length;
+                    if (contentLength) {
+                      const pct = Math.round((receivedLength / contentLength) * 100);
+                      // Update log on every 15% increment
+                      if (pct % 15 === 0 || pct === 100) {
+                        addLog(`📥 [Browser Cache] ቪዲዮው ${pct}% ተጭኗል... (Downloaded ${pct}% to local cache...)`);
+                      }
+                    }
+                  }
+                  const allChunks = new Uint8Array(receivedLength);
+                  let position = 0;
+                  for (const chunk of chunks) {
+                    allChunks.set(chunk, position);
+                    position += chunk.length;
+                  }
+                  const blob = new Blob([allChunks], { type: 'video/mp4' });
+                  const localUrl = URL.createObjectURL(blob);
+                  setRenderedBlobUrl(localUrl);
+                }
 
-            setRenderStatus('completed');
-            cloudRenderAbortControllerRef.current = null;
-            if (onRenderComplete) onRenderComplete();
-
-            // Automatically trigger native direct download in Chrome to bypass RAM/blob limits
-            try {
-              addLog("🚀 [Direct Download] Auto-triggering native Chrome download...");
-              const link = document.createElement('a');
-              link.href = `${downloadUrl}&download=true`;
-              link.download = `yotor_official_video_${jobId}.mp4`;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              addLog("✅ Chrome download successfully initiated!");
-            } catch (dlErr: any) {
-              console.error("Auto download failed:", dlErr);
-              addLog("⚠️ Auto-download was blocked. Please click the button below to download.");
-            }
+                addLog("✅ [Browser Cache] ቪዲዮው በተሳካ ሁኔታ ተጭኖ ተዘጋጅቷል! (Video is fully cached and ready to play/save!)");
+                setRenderStatus('completed');
+                cloudRenderAbortControllerRef.current = null;
+                if (onRenderComplete) onRenderComplete();
+              } catch (blobErr: any) {
+                console.error("Blob prefetch failed:", blobErr);
+                addLog("⚠️ Caching failed, falling back to streaming stream.");
+                setRenderedBlobUrl(downloadUrl);
+                setRenderStatus('completed');
+                cloudRenderAbortControllerRef.current = null;
+                if (onRenderComplete) onRenderComplete();
+              }
+            })();
           } else if (job.status === 'error') {
             throw new Error(job.error || job.log || "Unknown server rendering error");
           }
@@ -1559,7 +1592,7 @@ export default function RenderModal({
               <a
                 href={
                   renderedBlobUrl
-                    ? renderedBlobUrl.includes('download=true')
+                    ? renderedBlobUrl.includes('download=true') || renderedBlobUrl.startsWith('blob:')
                       ? renderedBlobUrl
                       : `${renderedBlobUrl}&download=true`
                     : '#'
@@ -1580,6 +1613,24 @@ export default function RenderModal({
                   {language === 'am' ? 'ተጠናቋል! ቪዲዮውን ወደ ስልክዎ ይጫኑ' : 'DOWNLOAD MASTER VIDEO'}
                 </span>
               </a>
+            </div>
+
+            {/* Google AI Studio Iframe sandbox bypass help card */}
+            <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-2 mt-2">
+              <h4 className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 font-sans">
+                ⚠️ {language === 'am' ? 'ማሳሰቢያ (Iframe Security Notice)' : 'Troubleshooting / Download Notice'}
+              </h4>
+              <p className="text-[10.5px] text-zinc-350 leading-relaxed font-sans">
+                {language === 'am' ? (
+                  <>
+                    በስልክዎ የጎግል አይ ስቱዲዮ (Google AI Studio) ውስጥ ቪዲዮውን ማጫወት ወይም ማውረድ ካልቻሉ፣ እባክዎ ከላይ በስተቀኝ ያለውን <strong className="text-amber-300">"Open in new tab"</strong> የሚለውን ቁልፍ በመጫን አፑን በአዲስ ገጽ ይክፈቱት። በአዲስ ታብ ላይ ምንም ዓይነት የደህንነት ገደብ ስለማይኖርበት ቪዲዮው በጥራት ይጫናል፤ በፍጥነትም ይወርዳል!
+                  </>
+                ) : (
+                  <>
+                    If you are unable to preview or download the video inside the Google AI Studio preview window, please click the <strong className="text-amber-300">"Open in new tab"</strong> button at the top right of the page. Opening the app in a new tab bypasses iframe sandbox restrictions, allowing the video to stream and download flawlessly!
+                  </>
+                )}
+              </p>
             </div>
           </div>
         )}
