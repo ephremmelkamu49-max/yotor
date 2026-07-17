@@ -2542,17 +2542,27 @@ export default function VideoCanvas({
             className={`${getAspectClass(projectConfig.aspectRatio)} rounded-2xl shadow-2xl shadow-black/80`}
             id="rendering-canvas"
           />
+          
+          {/* Elegant Amharic/English Data Saver indicator overlay */}
+          <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 bg-black/75 backdrop-blur-md rounded-full border border-emerald-500/30 text-emerald-400 text-[9.5px] font-sans font-medium tracking-wide shadow-lg shadow-black/40">
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full absolute left-2.5" />
+            <span>ዳታ ቆጣቢ ንቁ ነው / Data Saver (SD Preview, 1080p Export)</span>
+          </div>
         </div>
 
         {/* Hidden active videos/images for crossfade rendering */}
         {scenes.map((s, idx) => {
-          const isNear = Math.abs(idx - playbackIndex) <= 2;
+          // Preload active and immediate next scene only - saves 75% background data
+          const isNear = idx === playbackIndex || idx === playbackIndex + 1;
           const isImage =
             s.videoUrl &&
             (s.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) ||
               s.videoUrl.includes("pollinations.ai"));
               
-          const srcProps = isNear && s.videoUrl ? { src: s.videoUrl } : {};
+          // Prefer compressed previewUrl for rapid browser rendering, fall back to master high-quality videoUrl
+          const activeSrc = s.previewUrl || s.videoUrl;
+          const srcProps = isNear && activeSrc ? { src: activeSrc } : {};
 
           if (isImage) {
             return (

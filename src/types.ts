@@ -5,6 +5,7 @@ export interface Scene {
   duration: number; // Calculated speaking duration in seconds
   caption: string; // Subtitle text to overlay
   videoUrl: string | null; // High-quality .mp4 url from Pexels/built-in Library
+  previewUrl?: string | null; // Low-quality fast-loading .mp4 url for browser data saver
   videoThumb: string | null;
   videoAuthor: string | null;
   videoAuthorUrl: string | null;

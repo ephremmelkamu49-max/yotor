@@ -326,19 +326,24 @@ export default function Timeline({
     
     // Find the highest resolution mp4 under 1080p for faster loading or standard sd links
     let bestLink = '';
+    let previewLink = '';
+    
     // Pexels returns files in various sizes. We lookup for hd or sd links
     const files = clip.video_files || [];
     const mp4Files = files.filter((f: any) => f.file_type === 'video/mp4' || f.link.includes('.mp4'));
     
-    // Prefer HD (high quality but loadable)
+    // Prefer HD for high quality server rendering
     const hd = mp4Files.find((f: any) => f.width >= 1280 && f.width <= 1920);
     const sd = mp4Files.find((f: any) => f.width < 1280 && f.width >= 640);
+    const tiny = mp4Files.find((f: any) => f.width < 640);
     const anyMp4 = mp4Files[0];
 
     bestLink = hd?.link || sd?.link || anyMp4?.link || clip.url;
+    previewLink = tiny?.link || sd?.link || anyMp4?.link || clip.url;
 
     const updatedData: Partial<Scene> = {
       videoUrl: bestLink,
+      previewUrl: previewLink,
       videoThumb: clip.video_pictures?.[0]?.picture || DEFAULT_CATALOG[0].thumbnail,
       videoAuthor: clip.user?.name || 'Stock Producer',
       videoAuthorUrl: clip.user?.url || '#'

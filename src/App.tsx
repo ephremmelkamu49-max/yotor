@@ -361,6 +361,7 @@ export default function App() {
         caption: s.text,
         duration: 4.5,
         videoUrl: fallbackVid.url,
+        previewUrl: fallbackVid.url,
         videoThumb: fallbackVid.thumbnail,
         videoAuthor: fallbackVid.author,
         videoAuthorUrl: "#",
@@ -430,6 +431,7 @@ export default function App() {
         const populatedScenes: Scene[] = await Promise.all(
           rawScenes.map(async (scene: any, i: number) => {
             let videoUrl = "";
+            let previewUrl = "";
             let videoThumb = "";
             let author = "";
 
@@ -531,7 +533,9 @@ export default function App() {
                             (f: any) => f.width >= 1280 && f.width <= 1920,
                           );
                           const sd = mp4Files.find((f: any) => f.width < 1280);
+                          const tiny = mp4Files.find((f: any) => f.width < 640);
                           videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || "";
+                          previewUrl = tiny?.link || sd?.link || mp4Files[0]?.link || videoUrl;
                           videoThumb = bestClip.video_pictures?.[0]?.picture || "";
                           author = bestClip.user?.name || "Stock Creator";
                         }
@@ -567,8 +571,14 @@ export default function App() {
                             videos.medium ||
                             videos.small ||
                             videos.tiny;
+                          const previewVid =
+                            videos.tiny ||
+                            videos.small ||
+                            videos.medium ||
+                            videos.large;
                           if (selectedVid) {
                             videoUrl = selectedVid.url;
+                            previewUrl = previewVid?.url || videoUrl;
                             videoThumb = bestClip.picture_id
                               ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
                               : "";
@@ -638,6 +648,7 @@ export default function App() {
               caption: scene.caption || scene.text,
               duration: scene.duration || 4.5,
               videoUrl,
+              previewUrl: previewUrl || videoUrl,
               videoThumb,
               videoAuthor: author,
               videoAuthorUrl: "#",
@@ -723,6 +734,7 @@ export default function App() {
                 caption: scene.caption || scene.text,
                 duration: scene.duration || 4.5,
                 videoUrl: fallbackVid.url,
+                previewUrl: fallbackVid.url,
                 videoThumb: fallbackVid.thumbnail,
                 videoAuthor: fallbackVid.author,
                 videoAuthorUrl: "#",
@@ -755,6 +767,7 @@ export default function App() {
           caption: s.trim(),
           duration: Math.max(4.0, s.split(/\s+/).length / 2.1),
           videoUrl: fallbackVid.url,
+          previewUrl: fallbackVid.url,
           videoThumb: fallbackVid.thumbnail,
           videoAuthor: fallbackVid.author,
           videoAuthorUrl: "#",
@@ -801,6 +814,7 @@ export default function App() {
       caption: "Add some beautiful narrative phrase here.",
       duration: 5.0,
       videoUrl: fallbackVid.url,
+      previewUrl: fallbackVid.url,
       videoThumb: fallbackVid.thumbnail,
       videoAuthor: fallbackVid.author,
       videoAuthorUrl: "#",
