@@ -81,6 +81,7 @@ export default function VideoCanvas({
 }: VideoCanvasProps) {
   const t = translations[language];
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
+  const thumbRefs = useRef<{ [key: string]: HTMLImageElement | null }>({});
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
   const audioSrcRefs = useRef<{ [key: string]: string }>({});
   const musicAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -93,6 +94,7 @@ export default function VideoCanvas({
   const currentSceneTimeRef = useRef<number>(0);
   const playbackIndexRef = useRef<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [showConfigTabs, setShowConfigTabs] = useState<
     "ratio" | "subtitle" | "music" | "motion" | "filters" | "analyzer"
   >("ratio");
@@ -671,6 +673,44 @@ export default function VideoCanvas({
         currentScene && projectConfig.isVoiceEnabled
           ? audioRefs.current[currentScene.id]
           : null;
+      const currentVideo = currentScene ? videoRefs.current[currentScene.id] : null;
+
+      // Active Buffering Detection: Holds timeline from running ahead on poor connections
+      let isVideoBuffering = false;
+      if (isPlaying && currentVideo && currentVideo instanceof HTMLVideoElement) {
+        if (currentVideo.readyState < 2) {
+          isVideoBuffering = true;
+        }
+      }
+
+      let isAudioBuffering = false;
+      if (isPlaying && currentAudio) {
+        if (currentAudio.readyState < 2) {
+          isAudioBuffering = true;
+        }
+      }
+
+      const activeBuffering = isVideoBuffering || isAudioBuffering;
+      setIsBuffering(activeBuffering);
+
+      if (activeBuffering) {
+        // Pause playback targets to allow buffering, skip tick
+        if (currentVideo && currentVideo instanceof HTMLVideoElement && !currentVideo.paused) {
+          try { currentVideo.pause(); } catch (_) {}
+        }
+        if (currentAudio && !currentAudio.paused) {
+          try { currentAudio.pause(); } catch (_) {}
+        }
+        return;
+      } else {
+        // Resume playbacks if they were buffering
+        if (isPlaying && currentVideo && currentVideo instanceof HTMLVideoElement && currentVideo.paused) {
+          try { currentVideo.play().catch(() => {}); } catch (_) {}
+        }
+        if (isPlaying && currentAudio && currentAudio.paused) {
+          try { currentAudio.play().catch(() => {}); } catch (_) {}
+        }
+      }
 
       let nextTime;
       let hasEnded = false;
@@ -788,6 +828,7 @@ export default function VideoCanvas({
         offsetX: number = 0,
         offsetY: number = 0,
         clipRect?: { x: number; y: number; width: number; height: number },
+        sceneId?: string,
       ) => {
         if (!vid) return;
 
@@ -805,6 +846,32 @@ export default function VideoCanvas({
             (vid as HTMLImageElement).naturalWidth > 0;
           vWidth = (vid as HTMLImageElement).naturalWidth;
           vHeight = (vid as HTMLImageElement).naturalHeight;
+        }
+
+        // Slow Network / Buffering Fallback: If video is loading, draw static thumbnail with matching animations
+        let resolvedSceneId = sceneId;
+        if (!resolvedSceneId && vid) {
+          const foundScene = scenes.find((s) => videoRefs.current[s.id] === vid);
+          if (foundScene) {
+            resolvedSceneId = foundScene.id;
+          }
+        }
+
+        if (vid instanceof HTMLVideoElement && (!isReady || vWidth === 0 || vHeight === 0)) {
+          const fallbackThumb = resolvedSceneId ? thumbRefs.current[resolvedSceneId] : null;
+          if (fallbackThumb && fallbackThumb.complete && fallbackThumb.naturalWidth > 0) {
+            drawVideoFrame(
+              fallbackThumb,
+              alpha,
+              overrideAnimation,
+              scale,
+              offsetX,
+              offsetY,
+              clipRect,
+              resolvedSceneId
+            );
+            return;
+          }
         }
 
         if (!isReady || vWidth === 0 || vHeight === 0) return;
@@ -2549,6 +2616,24 @@ export default function VideoCanvas({
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full absolute left-2.5" />
             <span>ዳታ ቆጣቢ ንቁ ነው / Data Saver (SD Preview, 1080p Export)</span>
           </div>
+
+          {/* Beautiful Buffering Indicator Overlay */}
+          {isBuffering && isPlaying && (
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center gap-3 transition-all duration-350">
+              <div className="relative w-12 h-12 flex items-center justify-center">
+                <span className="absolute w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+                <Sparkles className="text-indigo-400 animate-pulse" size={18} />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-xs font-semibold text-zinc-100 font-sans tracking-wide">
+                  ቪዲዮ በመጫን ላይ...
+                </p>
+                <p className="text-[10px] text-zinc-400 font-mono tracking-wider uppercase">
+                  Buffering Video (Slow Connection)...
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Hidden active videos/images for crossfade rendering */}
@@ -2563,6 +2648,7 @@ export default function VideoCanvas({
           // Prefer compressed previewUrl for rapid browser rendering, fall back to master high-quality videoUrl
           const activeSrc = s.previewUrl || s.videoUrl;
           const srcProps = isNear && activeSrc ? { src: activeSrc } : {};
+          const thumbSrc = s.videoThumb || DEFAULT_CATALOG[idx % DEFAULT_CATALOG.length]?.thumbnail;
 
           if (isImage) {
             return (
@@ -2581,20 +2667,54 @@ export default function VideoCanvas({
           }
 
           return (
-            <video
-              key={s.id}
-              id={`video-scene-${s.id}`}
-              ref={(el) => {
-                videoRefs.current[s.id] = el;
-              }}
-              {...srcProps}
-              loop
-              muted={isMuted || !projectConfig.isVideoSoundEnabled}
-              playsInline
-              crossOrigin="anonymous"
-              className="absolute pointer-events-none opacity-0 w-1 h-1"
-              preload={isNear ? "auto" : "none"}
-            />
+            <React.Fragment key={s.id}>
+              <video
+                id={`video-scene-${s.id}`}
+                ref={(el) => {
+                  videoRefs.current[s.id] = el;
+                }}
+                {...srcProps}
+                loop
+                muted={isMuted || !projectConfig.isVideoSoundEnabled}
+                playsInline
+                crossOrigin="anonymous"
+                className="absolute pointer-events-none opacity-0 w-1 h-1"
+                preload={isNear ? "auto" : "none"}
+                onWaiting={() => {
+                  if (idx === playbackIndex && isPlaying) {
+                    setIsBuffering(true);
+                  }
+                }}
+                onPlaying={() => {
+                  if (idx === playbackIndex) {
+                    setIsBuffering(false);
+                  }
+                }}
+                onLoadedData={() => {
+                  if (idx === playbackIndex) {
+                    setIsBuffering(false);
+                  }
+                }}
+                onSeeked={() => {
+                  if (idx === playbackIndex) {
+                    setIsBuffering(false);
+                  }
+                }}
+              />
+              {thumbSrc && (
+                <img
+                  key={`thumb-${s.id}`}
+                  id={`thumb-scene-${s.id}`}
+                  ref={(el) => {
+                    thumbRefs.current[s.id] = el;
+                  }}
+                  src={thumbSrc}
+                  crossOrigin="anonymous"
+                  className="absolute pointer-events-none opacity-0 w-1 h-1"
+                  alt="scene thumb fallback"
+                />
+              )}
+            </React.Fragment>
           );
         })}
 
