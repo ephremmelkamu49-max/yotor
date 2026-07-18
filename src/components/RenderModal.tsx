@@ -63,7 +63,7 @@ export default function RenderModal({
   const [renderOption, setRenderOption] = useState<'full' | 'fast'>('full');
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
   const [downloadExtension, setDownloadExtension] = useState<string>('webm');
-  const [exportQuality, setExportQuality] = useState<'720p' | '1080p'>('720p');
+  const [exportQuality, setExportQuality] = useState<'720p' | '1080p' | '4k'>('1080p');
   const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('premium');
   const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('local');
   const [ramLimit, setRamLimit] = useState<number>(() => {
@@ -784,6 +784,7 @@ export default function RenderModal({
       const payload = {
         scenes: payloadScenes,
         aspectRatio: projectConfig.aspectRatio,
+        exportQuality: exportQuality,
         musicUrl: finalMusicUrl,
         musicVolume: projectConfig.musicVolume,
         ramLimit: ramLimit

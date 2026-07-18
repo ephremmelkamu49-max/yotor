@@ -5,7 +5,6 @@
 .git
 .gitignore
 node_modules/
-android/
 coverage/
 .DS_Store
 *.log

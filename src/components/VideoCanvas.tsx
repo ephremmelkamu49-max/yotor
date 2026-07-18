@@ -792,6 +792,11 @@ export default function VideoCanvas({
       height = 800; // Instagram Square
     }
 
+    if (isRenderingRef.current) {
+      width *= 1.5;
+      height *= 1.5;
+    }
+
     canvas.width = width;
     canvas.height = height;
 

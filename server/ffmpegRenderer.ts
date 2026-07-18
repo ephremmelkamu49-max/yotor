@@ -33,6 +33,7 @@ export interface RenderScene {
 export interface RenderRequest {
   scenes: RenderScene[];
   aspectRatio: string;
+  exportQuality?: '720p' | '1080p' | '4k';
   musicUrl?: string;
   musicVolume?: number;
   ramLimit?: number;
@@ -104,14 +105,24 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "yotor-render-"));
   
   try {
-    let width = 1920;
-    let height = 1080;
-    if (req.aspectRatio === "9:16") {
-      width = 1080;
-      height = 1920;
-    } else if (req.aspectRatio === "1:1") {
-      width = 1080;
+    let width = 1280;
+    let height = 720;
+    
+    if (req.exportQuality === '1080p') {
+      width = 1920;
       height = 1080;
+    } else if (req.exportQuality === '4k') {
+      width = 3840;
+      height = 2160;
+    }
+
+    if (req.aspectRatio === "9:16") {
+      const temp = width;
+      width = height;
+      height = temp;
+    } else if (req.aspectRatio === "1:1") {
+      width = Math.min(width, height);
+      height = width;
     }
 
     if (req.ramLimit) {
