@@ -19,6 +19,8 @@ interface RenderModalProps {
   onRestoreProject?: (scenes: Scene[], config: ProjectConfig) => void;
   onRenderComplete?: () => void;
   voiceoverPeaks?: { [sceneId: string]: { url: string; peak: number } };
+  exportQuality: '720p' | '1080p' | '4k';
+  setExportQuality: React.Dispatch<React.SetStateAction<'720p' | '1080p' | '4k'>>;
 }
 
 export default function RenderModal({
@@ -31,9 +33,11 @@ export default function RenderModal({
   language,
   onRestoreProject,
   onRenderComplete,
-  voiceoverPeaks
+  voiceoverPeaks,
+  exportQuality,
+  setExportQuality
 }: RenderModalProps) {
-  const t = translations[language];
+  const t = translations[language] || translations.en;
   const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'processing' | 'completed' | 'failed'>('idle');
   
   // Custom video download quota (starts at 3)
@@ -63,7 +67,6 @@ export default function RenderModal({
   const [renderOption, setRenderOption] = useState<'full' | 'fast'>('full');
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
   const [downloadExtension, setDownloadExtension] = useState<string>('webm');
-  const [exportQuality, setExportQuality] = useState<'720p' | '1080p' | '4k'>('1080p');
   const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('premium');
   const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('local');
   const [ramLimit, setRamLimit] = useState<number>(() => {
@@ -314,15 +317,43 @@ export default function RenderModal({
         options = { mimeType: '' };
       }
 
-      // Apply Amharic-optimized Data Save Profiles
+      // Dynamic Premium Media Encoding Bitrates based on Output Resolution & Profiles
+      let vBps = 12500000; // default 12.5 Mbps (1080p Cinematic)
+      let aBps = 192000;   // default 192 Kbps
+
+      if (exportQuality === '4k') {
+        if (dataProfile === 'saver') {
+          vBps = 25000000; // 25 Mbps
+          aBps = 192000;
+        } else {
+          vBps = 45000000; // 45 Mbps (Ultra-High Fidelity Cinema 4K)
+          aBps = 320000;   // 320 Kbps Audiophile stereo
+        }
+      } else if (exportQuality === '1080p') {
+        if (dataProfile === 'saver') {
+          vBps = 450000;   // 4.5 Mbps
+          aBps = 128000;
+        } else {
+          vBps = 15000000; // 15 Mbps
+          aBps = 192000;
+        }
+      } else { // 720p
+        if (dataProfile === 'saver') {
+          vBps = 2500000;  // 2.5 Mbps
+          aBps = 96000;
+        } else {
+          vBps = 7500000;  // 7.5 Mbps
+          aBps = 192000;
+        }
+      }
+
+      options.videoBitsPerSecond = vBps;
+      options.audioBitsPerSecond = aBps;
+      
       if (dataProfile === 'saver') {
-        options.videoBitsPerSecond = 3500000; // 3.5 Mbps (Standard High Definition)
-        options.audioBitsPerSecond = 96000;  // 96 Kbps
-        addLog(`⚡ [Ultra-Saver] ${t.data_saving_mode}...`);
+        addLog(`⚡ [Ultra-Saver] ${t.data_saving_mode} (${(vBps / 1000000).toFixed(1)} Mbps Video)...`);
       } else {
-        options.videoBitsPerSecond = 12500000; // 12.5 Mbps (Cinematic Master HD)
-        options.audioBitsPerSecond = 192000;  // 192 Kbps
-        addLog(`💎 [Cinema-Max] ${t.data_premium_mode}...`);
+        addLog(`💎 [Cinema-Max] ${t.data_premium_mode} (${(vBps / 1000000).toFixed(1)} Mbps Video)...`);
       }
 
       addLog(`Setting up MediaRecorder compression wrapper. Mode: ${options.mimeType || 'default'} (Target Extension: .${extension})`);
@@ -1172,6 +1203,39 @@ export default function RenderModal({
                     <span className="text-[8.5px] font-mono text-cyan-400 mt-1 uppercase">{t.unlocked_15k}</span>
                   </button>
                 )}
+
+                {/* 4K Ultra HD Cosmic Quality */}
+                {activePlan === '720p' ? (
+                  <div className="p-3 border border-zinc-900/50 bg-zinc-950/40 rounded-xl flex flex-col text-left relative opacity-85">
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-semibold text-zinc-650 flex items-center gap-1">
+                        4K Ultra HD
+                      </span>
+                      <Lock size={11} className="text-zinc-700" />
+                    </div>
+                    <span className="text-[9px] text-zinc-650 mt-1 font-sans">3840x2160 (Cinema 4K)</span>
+                    <span className="text-[8px] font-mono text-red-400/80 mt-1 uppercase font-bold">{t.plan_requires_15k}</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setExportQuality('4k')}
+                    className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
+                      exportQuality === '4k' 
+                        ? 'bg-purple-500/5 border-purple-500 text-purple-400 font-bold shadow-sm' 
+                        : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-semibold flex items-center gap-1">
+                        <Crown size={11} className="text-purple-400" /> 4K Ultra HD
+                      </span>
+                      {exportQuality === '4k' && <div className="w-2 h-2 rounded-full bg-purple-400" />}
+                    </div>
+                    <span className="text-[9px] text-zinc-500 mt-1 font-sans">3840x2160</span>
+                    <span className="text-[8.5px] font-mono text-purple-400 mt-1 uppercase">{t.unlocked_15k}</span>
+                  </button>
+                )}
               </div>
 
               {/* Friendly drawer upgrade alert for 720p users */}
@@ -1510,7 +1574,9 @@ export default function RenderModal({
                   {language === 'am' ? 'የምስል ጥራት' : 'Resolution Target'}
                 </span>
                 <p className="text-zinc-250 font-mono font-bold text-xs uppercase">
-                  {exportQuality === '1080p' ? (
+                  {exportQuality === '4k' ? (
+                    projectConfig.aspectRatio === '16:9' ? '3840x2160 (Cinema 4K)' : projectConfig.aspectRatio === '9:16' ? '2160x3840 (Shorts 4K)' : '2160x2160 (Square 4K)'
+                  ) : exportQuality === '1080p' ? (
                     projectConfig.aspectRatio === '16:9' ? '1920x1080 (Full HD)' : projectConfig.aspectRatio === '9:16' ? '1080x1920 (Shorts)' : '1080x1080 (Square)'
                   ) : (
                     projectConfig.aspectRatio === '16:9' ? '1280x720 (Standard HD)' : projectConfig.aspectRatio === '9:16' ? '720x1280 (Shorts)' : '800x800 (Square)'

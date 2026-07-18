@@ -18,7 +18,7 @@ interface StockClipCardProps {
 }
 
 function StockClipCard({ clip, index, onSelect, language }: StockClipCardProps) {
-  const t = translations[language];
+  const t = translations[language] || translations.en;
   const [isHovered, setIsHovered] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -150,7 +150,7 @@ export default function Timeline({
   onUpdateConfig,
   voiceoverPeaks
 }: TimelineProps) {
-  const t = translations[language];
+  const t = translations[language] || translations.en;
   const [searchSceneId, setSearchSceneId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any[]>([]);

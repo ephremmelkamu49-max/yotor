@@ -10,8 +10,11 @@ import './index.css';
 const originalStringify = JSON.stringify;
 JSON.stringify = function (value: any, replacer?: any, space?: string | number): string {
   const customReplacer = (key: string, val: any) => {
-    // Strip DOM elements
-    if (val instanceof Element || (val && typeof val === 'object' && val.toString && val.toString() === '[object HTMLAudioElement]')) {
+    // Strip DOM elements and HTMLAudioElements safely
+    if (
+      (typeof Element !== 'undefined' && val instanceof Element) ||
+      (val && typeof val === 'object' && Object.prototype.toString.call(val) === '[object HTMLAudioElement]')
+    ) {
       return undefined;
     }
     // Strip React fibers

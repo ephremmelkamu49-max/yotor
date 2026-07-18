@@ -33,7 +33,7 @@ export default function ProjectLibrary({
   onLoadProject,
   language,
 }: ProjectLibraryProps) {
-  const t = translations[language];
+  const t = translations[language] || translations.en;
   const [projects, setProjects] = useState<SavedProject[]>([]);
   const [saveName, setSaveName] = useState<string>("");
   const [isExpanded, setIsExpanded] = useState<boolean>(true);

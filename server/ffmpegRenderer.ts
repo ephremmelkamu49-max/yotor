@@ -129,6 +129,17 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       console.log(`[High-Performance System Engine] Allocated RAM Limit for Job: ${req.ramLimit} GB`);
       if (onProgress) onProgress(`Allocating ${req.ramLimit} GB high-performance RAM...`, 3);
     }
+    
+    let crf = 18;
+    let preset = 'fast';
+    
+    if (req.exportQuality === '1080p') {
+      crf = 16;
+      preset = 'medium';
+    } else if (req.exportQuality === '4k') {
+      crf = 14;
+      preset = 'slow';
+    }
 
     const sceneFiles: string[] = [];
     let processedCount = 0;
@@ -166,7 +177,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
       // 3. Format video: crop/scale, set duration, add audio if exists
       const hasAudio = !!scene.ttsAudioBuffer;
-      const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
+      const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}`;
       const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
 
       let cmd = `"${ffmpegPath}" -loglevel quiet -y `;
@@ -184,8 +195,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
 
-      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale with crisp CRF 16 quality
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset medium -crf 16 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale with crisp CRF quality
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ${preset} -crf ${crf} -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
       console.log(`Running FFmpeg for scene segment ${i}...`);
       await runCommand(cmd);
@@ -220,9 +231,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    // Re-encode during concat to ensure unified PTS timestamps and smooth seeking in all web browsers.
-    // Use crisp CRF 19 quality and veryfast preset.
-    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset medium -crf 16 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
+    // Lossless stream-copy concatenation to prevent double-encoding quality loss, ensure 100% fidelity, and deliver lightning-fast completion.
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${concatPath}"`;
     console.log("Stitching video segments...");
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
     await runCommand(concatCmd);

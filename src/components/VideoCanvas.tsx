@@ -31,6 +31,7 @@ interface VideoCanvasProps {
   isPlaying: boolean;
   setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
   isRendering?: boolean;
+  exportQuality?: '720p' | '1080p' | '4k';
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   renderTime?: number;
   language: Language;
@@ -73,13 +74,14 @@ export default function VideoCanvas({
   isPlaying,
   setIsPlaying,
   isRendering,
+  exportQuality = '1080p',
   canvasRef,
   renderTime,
   language,
   voiceoverPeaks,
   setVoiceoverPeaks,
 }: VideoCanvasProps) {
-  const t = translations[language];
+  const t = translations[language] || translations.en;
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
   const thumbRefs = useRef<{ [key: string]: HTMLImageElement | null }>({});
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
@@ -339,10 +341,12 @@ export default function VideoCanvas({
 
   const renderTimePropRef = useRef<number | undefined>(renderTime);
   const isRenderingRef = useRef<boolean>(!!isRendering);
+  const exportQualityRef = useRef<'720p' | '1080p' | '4k'>(exportQuality);
   useEffect(() => {
     renderTimePropRef.current = renderTime;
     isRenderingRef.current = !!isRendering;
-  }, [renderTime, isRendering]);
+    exportQualityRef.current = exportQuality;
+  }, [renderTime, isRendering, exportQuality]);
 
   // Active scene accessor
   const currentScene = scenes[playbackIndex] || null;
@@ -793,8 +797,40 @@ export default function VideoCanvas({
     }
 
     if (isRenderingRef.current) {
-      width *= 1.5;
-      height *= 1.5;
+      if (exportQualityRef.current === "4k") {
+        if (projectConfig.aspectRatio === "9:16") {
+          width = 2160;
+          height = 3840;
+        } else if (projectConfig.aspectRatio === "1:1") {
+          width = 2160;
+          height = 2160;
+        } else {
+          width = 3840;
+          height = 2160;
+        }
+      } else if (exportQualityRef.current === "1080p") {
+        if (projectConfig.aspectRatio === "9:16") {
+          width = 1080;
+          height = 1920;
+        } else if (projectConfig.aspectRatio === "1:1") {
+          width = 1080;
+          height = 1080;
+        } else {
+          width = 1920;
+          height = 1080;
+        }
+      } else { // 720p
+        if (projectConfig.aspectRatio === "9:16") {
+          width = 720;
+          height = 1280;
+        } else if (projectConfig.aspectRatio === "1:1") {
+          width = 720;
+          height = 720;
+        } else {
+          width = 1280;
+          height = 720;
+        }
+      }
     }
 
     canvas.width = width;
@@ -1541,7 +1577,7 @@ export default function VideoCanvas({
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [projectConfig, currentScene]);
+  }, [projectConfig, currentScene, exportQuality]);
 
   const handleNext = () => {
     if (playbackIndex < scenes.length - 1) {

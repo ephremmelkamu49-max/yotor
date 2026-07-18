@@ -40,7 +40,7 @@ export default function ScriptInput({
   loadingStage,
   language,
 }: ScriptInputProps) {
-  const t = translations[language];
+  const t = translations[language] || translations.en;
   const displayedLoadingStage =
     loadingStage === "Analyzing Script..." ? t.running_analysis : loadingStage;
 

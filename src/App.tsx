@@ -22,11 +22,6 @@ JSON.stringify = function (value: any, replacer?: any, space?: string | number):
   } catch (err: any) {
     if (err.message && err.message.includes('circular structure')) {
        console.error("CIRCULAR STRINGIFY DETECTED. Value keys:", value ? Object.keys(value) : value);
-       fetch('/api/diagnose', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: originalStringify({ errorLog: "CIRCULAR CAUGHT! Keys: " + (value ? Object.keys(value).join(",") : "null") })
-       }).catch(()=>{});
     }
     throw err;
   }
@@ -74,7 +69,8 @@ export const getTtsUrl = (text: string, lang: string): string => {
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem("app_language") as Language) || "en";
+    const saved = localStorage.getItem("app_language");
+    return (saved === "am" || saved === "en") ? saved : "en";
   });
 
   const handleLanguageChange = (lang: Language) => {
@@ -82,7 +78,7 @@ export default function App() {
     localStorage.setItem("app_language", lang);
   };
 
-  const t = translations[language];
+  const t = translations[language] || translations.en;
 
   const [scenes, setScenesState] = useState<Scene[]>([]);
   const [undoStack, setUndoStack] = useState<Scene[][]>([]);
@@ -157,6 +153,7 @@ export default function App() {
     "Analyzing narration text...",
   );
   const [isRenderOpen, setIsRenderOpen] = useState<boolean>(false);
+  const [exportQuality, setExportQuality] = useState<'720p' | '1080p' | '4k'>('1080p');
 
   // PWA & Settings states
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -288,10 +285,13 @@ export default function App() {
       };
       
       const replacer = (key: string, value: any) => {
-        if (value instanceof Element || (value && typeof value === 'object' && value.current !== undefined)) {
+        if (
+          (typeof Element !== "undefined" && value instanceof Element) ||
+          (value && typeof value === 'object' && value.current !== undefined)
+        ) {
           return undefined;
         }
-        if (value && typeof value === 'object' && value.toString && value.toString() === '[object HTMLAudioElement]') {
+        if (value && typeof value === 'object' && Object.prototype.toString.call(value) === '[object HTMLAudioElement]') {
           return undefined;
         }
         return value;
@@ -1050,6 +1050,7 @@ export default function App() {
                 isPlaying={isPlaying}
                 setIsPlaying={setIsPlaying}
                 isRendering={isRenderOpen}
+                exportQuality={exportQuality}
                 canvasRef={canvasRef}
                 renderTime={renderTime}
                 language={language}
@@ -1080,6 +1081,8 @@ export default function App() {
             setScenes(restoredScenes);
             setProjectConfig(restoredConfig);
           }}
+          exportQuality={exportQuality}
+          setExportQuality={setExportQuality}
         />
 
         {/* App Settings and PWA Installer Modal */}
