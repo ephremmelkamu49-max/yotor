@@ -64,7 +64,7 @@ export default function RenderModal({
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
   const [downloadExtension, setDownloadExtension] = useState<string>('webm');
   const [exportQuality, setExportQuality] = useState<'720p' | '1080p'>('720p');
-  const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('saver');
+  const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('premium');
   const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('local');
   const [ramLimit, setRamLimit] = useState<number>(() => {
     const saved = localStorage.getItem('yotor_ram_limit');
@@ -316,12 +316,12 @@ export default function RenderModal({
 
       // Apply Amharic-optimized Data Save Profiles
       if (dataProfile === 'saver') {
-        options.videoBitsPerSecond = 750000; // 750 Kbps (Very dense compression, beautiful enough but 5x smaller file size)
-        options.audioBitsPerSecond = 48000;  // 48 Kbps
+        options.videoBitsPerSecond = 3500000; // 3.5 Mbps (Standard High Definition)
+        options.audioBitsPerSecond = 96000;  // 96 Kbps
         addLog(`⚡ [Ultra-Saver] ${t.data_saving_mode}...`);
       } else {
-        options.videoBitsPerSecond = 3200000; // 3.2 Mbps (Uncompressed cinema frames)
-        options.audioBitsPerSecond = 128000;  // 128 Kbps
+        options.videoBitsPerSecond = 12500000; // 12.5 Mbps (Cinematic Master HD)
+        options.audioBitsPerSecond = 192000;  // 192 Kbps
         addLog(`💎 [Cinema-Max] ${t.data_premium_mode}...`);
       }
 
@@ -882,64 +882,12 @@ export default function RenderModal({
               fps: 30
             });
 
-            // Immediately mark as completed so the user can stream, view, and download without waiting for local caching!
+            // Immediately mark as completed so the user can stream, view, and download natively without waiting for slow local caching!
             setRenderedBlobUrl(downloadUrl);
             setRenderStatus('completed');
-
-            // Start pre-fetching the video file as a local browser Blob to bypass Chrome iframe sandbox blocks in the background
-            (async () => {
-              try {
-                addLog("📥 [Browser Cache] ቪዲዮውን ወደ ስልክዎ ማዘጋጀት ተጀምሯል (Pre-fetching video to local browser memory)...");
-                const response = await fetch(`${downloadUrl}&download=true`);
-                if (!response.ok) throw new Error(`HTTP status ${response.status}`);
-                
-                const reader = response.body?.getReader();
-                const contentLength = +(response.headers.get('Content-Length') || '0');
-                
-                if (!reader) {
-                  const blob = await response.blob();
-                  const localUrl = URL.createObjectURL(blob);
-                  setRenderedBlobUrl(localUrl);
-                } else {
-                  let receivedLength = 0;
-                  const chunks: Uint8Array[] = [];
-                  let lastLoggedPct = -10;
-                  while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    chunks.push(value);
-                    receivedLength += value.length;
-                    if (contentLength) {
-                      const pct = Math.round((receivedLength / contentLength) * 100);
-                      // Update log cleanly on every 10% increment
-                      if (pct - lastLoggedPct >= 10 || pct === 100) {
-                        addLog(`📥 [Browser Cache] ቪዲዮው ${pct}% ተጭኗል... (Downloaded ${pct}% to local cache...)`);
-                        lastLoggedPct = pct;
-                      }
-                    }
-                  }
-                  const allChunks = new Uint8Array(receivedLength);
-                  let position = 0;
-                  for (const chunk of chunks) {
-                    allChunks.set(chunk, position);
-                    position += chunk.length;
-                  }
-                  const blob = new Blob([allChunks], { type: 'video/mp4' });
-                  const localUrl = URL.createObjectURL(blob);
-                  setRenderedBlobUrl(localUrl);
-                }
-
-                addLog("✅ [Browser Cache] ቪዲዮው በተሳካ ሁኔታ ተጭኖ ተዘጋጅቷል! (Video is fully cached and ready to play/save!)");
-                cloudRenderAbortControllerRef.current = null;
-                if (onRenderComplete) onRenderComplete();
-              } catch (blobErr: any) {
-                console.error("Blob prefetch failed:", blobErr);
-                addLog("⚠️ Caching failed, falling back to streaming stream.");
-                setRenderedBlobUrl(downloadUrl);
-                cloudRenderAbortControllerRef.current = null;
-                if (onRenderComplete) onRenderComplete();
-              }
-            })();
+            addLog("✅ [Direct Download] ቪዲዮው በተሳካ ሁኔታ ተጠናቋል። አሁን በቀጥታ በከፍተኛ ፍጥነት ማውረድ ይችላሉ! (Video completed successfully! Ready for high-speed direct download!)");
+            cloudRenderAbortControllerRef.current = null;
+            if (onRenderComplete) onRenderComplete();
           } else if (job.status === 'error') {
             throw new Error(job.error || job.log || "Unknown server rendering error");
           }
@@ -1290,7 +1238,7 @@ export default function RenderModal({
                   <span className="text-[9.5px] text-zinc-400 mt-1 leading-normal">
                     ለትላልቅ ስክሪኖች እና ማስታወቂያዎች የሚሆን ፊልም-ጥራት ያላቸው ምስሎችን ያመርታል። (ትልቅ የቪዲዮ ፋይል መጠን ይሰጣል)
                   </span>
-                  <span className="text-[8px] font-mono text-zinc-650 mt-1.5 uppercase font-bold">Cinema Bitrate (3.2Mbps Uncompressed)</span>
+                  <span className="text-[8px] font-mono text-zinc-650 mt-1.5 uppercase font-bold">Cinema Bitrate (12.5Mbps Uncompressed)</span>
                 </button>
               </div>
             </div>
@@ -1587,7 +1535,7 @@ export default function RenderModal({
                   setRenderStatus('idle');
                   setRenderedBlobUrl(null);
                 }}
-                className="flex-1 py-3 bg-zinc-900 border border-zinc-800 text-zinc-450 hover:text-white rounded-xl text-xs font-semibold font-mono uppercase tracking-widest transition-colors"
+                className="flex-1 py-3 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-semibold font-mono uppercase tracking-widest transition-colors animate-fade-in"
                 id="render-again-btn"
               >
                 {language === 'am' ? 'የማቀናበሪያ ገጽ' : 'Render settings'}
@@ -1602,6 +1550,8 @@ export default function RenderModal({
                     : '#'
                 }
                 download={`yotor_official_video_${Date.now()}.${downloadExtension}`}
+                target="_blank"
+                rel="noopener noreferrer"
                 onClick={() => {
                   if (exportQuota > 0) {
                     const nextQ = exportQuota - 1;
@@ -1617,6 +1567,49 @@ export default function RenderModal({
                   {language === 'am' ? 'ተጠናቋል! ቪዲዮውን ወደ ስልክዎ ይጫኑ' : 'DOWNLOAD MASTER VIDEO'}
                 </span>
               </a>
+            </div>
+
+            {/* Direct High-Speed Download Buttons for Chrome / Telegram Export */}
+            <div className="p-4 bg-gradient-to-r from-blue-950/20 to-indigo-950/20 border border-blue-500/10 rounded-2xl space-y-3 mt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  {language === 'am' ? 'ፈጣን ቀጥታ ማውረጃ (Direct High-Speed Export)' : 'Direct High-Speed Download Mirror'}
+                </span>
+                <span className="text-[9px] bg-blue-500/10 text-blue-300 font-mono font-bold px-1.5 py-0.5 rounded border border-blue-500/20 uppercase">
+                  100% Native Speed
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-2">
+                <a
+                  href={
+                    renderedBlobUrl
+                      ? renderedBlobUrl.includes('download=true')
+                        ? renderedBlobUrl
+                        : `${renderedBlobUrl}&download=true`
+                      : '#'
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    if (exportQuota > 0) {
+                      const nextQ = exportQuota - 1;
+                      setExportQuota(nextQ);
+                      localStorage.setItem('yotor_video_quota', String(nextQ));
+                    }
+                  }}
+                  className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-500 hover:to-indigo-600 text-white text-xs font-bold font-sans rounded-xl shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] transition-all text-center block border border-blue-400/20 uppercase tracking-wider"
+                >
+                  📥 {language === 'am' ? 'በቀጥታ አውርድ (Direct High-Speed MP4)' : 'NATIVE DIRECT MP4 DOWNLOAD'}
+                </a>
+                
+                <p className="text-[10px] text-zinc-450 leading-relaxed font-sans text-center">
+                  {language === 'am' 
+                    ? 'ይህ ማውረጃ በቀጥታ ሰርቨሩን በማገናኘት እንደ Telegram, Chrome ወይም YouTube እጅግ በከፍተኛ ፍጥነት እና ያለ ምንም መቆራረጥ በቀጥታ እንዲያወርዱ ያስችልዎታል።' 
+                    : 'This directly initiates a native browser download stream at maximum server bandwidth (similar to Chrome/Telegram downloaders).'}
+                </p>
+              </div>
             </div>
 
             {/* Google AI Studio Iframe sandbox bypass help card */}

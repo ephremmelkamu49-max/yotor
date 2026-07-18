@@ -173,8 +173,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
 
-      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale with crisp CRF 19 quality
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 19 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale with crisp CRF 16 quality
+      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset medium -crf 16 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
       console.log(`Running FFmpeg for scene segment ${i}...`);
       await runCommand(cmd);
@@ -211,7 +211,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     const concatPath = path.join(tempDir, "concat.mp4");
     // Re-encode during concat to ensure unified PTS timestamps and smooth seeking in all web browsers.
     // Use crisp CRF 19 quality and veryfast preset.
-    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset veryfast -crf 19 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset medium -crf 16 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
     console.log("Stitching video segments...");
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
     await runCommand(concatCmd);

@@ -3,7 +3,6 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import multer from "multer";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/genai";
 import { EdgeTTS } from "edge-tts-universal";
 import dotenv from "dotenv";
@@ -1895,6 +1894,7 @@ app.get("/api/render-download", (req, res) => {
 // 5. Vite Dev Server & Static Production Routing
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

@@ -529,13 +529,17 @@ export default function App() {
                             (f: any) =>
                               f.file_type === "video/mp4" || f.link.includes(".mp4"),
                           );
-                          const hd = mp4Files.find(
-                            (f: any) => f.width >= 1280 && f.width <= 1920,
-                          );
-                          const sd = mp4Files.find((f: any) => f.width < 1280);
-                          const tiny = mp4Files.find((f: any) => f.width < 640);
-                          videoUrl = hd?.link || sd?.link || mp4Files[0]?.link || "";
-                          previewUrl = tiny?.link || sd?.link || mp4Files[0]?.link || videoUrl;
+                          // Sort MP4 files by resolution descending to get absolute maximum quality!
+                          const sortedMp4Files = [...mp4Files].sort((a: any, b: any) => {
+                            const sizeA = (Number(a.width) || 0) * (Number(a.height) || 0);
+                            const sizeB = (Number(b.width) || 0) * (Number(b.height) || 0);
+                            return sizeB - sizeA;
+                          });
+                          const highestQualityVid = sortedMp4Files[0];
+                          // Select a lighter file for real-time browser preview (typically width between 640 and 1280) so editing remains lag-free
+                          const previewVid = sortedMp4Files.find((f: any) => f.width <= 1280 && f.width >= 640) || sortedMp4Files.find((f: any) => f.width < 640) || highestQualityVid;
+                          videoUrl = highestQualityVid?.link || "";
+                          previewUrl = previewVid?.link || videoUrl;
                           videoThumb = bestClip.video_pictures?.[0]?.picture || "";
                           author = bestClip.user?.name || "Stock Creator";
                         }
