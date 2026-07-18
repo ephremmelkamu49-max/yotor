@@ -882,7 +882,11 @@ export default function RenderModal({
               fps: 30
             });
 
-            // Start pre-fetching the video file as a local browser Blob to bypass Chrome iframe sandbox blocks
+            // Immediately mark as completed so the user can stream, view, and download without waiting for local caching!
+            setRenderedBlobUrl(downloadUrl);
+            setRenderStatus('completed');
+
+            // Start pre-fetching the video file as a local browser Blob to bypass Chrome iframe sandbox blocks in the background
             (async () => {
               try {
                 addLog("📥 [Browser Cache] ቪዲዮውን ወደ ስልክዎ ማዘጋጀት ተጀምሯል (Pre-fetching video to local browser memory)...");
@@ -899,6 +903,7 @@ export default function RenderModal({
                 } else {
                   let receivedLength = 0;
                   const chunks: Uint8Array[] = [];
+                  let lastLoggedPct = -10;
                   while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
@@ -906,9 +911,10 @@ export default function RenderModal({
                     receivedLength += value.length;
                     if (contentLength) {
                       const pct = Math.round((receivedLength / contentLength) * 100);
-                      // Update log on every 15% increment
-                      if (pct % 15 === 0 || pct === 100) {
+                      // Update log cleanly on every 10% increment
+                      if (pct - lastLoggedPct >= 10 || pct === 100) {
                         addLog(`📥 [Browser Cache] ቪዲዮው ${pct}% ተጭኗል... (Downloaded ${pct}% to local cache...)`);
+                        lastLoggedPct = pct;
                       }
                     }
                   }
@@ -924,14 +930,12 @@ export default function RenderModal({
                 }
 
                 addLog("✅ [Browser Cache] ቪዲዮው በተሳካ ሁኔታ ተጭኖ ተዘጋጅቷል! (Video is fully cached and ready to play/save!)");
-                setRenderStatus('completed');
                 cloudRenderAbortControllerRef.current = null;
                 if (onRenderComplete) onRenderComplete();
               } catch (blobErr: any) {
                 console.error("Blob prefetch failed:", blobErr);
                 addLog("⚠️ Caching failed, falling back to streaming stream.");
                 setRenderedBlobUrl(downloadUrl);
-                setRenderStatus('completed');
                 cloudRenderAbortControllerRef.current = null;
                 if (onRenderComplete) onRenderComplete();
               }

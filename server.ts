@@ -1717,7 +1717,7 @@ const renderJobs = {
 const cleanupOldJobs = async () => {
   try {
     const now = Date.now();
-    const maxAgeMs = 15 * 60 * 1000; // 15 minutes is plenty for downloading/previewing
+    const maxAgeMs = 60 * 60 * 1000; // Keep files for 60 minutes so users have plenty of time to download
     const jobsList = Array.from(memoryJobs.entries());
 
     let changed = false;
@@ -1729,12 +1729,20 @@ const cleanupOldJobs = async () => {
       return timeB - timeA;
     });
 
+    let completedOrErrorCount = 0;
+
     for (let index = 0; index < sortedJobs.length; index++) {
       const [id, job] = sortedJobs[index];
       const createdAt = job.createdAt || 0;
       const isTooOld = now - createdAt > maxAgeMs;
-      // Restrict active storage: keep at most the 2 most recent completed/processing jobs
-      const isExcess = index >= 2;
+
+      // Keep track of completed or error jobs to only clean up excess non-active jobs
+      if (job.status !== "processing") {
+        completedOrErrorCount++;
+      }
+
+      // Restrict active storage: keep at most 6 completed/error jobs. Never clean up active "processing" jobs!
+      const isExcess = job.status !== "processing" && completedOrErrorCount > 6;
 
       if (isTooOld || isExcess) {
         if (job.outPath) {
