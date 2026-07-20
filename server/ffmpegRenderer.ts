@@ -177,7 +177,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
       // 3. Format video: crop/scale, set duration, add audio if exists
       const hasAudio = !!scene.ttsAudioBuffer;
-      const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}`;
+      const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
       const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
 
       let cmd = `"${ffmpegPath}" -loglevel quiet -y `;
@@ -231,8 +231,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    // Lossless stream-copy concatenation to prevent double-encoding quality loss, ensure 100% fidelity, and deliver lightning-fast completion.
-    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${concatPath}"`;
+    // Re-encode during concat to ensure unified PTS timestamps and smooth seeking in all web browsers.
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset ${preset} -crf ${crf} -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
     console.log("Stitching video segments...");
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
     await runCommand(concatCmd);

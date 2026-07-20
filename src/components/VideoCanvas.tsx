@@ -2651,12 +2651,7 @@ export default function VideoCanvas({
             id="rendering-canvas"
           />
           
-          {/* Elegant Amharic/English Data Saver indicator overlay */}
-          <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 bg-black/75 backdrop-blur-md rounded-full border border-emerald-500/30 text-emerald-400 text-[9.5px] font-sans font-medium tracking-wide shadow-lg shadow-black/40">
-            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
-            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full absolute left-2.5" />
-            <span>ዳታ ቆጣቢ ንቁ ነው / Data Saver (SD Preview, 1080p Export)</span>
-          </div>
+
 
           {/* Beautiful Buffering Indicator Overlay */}
           {isBuffering && isPlaying && (
@@ -2686,8 +2681,8 @@ export default function VideoCanvas({
             (s.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) ||
               s.videoUrl.includes("pollinations.ai"));
               
-          // Prefer compressed previewUrl for rapid browser rendering, fall back to master high-quality videoUrl
-          const activeSrc = s.previewUrl || s.videoUrl;
+          // Load high-quality videoUrl directly for pristine playback quality
+          const activeSrc = s.videoUrl;
           const srcProps = isNear && activeSrc ? { src: activeSrc } : {};
           const thumbSrc = s.videoThumb || DEFAULT_CATALOG[idx % DEFAULT_CATALOG.length]?.thumbnail;
 
