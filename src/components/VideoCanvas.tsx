@@ -603,16 +603,17 @@ export default function VideoCanvas({
       }
     });
 
-    // Preload next scene video
-    if (playbackIndex < scenes.length - 1) {
-      const nextVid = videoRefs.current[scenes[playbackIndex + 1].id];
-      // Preloading the next video silently handles the browser buffering delay
-      if (
-        nextVid &&
-        nextVid instanceof HTMLVideoElement &&
-        nextVid.readyState < 3
-      ) {
-        nextVid.load();
+    // Preload next 3 scene videos for instant, zero-delay playback
+    for (let offset = 1; offset <= 3; offset++) {
+      if (playbackIndex + offset < scenes.length) {
+        const nextVid = videoRefs.current[scenes[playbackIndex + offset].id];
+        if (
+          nextVid &&
+          nextVid instanceof HTMLVideoElement &&
+          nextVid.readyState < 3
+        ) {
+          nextVid.load();
+        }
       }
     }
 
@@ -2681,8 +2682,8 @@ export default function VideoCanvas({
             (s.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) ||
               s.videoUrl.includes("pollinations.ai"));
               
-          // Load high-quality videoUrl directly for pristine playback quality
-          const activeSrc = s.videoUrl;
+          // Prefer compressed previewUrl for rapid browser rendering, fall back to master high-quality videoUrl
+          const activeSrc = s.previewUrl || s.videoUrl;
           const srcProps = isNear && activeSrc ? { src: activeSrc } : {};
           const thumbSrc = s.videoThumb || DEFAULT_CATALOG[idx % DEFAULT_CATALOG.length]?.thumbnail;
 

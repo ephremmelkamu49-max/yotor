@@ -80,8 +80,8 @@ export default function RenderModal({
     fps: 30
   });
 
-  const getSubscribedPlan = (): '720p' | '1080p' => {
-    return '1080p';
+  const getSubscribedPlan = (): '720p' | '1080p' | '4k' => {
+    return '4k';
   };
 
   const activePlan = getSubscribedPlan();

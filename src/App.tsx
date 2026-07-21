@@ -153,7 +153,7 @@ export default function App() {
     "Analyzing narration text...",
   );
   const [isRenderOpen, setIsRenderOpen] = useState<boolean>(false);
-  const [exportQuality, setExportQuality] = useState<'720p' | '1080p' | '4k'>('1080p');
+  const [exportQuality, setExportQuality] = useState<'720p' | '1080p' | '4k'>('4k');
 
   // PWA & Settings states
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);

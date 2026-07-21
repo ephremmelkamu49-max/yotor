@@ -131,32 +131,23 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     }
     
     let crf = 18;
-    let preset = 'fast';
+    let preset = 'ultrafast';
     
     if (req.exportQuality === '1080p') {
       crf = 16;
-      preset = 'medium';
+      preset = 'ultrafast';
     } else if (req.exportQuality === '4k') {
       crf = 14;
-      preset = 'slow';
+      preset = 'superfast';
     }
 
-    const sceneFiles: string[] = [];
-    let processedCount = 0;
-
-    // Process scenes one-by-one sequentially to keep memory & disk usage strictly minimal (max 1 raw asset at any point)
-    for (let i = 0; i < req.scenes.length; i++) {
-      const scene = req.scenes[i];
-      if (onProgress) {
-        onProgress(`Processing scene ${i + 1}/${req.scenes.length} (Downloading asset...)`, 5 + (i / req.scenes.length) * 75);
-      }
-      console.log(`Processing scene ${i + 1}/${req.scenes.length}...`);
-
+    if (onProgress) {
+      onProgress(`Downloading all ${req.scenes.length} video assets in parallel...`, 5);
+    }
+    console.log(`Starting parallel download of ${req.scenes.length} video assets...`);
+    
+    await Promise.all(req.scenes.map(async (scene, i) => {
       const videoPath = path.join(tempDir, `vid_${i}.mp4`);
-      const audioPath = path.join(tempDir, `aud_${i}.wav`);
-      const outPath = path.join(tempDir, `out_${i}.mp4`);
-
-      // 1. Download only this single scene video with retry logic
       let retries = 3;
       while (retries > 0) {
         try {
@@ -165,10 +156,26 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         } catch (e: any) {
           retries--;
           console.error(`Failed to download ${scene.videoUrl}, retries left: ${retries}`);
-          if (retries === 0) throw e;
-          await new Promise(r => setTimeout(r, 1000));
+          if (retries === 0) throw new Error(`Failed to download video for scene ${i + 1}: ${e.message}`);
+          await new Promise(r => setTimeout(r, 500));
         }
       }
+    }));
+
+    const sceneFiles: string[] = [];
+    let processedCount = 0;
+
+    // Process scenes sequentially with cached parallel downloads
+    for (let i = 0; i < req.scenes.length; i++) {
+      const scene = req.scenes[i];
+      if (onProgress) {
+        onProgress(`Processing scene ${i + 1}/${req.scenes.length} (Rendering segment...)`, 20 + (i / req.scenes.length) * 60);
+      }
+      console.log(`Processing scene ${i + 1}/${req.scenes.length}...`);
+
+      const videoPath = path.join(tempDir, `vid_${i}.mp4`);
+      const audioPath = path.join(tempDir, `aud_${i}.wav`);
+      const outPath = path.join(tempDir, `out_${i}.mp4`);
 
       // 2. If there's TTS, write it
       if (scene.ttsAudioBuffer) {

@@ -332,14 +332,18 @@ export default function Timeline({
     const files = clip.video_files || [];
     const mp4Files = files.filter((f: any) => f.file_type === 'video/mp4' || f.link.includes('.mp4'));
     
-    // Prefer HD for high quality server rendering
-    const hd = mp4Files.find((f: any) => f.width >= 1280 && f.width <= 1920);
-    const sd = mp4Files.find((f: any) => f.width < 1280 && f.width >= 640);
-    const tiny = mp4Files.find((f: any) => f.width < 640);
-    const anyMp4 = mp4Files[0];
+    // Sort MP4 files by resolution descending to get absolute maximum quality!
+    const sortedMp4Files = [...mp4Files].sort((a: any, b: any) => {
+      const sizeA = (Number(a.width) || 0) * (Number(a.height) || 0);
+      const sizeB = (Number(b.width) || 0) * (Number(b.height) || 0);
+      return sizeB - sizeA;
+    });
 
-    bestLink = hd?.link || sd?.link || anyMp4?.link || clip.url;
-    previewLink = tiny?.link || sd?.link || anyMp4?.link || clip.url;
+    const highestQualityVid = sortedMp4Files[0];
+    const previewVid = sortedMp4Files.find((f: any) => f.width <= 1280 && f.width >= 640) || sortedMp4Files.find((f: any) => f.width < 640) || highestQualityVid;
+
+    bestLink = highestQualityVid?.link || clip.url || '';
+    previewLink = previewVid?.link || bestLink;
 
     const updatedData: Partial<Scene> = {
       videoUrl: bestLink,

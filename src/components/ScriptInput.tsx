@@ -86,10 +86,15 @@ export default function ScriptInput({
         body: JSON.stringify({ category: tmpId, language, duration: selectedDuration }),
       });
       if (res.ok) {
-        const data = await res.json();
-        if (data.prompt) {
-          setScript(data.prompt);
-          return;
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          if (data && data.prompt) {
+            setScript(data.prompt);
+            return;
+          }
+        } catch (jsonErr) {
+          console.warn("Response from server was not valid JSON:", text, jsonErr);
         }
       }
     } catch (e) {
