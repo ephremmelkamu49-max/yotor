@@ -130,15 +130,15 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       if (onProgress) onProgress(`Allocating ${req.ramLimit} GB high-performance RAM...`, 3);
     }
     
-    let crf = 18;
-    let preset = 'ultrafast';
+    let crf = 17;
+    let preset = 'medium';
     
     if (req.exportQuality === '1080p') {
-      crf = 16;
-      preset = 'ultrafast';
+      crf = 15;
+      preset = 'medium';
     } else if (req.exportQuality === '4k') {
-      crf = 14;
-      preset = 'superfast';
+      crf = 13;
+      preset = 'fast';
     }
 
     if (onProgress) {
@@ -191,7 +191,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       if (isImage) {
         cmd += `-loop 1 `;
       } else {
-        cmd += `-stream_loop -1 `;
+        cmd += `-stream_loop 12 `;
       }
 
       cmd += `-i "${videoPath}" `;

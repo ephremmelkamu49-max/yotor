@@ -2682,9 +2682,9 @@ export default function VideoCanvas({
             (s.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i) ||
               s.videoUrl.includes("pollinations.ai"));
               
-          // Prefer compressed previewUrl for rapid browser rendering, fall back to master high-quality videoUrl
-          const activeSrc = s.previewUrl || s.videoUrl;
-          const srcProps = isNear && activeSrc ? { src: activeSrc } : {};
+          // Use pristine high-quality videoUrl for premium crispness, fall back to previewUrl if missing
+          const activeSrc = s.videoUrl || s.previewUrl;
+          const srcProps = activeSrc ? { src: activeSrc } : {};
           const thumbSrc = s.videoThumb || DEFAULT_CATALOG[idx % DEFAULT_CATALOG.length]?.thumbnail;
 
           if (isImage) {
@@ -2716,7 +2716,7 @@ export default function VideoCanvas({
                 playsInline
                 crossOrigin="anonymous"
                 className="absolute pointer-events-none opacity-0 w-1 h-1"
-                preload={isNear ? "auto" : "none"}
+                preload="auto"
                 onWaiting={() => {
                   if (idx === playbackIndex && isPlaying) {
                     setIsBuffering(true);
