@@ -40,10 +40,11 @@ interface VideoCanvasProps {
 }
 
 async function analyzeAudioPeak(url: string): Promise<number> {
+  let ctx: AudioContext | null = null;
   try {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) return 1.0;
-    const ctx = new AudioContext();
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return 1.0;
+    ctx = new AudioContextClass();
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP status ${res.status}`);
     const buf = await res.arrayBuffer();
@@ -54,11 +55,14 @@ async function analyzeAudioPeak(url: string): Promise<number> {
       const val = Math.abs(channel[i]);
       if (val > max) max = val;
     }
-    await ctx.close();
     return max || 1.0;
   } catch (e) {
     console.error("[Peak Detection] Error analyzing audio peak:", e);
     return 1.0;
+  } finally {
+    if (ctx && ctx.state !== 'closed') {
+      ctx.close().catch((err) => console.error("[AudioContext Close Error]:", err));
+    }
   }
 }
 
@@ -109,6 +113,43 @@ export default function VideoCanvas({
   );
   const [analysisError, setAnalysisError] = useState<string>("");
   const [isAnalyzingBeats, setIsAnalyzingBeats] = useState<boolean>(false);
+
+  // Unmount memory and media element cleanup
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      if (musicAudioRef.current) {
+        musicAudioRef.current.pause();
+        musicAudioRef.current.src = "";
+        musicAudioRef.current = null;
+      }
+      Object.values(videoRefs.current).forEach((vid: any) => {
+        if (vid) {
+          try {
+            vid.pause();
+            vid.src = "";
+            vid.load();
+          } catch (_) {}
+        }
+      });
+      Object.values(audioRefs.current).forEach((aud: any) => {
+        if (aud) {
+          try {
+            aud.pause();
+            aud.src = "";
+            aud.load();
+          } catch (_) {}
+        }
+      });
+    };
+  }, []);
 
   // AI Copilot States
   const [aiSubTab, setAiSubTab] = useState<"copilot" | "analyzer">("copilot");
@@ -2697,7 +2738,7 @@ export default function VideoCanvas({
                 }}
                 {...srcProps}
                 crossOrigin="anonymous"
-                className="absolute pointer-events-none opacity-0 w-1 h-1"
+                className="pointer-events-none absolute -z-50 w-64 h-36 object-cover opacity-[0.002]"
                 alt="scene frame"
               />
             );
@@ -2715,7 +2756,7 @@ export default function VideoCanvas({
                 muted={isMuted || !projectConfig.isVideoSoundEnabled}
                 playsInline
                 crossOrigin="anonymous"
-                className="absolute pointer-events-none opacity-0 w-1 h-1"
+                className="pointer-events-none absolute -z-50 w-64 h-36 object-cover opacity-[0.002]"
                 preload="auto"
                 onWaiting={() => {
                   if (idx === playbackIndex && isPlaying) {
@@ -2747,7 +2788,7 @@ export default function VideoCanvas({
                   }}
                   src={thumbSrc}
                   crossOrigin="anonymous"
-                  className="absolute pointer-events-none opacity-0 w-1 h-1"
+                  className="pointer-events-none absolute -z-50 w-64 h-36 object-cover opacity-[0.002]"
                   alt="scene thumb fallback"
                 />
               )}

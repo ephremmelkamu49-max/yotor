@@ -195,8 +195,17 @@ export default function Timeline({
           if (text && !text.trim().startsWith("<")) {
             const data = JSON.parse(text);
             if (data && data.videos && data.videos.length > 0) {
-              remoteVideos = data.videos;
-              foundRemote = true;
+              // Filter out videos that do not have an HD/4K file (width >= 1280 or height >= 720)
+              remoteVideos = data.videos.filter((vid: any) => {
+                const files = vid.video_files || [];
+                return files.some((f: any) => 
+                  (f.file_type === 'video/mp4' || f.link?.includes('.mp4')) &&
+                  (Number(f.width) >= 1280 || Number(f.height) >= 720 || f.quality === 'hd' || f.quality === '4k' || f.quality === 'uhd')
+                );
+              });
+              if (remoteVideos.length > 0) {
+                foundRemote = true;
+              }
             }
           }
         }
@@ -215,9 +224,15 @@ export default function Timeline({
             if (text && !text.trim().startsWith("<")) {
               const data = JSON.parse(text);
               if (data && data.hits && data.hits.length > 0) {
-                // Map Pixabay format to dummy Pexels format for compatibility with UI
+                // Map Pixabay format to dummy Pexels format, strictly selecting HD/4K (large or medium)
                 remoteVideos = data.hits.map((hit: any) => {
-                  const selectedVid = hit.videos?.large || hit.videos?.medium || hit.videos?.small || hit.videos?.tiny;
+                  const vids = hit.videos || {};
+                  // Strictly pick large (1080p/4K) or medium (720p HD). Discard small and tiny SD clips!
+                  const selectedVid = (vids.large && vids.large.url && (Number(vids.large.width) >= 1280 || Number(vids.large.height) >= 720 || Number(vids.large.size) > 0)) 
+                    ? vids.large 
+                    : (vids.medium && vids.medium.url && (Number(vids.medium.width) >= 1280 || Number(vids.medium.height) >= 720)) 
+                      ? vids.medium 
+                      : null;
                   const link = selectedVid ? selectedVid.url : '';
                   const pic = hit.picture_id 
                     ? `https://i.vimeocdn.com/video/${hit.picture_id}_295x166.jpg`
@@ -225,12 +240,14 @@ export default function Timeline({
 
                   return {
                     id: hit.id,
-                    video_files: [{ type: 'video/mp4', link }],
+                    video_files: [{ type: 'video/mp4', link, width: selectedVid?.width || 1920, height: selectedVid?.height || 1080 }],
                     video_pictures: [{ picture: pic }],
                     user: { name: hit.user || 'Pixabay Creator', url: '#' },
                   };
                 }).filter((v: any) => v.video_files[0].link);
-                foundRemote = true;
+                if (remoteVideos.length > 0) {
+                  foundRemote = true;
+                }
               }
             }
           }
@@ -339,8 +356,13 @@ export default function Timeline({
       return sizeB - sizeA;
     });
 
-    const highestQualityVid = sortedMp4Files[0];
-    const previewVid = sortedMp4Files.find((f: any) => f.width <= 1280 && f.width >= 640) || sortedMp4Files.find((f: any) => f.width < 640) || highestQualityVid;
+    // Filter strictly for HD or 4K MP4 files (minimum width >= 1280 or height >= 720)
+    const hdMp4Files = sortedMp4Files.filter((f: any) => 
+      Number(f.width) >= 1280 || Number(f.height) >= 720 || f.quality === 'hd' || f.quality === '4k' || f.quality === 'uhd'
+    );
+
+    const highestQualityVid = hdMp4Files[0] || sortedMp4Files[0];
+    const previewVid = sortedMp4Files.find((f: any) => Number(f.width) <= 1280 && Number(f.width) >= 640) || highestQualityVid;
 
     bestLink = highestQualityVid?.link || clip.url || '';
     previewLink = previewVid?.link || bestLink;

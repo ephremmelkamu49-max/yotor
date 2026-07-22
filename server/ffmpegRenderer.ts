@@ -28,6 +28,7 @@ export interface RenderScene {
   ttsAudioBuffer?: string; // base64 encoded audio, or we can just download it if it's a full URL
   duration: number;
   musicVolume?: number;
+  caption?: string;
 }
 
 export interface RenderRequest {
@@ -37,6 +38,9 @@ export interface RenderRequest {
   musicUrl?: string;
   musicVolume?: number;
   ramLimit?: number;
+  subtitleStyle?: any;
+  visualStyle?: string;
+  videoFilter?: string;
 }
 
 async function downloadFile(url: string, dest: string) {
@@ -105,12 +109,12 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "yotor-render-"));
   
   try {
-    let width = 1280;
-    let height = 720;
+    let width = 1920;
+    let height = 1080;
     
-    if (req.exportQuality === '1080p') {
-      width = 1920;
-      height = 1080;
+    if (req.exportQuality === '720p') {
+      width = 1280;
+      height = 720;
     } else if (req.exportQuality === '4k') {
       width = 3840;
       height = 2160;
@@ -130,15 +134,15 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       if (onProgress) onProgress(`Allocating ${req.ramLimit} GB high-performance RAM...`, 3);
     }
     
-    let crf = 17;
-    let preset = 'medium';
+    let crf = 16;
+    let preset = 'superfast';
     
-    if (req.exportQuality === '1080p') {
-      crf = 15;
-      preset = 'medium';
+    if (req.exportQuality === '720p') {
+      crf = 18;
+      preset = 'superfast';
     } else if (req.exportQuality === '4k') {
-      crf = 13;
-      preset = 'fast';
+      crf = 14;
+      preset = 'veryfast';
     }
 
     if (onProgress) {
@@ -182,28 +186,119 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
       }
 
-      // 3. Format video: crop/scale, set duration, add audio if exists
-      const hasAudio = !!scene.ttsAudioBuffer;
-      const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
       const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
 
-      let cmd = `"${ffmpegPath}" -loglevel quiet -y `;
+      // 3. Format video: Lanczos scaling, cropping, 1:1 SAR, 30fps CFR, yuv420p + Ken Burns for static assets
+      const hasAudio = !!scene.ttsAudioBuffer;
+      
+      let baseScale = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},setsar=1,fps=30,format=yuv420p`;
+      if (isImage) {
+        const totalFrames = Math.max(30, Math.round(scene.duration * 30));
+        // Subtle Ken Burns slow zoom-in effect (1.00 -> 1.12)
+        baseScale = `zoompan=z='min(zoom+0.0012,1.12)':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height},${baseScale}`;
+      }
+
+      let finalFilter = baseScale;
+
+      // Apply subtle smooth fade in/out transitions for scene cuts
+      if (scene.duration >= 1.0) {
+        const fadeDur = Math.min(0.25, scene.duration / 4);
+        const fadeOutStart = Math.max(0, scene.duration - fadeDur).toFixed(2);
+        finalFilter += `,fade=t=in:st=0:d=${fadeDur.toFixed(2)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(2)}`;
+      }
+
+      // Apply Video Color Grading Filter
+      if (req.videoFilter) {
+        switch (req.videoFilter) {
+          case "sepia":
+            finalFilter += ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131";
+            break;
+          case "grayscale":
+            finalFilter += ",hue=s=0";
+            break;
+          case "contrast":
+            finalFilter += ",eq=contrast=1.5:brightness=-0.05";
+            break;
+          case "vintage":
+            finalFilter += ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,eq=contrast=1.2:brightness=-0.05:saturation=0.8";
+            break;
+          case "teal":
+            finalFilter += ",hue=h=-15:s=1.35,eq=contrast=1.15";
+            break;
+          case "high-contrast":
+            finalFilter += ",eq=contrast=1.8:brightness=-0.05:saturation=1.25";
+            break;
+        }
+      }
+
+      // Apply Visual Style Harmonizer Tint
+      if (req.visualStyle) {
+        switch (req.visualStyle) {
+          case "realistic":
+            finalFilter += ",eq=contrast=1.05:brightness=0.0:saturation=1.05";
+            break;
+          case "cyberpunk":
+            finalFilter += ",hue=h=10:s=1.4,eq=contrast=1.1";
+            break;
+          case "3d-animation":
+            finalFilter += ",eq=contrast=1.1:brightness=0.02:saturation=1.3";
+            break;
+          case "watercolor":
+            finalFilter += ",eq=contrast=0.9:brightness=0.02:saturation=0.9,hue=h=5";
+            break;
+          case "anime":
+            finalFilter += ",eq=contrast=1.05:brightness=0.05:saturation=1.25";
+            break;
+        }
+      }
+
+      // Apply Subtitles / Captions Drawtext Burn-In
+      if (req.subtitleStyle?.enabled && scene.caption) {
+        const cleanCaption = scene.caption
+          .replace(/['’]/g, "") // remove single quotes completely for 100% safety
+          .replace(/[:]/g, " ")  // replace colons with spaces
+          .replace(/\\/g, "");  // remove backslashes
+
+        const fontColor = req.subtitleStyle.color || "white";
+        const fontSize = Math.floor(height * 0.048);
+
+        let yPos = "h*0.82";
+        if (req.subtitleStyle.position === "middle") {
+          yPos = "h*0.5";
+        } else if (req.subtitleStyle.position === "top") {
+          yPos = "h*0.18";
+        }
+
+        let boxStyle = "";
+        if (req.subtitleStyle.backgroundColor) {
+          const bgColor = req.subtitleStyle.backgroundColor.replace("#", "0x");
+          boxStyle = `:box=1:boxcolor=${bgColor}@0.5:boxborderw=10`;
+        } else {
+          boxStyle = `:borderw=2:bordercolor=black`;
+        }
+
+        // Use standard system font 'Sans' which is universally available on Linux
+        finalFilter += `,drawtext=text='${cleanCaption}':font='Sans':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yPos}${boxStyle}`;
+      }
+
+      // Execute FFmpeg command for segment
+      let cmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -avoid_negative_ts make_zero `;
       if (isImage) {
         cmd += `-loop 1 `;
       } else {
-        cmd += `-stream_loop 12 `;
+        cmd += `-stream_loop 50 `;
       }
 
       cmd += `-i "${videoPath}" `;
 
       if (hasAudio) {
-        cmd += `-i "${audioPath}" `;
+        cmd += `-fflags +genpts -avoid_negative_ts make_zero -i "${audioPath}" `;
       } else {
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
 
-      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale with crisp CRF quality
-      cmd += `-vf "${scaleFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ${preset} -crf ${crf} -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale with crisp CRF quality and uniform GOP
+      cmd += `-vf "${finalFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
       console.log(`Running FFmpeg for scene segment ${i}...`);
       await runCommand(cmd);
@@ -238,11 +333,19 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    // Re-encode during concat to ensure unified PTS timestamps and smooth seeking in all web browsers.
-    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset ${preset} -crf ${crf} -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
+    // All segments are pre-rendered to identical 1080p geometry, 30fps CFR, YUV420p, and GOP=30.
+    // Try lightning fast direct stream-copy concatenation first for lossless seamless transition.
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${concatPath}"`;
     console.log("Stitching video segments...");
     if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
-    await runCommand(concatCmd);
+    
+    try {
+      await runCommand(concatCmd);
+    } catch (concatErr) {
+      console.warn("Stream copy concat failed, falling back to unified re-encode:", concatErr);
+      const fallbackConcatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset superfast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
+      await runCommand(fallbackConcatCmd);
+    }
 
     // Verify concat file exists
     const concatExists = await fs.access(concatPath).then(() => true).catch(() => false);

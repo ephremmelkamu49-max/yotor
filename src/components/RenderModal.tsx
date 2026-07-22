@@ -161,6 +161,16 @@ export default function RenderModal({
     audioCtxRef.current = null;
     audioDestNodeRef.current = null;
     audioSourcesRef.current = [];
+    recordedChunksRef.current = [];
+  };
+
+  const updateRenderedBlobUrl = (newUrl: string | null) => {
+    setRenderedBlobUrl((prev) => {
+      if (prev && prev !== newUrl && prev.startsWith('blob:')) {
+        URL.revokeObjectURL(prev);
+      }
+      return newUrl;
+    });
   };
 
   const initiateRenderAndStitching = async () => {
@@ -206,12 +216,20 @@ export default function RenderModal({
                 resolve(scene.duration || 4.5);
               }
             };
-            tempAudio.onerror = () => {
+            tempAudio.onerror = (e) => {
               clearTimeout(timeout);
+              console.error("[TTS Duration] Failed to load audio metadata:", e);
               resolve(scene.duration || 4.5);
             };
           });
           
+          // Explicit DOM & memory cleanup
+          tempAudio.onloadedmetadata = null;
+          tempAudio.onerror = null;
+          tempAudio.pause();
+          tempAudio.src = "";
+          tempAudio.load();
+
           return { ...scene, duration };
         }));
         scenesToRender = scenesWithExactDuration;
@@ -396,7 +414,8 @@ export default function RenderModal({
         }
         
         const finalUrl = URL.createObjectURL(finalBlob);
-        setRenderedBlobUrl(finalUrl);
+        updateRenderedBlobUrl(finalUrl);
+        recordedChunksRef.current = [];
         
         // Calculate size metadata
         const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
@@ -453,6 +472,9 @@ export default function RenderModal({
 
       // Scene-by-scene timing workflow
       const renderSceneStep = async (index: number) => {
+        // Yield to main UI thread to prevent browser tab freezing
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
         if (index >= scenesToRender.length) {
           addLog("Stitching timeline limits reached. Compiling final code...");
           mediaRecorder.stop();
@@ -687,6 +709,9 @@ export default function RenderModal({
       let currentIdx = 0;
       for (const scene of scenes) {
         currentIdx++;
+        // Non-blocking async pause to give the main thread breathing room
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
         if (abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
         addLog(`[Prep] Processing scene ${currentIdx} of ${scenes.length}...`);
         updateProgressForward((currentIdx / scenes.length) * 15);
@@ -715,26 +740,36 @@ export default function RenderModal({
               const tempAudio = new Audio(audioUrl);
               tempAudio.crossOrigin = "anonymous";
               
-              const calculatedDuration = await new Promise<number>((resolve) => {
-                const timeout = setTimeout(() => {
-                  resolve(scene.duration || 4.5);
-                }, 3000); // 3-second load timeout
-                
-                tempAudio.onloadedmetadata = () => {
-                  clearTimeout(timeout);
-                  if (tempAudio.duration && !isNaN(tempAudio.duration) && tempAudio.duration > 0 && tempAudio.duration !== Infinity) {
-                    resolve(tempAudio.duration + 0.15);
-                  } else {
+              let calculatedDuration = scene.duration || 4.5;
+              try {
+                calculatedDuration = await new Promise<number>((resolve) => {
+                  const timeout = setTimeout(() => {
                     resolve(scene.duration || 4.5);
-                  }
-                };
-                tempAudio.onerror = () => {
-                  clearTimeout(timeout);
-                  resolve(scene.duration || 4.5);
-                };
-              });
-              
-              URL.revokeObjectURL(audioUrl);
+                  }, 3000); // 3-second load timeout
+                  
+                  tempAudio.onloadedmetadata = () => {
+                    clearTimeout(timeout);
+                    if (tempAudio.duration && !isNaN(tempAudio.duration) && tempAudio.duration > 0 && tempAudio.duration !== Infinity) {
+                      resolve(tempAudio.duration + 0.15);
+                    } else {
+                      resolve(scene.duration || 4.5);
+                    }
+                  };
+                  tempAudio.onerror = (e) => {
+                    clearTimeout(timeout);
+                    console.error("[Cloud Prep TTS] Audio metadata error:", e);
+                    resolve(scene.duration || 4.5);
+                  };
+                });
+              } finally {
+                tempAudio.onloadedmetadata = null;
+                tempAudio.onerror = null;
+                tempAudio.pause();
+                tempAudio.src = "";
+                tempAudio.load();
+                URL.revokeObjectURL(audioUrl);
+              }
+
               targetDuration = calculatedDuration;
               addLog(`  -> Narrative duration: ${targetDuration.toFixed(2)}s`);
 
@@ -791,7 +826,8 @@ export default function RenderModal({
           videoUrl: finalVideoUrl,
           ttsAudioBuffer,
           duration: targetDuration,
-          musicVolume: sceneMusicVolume
+          musicVolume: sceneMusicVolume,
+          caption: scene.caption
         });
       }
 
@@ -818,7 +854,10 @@ export default function RenderModal({
         exportQuality: exportQuality,
         musicUrl: finalMusicUrl,
         musicVolume: projectConfig.musicVolume,
-        ramLimit: ramLimit
+        ramLimit: ramLimit,
+        subtitleStyle: projectConfig.subtitleStyle,
+        visualStyle: projectConfig.visualStyle,
+        videoFilter: projectConfig.videoFilter
       };
       
       addLog("Starting backend compilation...");

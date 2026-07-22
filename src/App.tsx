@@ -13,6 +13,7 @@ import RenderModal from "./components/RenderModal";
 import AccessGate from "./components/AccessGate";
 import ProjectLibrary from "./components/ProjectLibrary";
 import { Language, translations } from "./translations";
+import { extractDescriptiveQueries } from "./utils/keywordExtractor";
 
 // --- DEBUG PATCH ---
 const originalStringify = JSON.stringify;
@@ -474,32 +475,8 @@ export default function App() {
               videoThumb = videoUrl;
               author = "Pollinations Model";
             } else {
-              // Stock mode: Clean and formulate adaptive fallback queries
-              // Stock search engines do not understand long styles, so we try multiple levels of specificity
-              const cleanWords = (scene.keywords || "")
-                .replace(/cinematic|professional|movement|high depth of field|hd|4k|photorealistic|ultra|3d pixar style animation|cute expressive characters|vibrant volumetric lighting|disney style 3d render|2d handdrawn animation|flat colors|expressive line art|illustrative style|studio ghibli aesthetic|anime style background|detailed characters|japanese animation|soft watercolor painting|artistic bleeding colors|paper texture|impressionist|cyberpunk aesthetic|neon colored lights|futuristic cityscape|rainy night|high tech|silhouette|handdrawn pencil sketch|charcoal texture|artistic line work|detailed|realistic|epic|storytelling|aesthetic|vibrant|beautiful|gorgeous|artistic|stunning|glorious|breathtaking|highly|background|concept|art|render|style|illustration|digital|painting/gi, "")
-                .replace(/[^a-zA-Z0-9\s]/g, "")
-                .replace(/\s+/g, " ")
-                .trim();
-
-              // For stock search, we MUST put the pure, clean visual subject FIRST!
-              // Prepending a stylePrefix (like "cinematic 4k ...") to stock searches breaks them
-              // because stock APIs look for exact words. They don't know what "cinematic 4k" means!
-              const queriesToTry = [
-                cleanWords, // 1: Perfect clean subject (e.g., "coffee ceremony") - EXACT MATCH
-                cleanWords.split(" ").slice(0, 4).join(" "), // 2: First 4 words
-                cleanWords.split(" ").slice(0, 3).join(" "), // 3: First 3 words
-                cleanWords.split(" ").slice(0, 2).join(" "), // 4: First 2 words
-                cleanWords.split(" ")[0], // 5: Single primary noun
-              ].filter(q => q && q.trim().length > 1);
-
-              // Add style-prefixed query as a final low-priority fallback only
-              if (searchQuery && searchQuery !== cleanWords) {
-                queriesToTry.push(searchQuery);
-              }
-
-              // Distinct values
-              const uniqueQueries = Array.from(new Set(queriesToTry));
+              // Extract 1-2 visually descriptive English keywords with cascading fallbacks
+              const uniqueQueries = extractDescriptiveQueries(scene.keywords, scene.text);
 
               // Attempt each query until success
               for (const query of uniqueQueries) {
@@ -523,25 +500,37 @@ export default function App() {
                       if (text && !text.trim().startsWith("<")) {
                         const pexelsData = JSON.parse(text);
                         if (pexelsData.videos?.length > 0) {
-                          const bestClip = pexelsData.videos[0];
-                          const files = bestClip.video_files || [];
-                          const mp4Files = files.filter(
-                            (f: any) =>
-                              f.file_type === "video/mp4" || f.link.includes(".mp4"),
-                          );
-                          // Sort MP4 files by resolution descending to get absolute maximum quality!
-                          const sortedMp4Files = [...mp4Files].sort((a: any, b: any) => {
-                            const sizeA = (Number(a.width) || 0) * (Number(a.height) || 0);
-                            const sizeB = (Number(b.width) || 0) * (Number(b.height) || 0);
-                            return sizeB - sizeA;
-                          });
-                          const highestQualityVid = sortedMp4Files[0];
-                          // Select a lighter file for real-time browser preview (typically width between 640 and 1280) so editing remains lag-free
-                          const previewVid = sortedMp4Files.find((f: any) => f.width <= 1280 && f.width >= 640) || sortedMp4Files.find((f: any) => f.width < 640) || highestQualityVid;
-                          videoUrl = highestQualityVid?.link || "";
-                          previewUrl = previewVid?.link || videoUrl;
-                          videoThumb = bestClip.video_pictures?.[0]?.picture || "";
-                          author = bestClip.user?.name || "Stock Creator";
+                          // Iterate through videos to find a clip with HD/4K MP4 files
+                          for (const bestClip of pexelsData.videos) {
+                            const files = bestClip.video_files || [];
+                            const mp4Files = files.filter(
+                              (f: any) =>
+                                (f.file_type === "video/mp4" || f.link?.includes(".mp4")),
+                            );
+                            // Sort MP4 files by resolution descending to get absolute maximum quality!
+                            const sortedMp4Files = [...mp4Files].sort((a: any, b: any) => {
+                              const sizeA = (Number(a.width) || 0) * (Number(a.height) || 0);
+                              const sizeB = (Number(b.width) || 0) * (Number(b.height) || 0);
+                              return sizeB - sizeA;
+                            });
+
+                            // Filter strictly for HD/4K resolution (minimum width >= 1280 or height >= 720)
+                            const hdMp4Files = sortedMp4Files.filter(
+                              (f: any) => Number(f.width) >= 1280 || Number(f.height) >= 720 || f.quality === "hd" || f.quality === "4k" || f.quality === "uhd"
+                            );
+
+                            const highestQualityVid = hdMp4Files[0] || sortedMp4Files[0];
+
+                            // Reject SD clips (<720p) unless no other file exists, preferring strictly HD/4K
+                            if (highestQualityVid && (Number(highestQualityVid.width) >= 1280 || Number(highestQualityVid.height) >= 720 || highestQualityVid.quality === "hd" || highestQualityVid.quality === "4k" || highestQualityVid.quality === "uhd")) {
+                              const previewVid = sortedMp4Files.find((f: any) => Number(f.width) <= 1280 && Number(f.width) >= 640) || highestQualityVid;
+                              videoUrl = highestQualityVid.link || "";
+                              previewUrl = previewVid?.link || videoUrl;
+                              videoThumb = bestClip.video_pictures?.[0]?.picture || "";
+                              author = bestClip.user?.name || "Stock Creator";
+                              break;
+                            }
+                          }
                         }
                       }
                     }
@@ -568,25 +557,30 @@ export default function App() {
                       if (text && !text.trim().startsWith("<")) {
                         const pixabayData = JSON.parse(text);
                         if (pixabayData.hits?.length > 0) {
-                          const bestClip = pixabayData.hits[0];
-                          const videos = bestClip.videos || {};
-                          const selectedVid =
-                            videos.large ||
-                            videos.medium ||
-                            videos.small ||
-                            videos.tiny;
-                          const previewVid =
-                            videos.tiny ||
-                            videos.small ||
-                            videos.medium ||
-                            videos.large;
-                          if (selectedVid) {
-                            videoUrl = selectedVid.url;
-                            previewUrl = previewVid?.url || videoUrl;
-                            videoThumb = bestClip.picture_id
-                              ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
-                              : "";
-                            author = bestClip.user || "Pixabay Creator";
+                          // Iterate through hits to find a clip with HD or 4K streams
+                          for (const bestClip of pixabayData.hits) {
+                            const videos = bestClip.videos || {};
+                            // Strictly pick large (1080p/4K) or medium (720p HD). Reject small/tiny SD clips!
+                            let selectedVid = null;
+                            let previewVid = null;
+
+                            if (videos.large && videos.large.url && (Number(videos.large.width) >= 1280 || Number(videos.large.height) >= 720 || Number(videos.large.size) > 0)) {
+                              selectedVid = videos.large;
+                              previewVid = videos.medium || videos.large;
+                            } else if (videos.medium && videos.medium.url && (Number(videos.medium.width) >= 1280 || Number(videos.medium.height) >= 720)) {
+                              selectedVid = videos.medium;
+                              previewVid = videos.medium;
+                            }
+
+                            if (selectedVid && selectedVid.url) {
+                              videoUrl = selectedVid.url;
+                              previewUrl = previewVid?.url || videoUrl;
+                              videoThumb = bestClip.picture_id
+                                ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
+                                : "";
+                              author = bestClip.user || "Pixabay Creator";
+                              break;
+                            }
                           }
                         }
                       }
