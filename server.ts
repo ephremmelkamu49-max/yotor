@@ -1607,6 +1607,59 @@ app.get("/api/coverr/search", async (req, res) => {
   }
 });
 
+// 6. Wikimedia Commons API Search Proxy (Free public domain authentic historical media for real entities/people/locations)
+app.get("/api/wikimedia/search", async (req, res) => {
+  const query = req.query.query as string;
+
+  if (!query) {
+    return res.status(400).json({ error: "Search query required." });
+  }
+
+  try {
+    // Search Wikimedia Commons file namespace (6) for high-resolution authentic historical photographs/portraits
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&gsrlimit=15&prop=imageinfo&iiprop=url|size|mime|extmetadata&format=json`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "DocumentaryVideoApp/1.0 (https://ais-build.example.com)"
+      }
+    });
+
+    if (!response.ok) {
+      return res.json({ hits: [] });
+    }
+
+    const data = await response.json();
+    const pages = data.query?.pages || {};
+    const hits: any[] = [];
+
+    for (const pageId of Object.keys(pages)) {
+      const page = pages[pageId];
+      const info = page.imageinfo?.[0];
+      if (info && info.url) {
+        const mime = info.mime || "";
+        const isImage = mime.startsWith("image/") && !info.url.endsWith(".svg") && !info.url.endsWith(".ogv") && !info.url.endsWith(".ogg");
+        const isMinSize = (info.width || 0) >= 400 || (info.height || 0) >= 400;
+        if (isImage && isMinSize) {
+          hits.push({
+            url: info.url,
+            thumbnail: info.url,
+            title: page.title ? page.title.replace(/^File:\s*/i, "") : query,
+            width: info.width || 1280,
+            height: info.height || 720,
+            mime,
+            author: "Wikimedia Commons (Public Domain)",
+          });
+        }
+      }
+    }
+
+    res.json({ hits });
+  } catch (err: any) {
+    console.error("Wikimedia proxy failed:", err);
+    res.json({ hits: [] });
+  }
+});
+
 
 // 4. Thumbnail Generation API - uses Gemini to generate a YouTube-style thumbnail
 app.post("/api/thumbnail", async (req, res) => {

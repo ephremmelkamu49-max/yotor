@@ -18,6 +18,54 @@ const STOP_WORDS = new Set([
   "beautiful", "gorgeous", "artistic", "stunning", "glorious", "breathtaking", "background", "concept", "art"
 ]);
 
+// Common historical figures, landmarks, and indicators
+const HISTORICAL_KEYWORDS = new Set([
+  "einstein", "lincoln", "napoleon", "cleopatra", "churchill", "gandhi", "mandela", "shakespeare", "davinci",
+  "caesar", "king", "washington", "tesla", "newton", "mozart", "beethoven", "hitler", "stalin", "roosevelt",
+  "socrates", "plato", "aristotle", "jesus", "buddha", "muhammad", "joanofarc", "victoria", "genghis", "columbus",
+  "eiffel", "pyramids", "pyramid", "tajmahal", "colosseum", "greatwall", "machupicchu", "statueofliberty", "bigben",
+  "grandcanyon", "everest", "louvre", "vatican", "kremlin", "whitehouse", "parthenon", "stonehenge", "burjkhalifa",
+  "worldwar", "renaissance", "coldwar", "titanic", "apollo11", "chernobyl", "romanempire", "ancientegypt",
+  "addisababa", "haileselassie", "menelik", "axum", "lalibela", "ethiopia", "history", "historical", "portrait"
+]);
+
+/**
+ * Named Entity Recognition (NER) Helper
+ * Detects if a scene describes a specific real person, historical figure, or famous location (Proper Noun).
+ */
+export function detectNamedEntity(keywords?: string, text?: string, entityProp?: string): string | null {
+  if (entityProp && entityProp.trim().length > 2) {
+    return entityProp.trim();
+  }
+
+  const combined = `${keywords || ''} ${text || ''}`;
+  
+  // 1. Look for capitalized 2-3 word proper nouns (e.g. "Albert Einstein", "Eiffel Tower", "Winston Churchill", "World War II")
+  const properNounMatch = combined.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/);
+  if (properNounMatch && properNounMatch[1]) {
+    const candidate = properNounMatch[1].trim();
+    // Exclude generic sentence starters
+    if (!/^(The|In|On|At|For|With|This|That)\s+(Video|Shot|Scene|Clip|Background|Style)$/i.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  // 2. Check for historical keywords in lowercase string
+  const cleanLower = combined.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  const words = cleanLower.split(/\s+/);
+  for (const word of words) {
+    if (HISTORICAL_KEYWORDS.has(word)) {
+      const foundMatch = combined.match(new RegExp(`\\b[A-Za-z\\s]{0,20}${word}[A-Za-z\\s]{0,20}\\b`, "i"));
+      if (foundMatch) {
+        return foundMatch[0].trim();
+      }
+      return word;
+    }
+  }
+
+  return null;
+}
+
 /**
   * Extract 1-2 visually descriptive English keywords per scene (e.g. "dark forest").
   * Provides a cascading list of fallbacks down to broader keywords if search yields 0 results.

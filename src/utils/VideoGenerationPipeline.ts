@@ -1,6 +1,7 @@
 import { Scene } from "../types";
 import { DEFAULT_CATALOG, getTtsUrl } from "../data";
-import { extractDescriptiveQueries } from "./keywordExtractor";
+import { extractDescriptiveQueries, detectNamedEntity } from "./keywordExtractor";
+import { mediaStorage } from "./indexedDBStorage";
 
 export enum PipelineStage {
   IDLE = "IDLE",
@@ -255,11 +256,41 @@ export class VideoGenerationPipeline {
             videoThumb = videoUrl;
             author = "Pollinations AI";
           } else {
-            // Smart 1-2 descriptive English keywords with cascading fallbacks
-            const queriesToTry = extractDescriptiveQueries(scene.keywords, scene.text);
+            // 1. DUAL-SOURCE ROUTING: Check if scene mentions a named entity (historical figure, real person, famous landmark)
+            const namedEntity = detectNamedEntity(scene.keywords, scene.text, scene.entity);
 
-            for (const query of queriesToTry) {
-              if (videoUrl) break;
+            if (namedEntity) {
+              log(`[NER Routing] Proper noun/historical entity detected: "${namedEntity}". Querying Wikimedia Commons API...`);
+              try {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 6000);
+                const wikiRes = await fetch(`/api/wikimedia/search?query=${encodeURIComponent(namedEntity)}`, {
+                  signal: controller.signal,
+                });
+                clearTimeout(timer);
+                if (wikiRes.ok) {
+                  const wikiData = await wikiRes.json();
+                  if (wikiData.hits && wikiData.hits.length > 0) {
+                    const bestHit = wikiData.hits[0];
+                    videoUrl = bestHit.url;
+                    previewUrl = bestHit.url;
+                    videoThumb = bestHit.thumbnail || bestHit.url;
+                    author = bestHit.author || "Wikimedia Commons (Public Domain)";
+                    log(`[Wikimedia Match] Found authentic public domain media for "${namedEntity}" on Wikimedia Commons.`);
+                  }
+                }
+              } catch (err) {
+                console.warn(`[Wikimedia Search Warning] Query "${namedEntity}":`, err);
+              }
+            }
+
+            // 2. STOCK API ROUTING & SMART FALLBACK: If generic scene or Wikimedia returned zero hits
+            if (!videoUrl) {
+              // Smart 1-2 descriptive English keywords with cascading fallbacks
+              const queriesToTry = extractDescriptiveQueries(scene.keywords, scene.text);
+
+              for (const query of queriesToTry) {
+                if (videoUrl) break;
 
               // 1. Pexels API
               if (pexelsKey || !pixabayKey) {
@@ -362,6 +393,7 @@ export class VideoGenerationPipeline {
                 }
               }
             }
+          }
 
             // Fallback to stock catalog if zero API matches
             if (!videoUrl) {

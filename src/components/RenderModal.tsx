@@ -6,6 +6,8 @@ import {
   Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu
 } from 'lucide-react';
 import fixWebmDuration from 'fix-webm-duration';
+import { downloadLargeMediaFile } from '../utils/streamDownloader';
+import { mediaStorage } from '../utils/indexedDBStorage';
 
 interface RenderModalProps {
   isOpen: boolean;
@@ -1646,22 +1648,37 @@ export default function RenderModal({
                 {language === 'am' ? 'የማቀናበሪያ ገጽ' : 'Render settings'}
               </button>
               
-              <a
-                href={
-                  renderedBlobUrl
-                    ? renderedBlobUrl.includes('download=true') || renderedBlobUrl.startsWith('blob:')
-                      ? renderedBlobUrl
-                      : `${renderedBlobUrl}&download=true`
-                    : '#'
-                }
-                download={`yotor_official_video_${Date.now()}.${downloadExtension}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => {
+              <button
+                type="button"
+                onClick={async () => {
                   if (exportQuota > 0) {
                     const nextQ = exportQuota - 1;
                     setExportQuota(nextQ);
                     localStorage.setItem('yotor_video_quota', String(nextQ));
+                  }
+
+                  if (renderedBlobUrl) {
+                    try {
+                      const fileName = `yotor_official_video_${Date.now()}.${downloadExtension}`;
+                      if (renderedBlobUrl.startsWith('blob:')) {
+                        const res = await fetch(renderedBlobUrl);
+                        const blob = await res.blob();
+                        await downloadLargeMediaFile({
+                          filename: fileName,
+                          blob,
+                        });
+                      } else {
+                        const a = document.createElement('a');
+                        a.href = renderedBlobUrl.includes('download=true') ? renderedBlobUrl : `${renderedBlobUrl}&download=true`;
+                        a.download = fileName;
+                        a.target = '_blank';
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(() => document.body.removeChild(a), 1000);
+                      }
+                    } catch (err) {
+                      window.open(renderedBlobUrl, '_blank');
+                    }
                   }
                 }}
                 className="flex-1 py-5 bg-gradient-to-r from-emerald-600 to-teal-650 hover:from-emerald-500 hover:to-teal-600 text-white font-black block text-center rounded-2xl text-sm shadow-xl shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer font-mono uppercase tracking-[0.1em] border border-emerald-400/20"
@@ -1671,7 +1688,7 @@ export default function RenderModal({
                   <Download size={20} className="stroke-[3px]" />
                   {language === 'am' ? 'ተጠናቋል! ቪዲዮውን ወደ ስልክዎ ይጫኑ' : 'DOWNLOAD MASTER VIDEO'}
                 </span>
-              </a>
+              </button>
             </div>
 
             {/* Direct High-Speed Download Buttons for Chrome / Telegram Export */}

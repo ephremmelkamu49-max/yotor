@@ -145,199 +145,210 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       preset = 'veryfast';
     }
 
-    if (onProgress) {
-      onProgress(`Downloading all ${req.scenes.length} video assets in parallel...`, 5);
-    }
-    console.log(`Starting parallel download of ${req.scenes.length} video assets...`);
-    
-    await Promise.all(req.scenes.map(async (scene, i) => {
-      const videoPath = path.join(tempDir, `vid_${i}.mp4`);
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          await downloadFile(scene.videoUrl, videoPath);
-          break;
-        } catch (e: any) {
-          retries--;
-          console.error(`Failed to download ${scene.videoUrl}, retries left: ${retries}`);
-          if (retries === 0) throw new Error(`Failed to download video for scene ${i + 1}: ${e.message}`);
-          await new Promise(r => setTimeout(r, 500));
-        }
-      }
-    }));
-
-    const sceneFiles: string[] = [];
+    // Batch Processing & Chunking Architecture for 10-30+ min videos
+    // Process scenes in small batches of 5 to prevent OOM RAM/Disk spikes
+    const BATCH_SIZE = 5;
+    const chunkFiles: string[] = [];
     let processedCount = 0;
 
-    // Process scenes sequentially with cached parallel downloads
-    for (let i = 0; i < req.scenes.length; i++) {
-      const scene = req.scenes[i];
+    for (let batchIdx = 0; batchIdx < req.scenes.length; batchIdx += BATCH_SIZE) {
+      const batchScenes = req.scenes.slice(batchIdx, batchIdx + BATCH_SIZE);
+      const batchSceneFiles: string[] = [];
+
       if (onProgress) {
-        onProgress(`Processing scene ${i + 1}/${req.scenes.length} (Rendering segment...)`, 20 + (i / req.scenes.length) * 60);
-      }
-      console.log(`Processing scene ${i + 1}/${req.scenes.length}...`);
-
-      const videoPath = path.join(tempDir, `vid_${i}.mp4`);
-      const audioPath = path.join(tempDir, `aud_${i}.wav`);
-      const outPath = path.join(tempDir, `out_${i}.mp4`);
-
-      // 2. If there's TTS, write it
-      if (scene.ttsAudioBuffer) {
-        await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
+        onProgress(`Processing video batch ${Math.floor(batchIdx / BATCH_SIZE) + 1}/${Math.ceil(req.scenes.length / BATCH_SIZE)} (scenes ${batchIdx + 1}-${Math.min(batchIdx + BATCH_SIZE, req.scenes.length)})...`, 5 + (batchIdx / req.scenes.length) * 75);
       }
 
-      const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
-
-      // 3. Format video: Lanczos scaling, cropping, 1:1 SAR, 30fps CFR, yuv420p + Ken Burns for static assets
-      const hasAudio = !!scene.ttsAudioBuffer;
-      
-      let baseScale = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},setsar=1,fps=30,format=yuv420p`;
-      if (isImage) {
-        const totalFrames = Math.max(30, Math.round(scene.duration * 30));
-        // Subtle Ken Burns slow zoom-in effect (1.00 -> 1.12)
-        baseScale = `zoompan=z='min(zoom+0.0012,1.12)':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height},${baseScale}`;
-      }
-
-      let finalFilter = baseScale;
-
-      // Apply subtle smooth fade in/out transitions for scene cuts
-      if (scene.duration >= 1.0) {
-        const fadeDur = Math.min(0.25, scene.duration / 4);
-        const fadeOutStart = Math.max(0, scene.duration - fadeDur).toFixed(2);
-        finalFilter += `,fade=t=in:st=0:d=${fadeDur.toFixed(2)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(2)}`;
-      }
-
-      // Apply Video Color Grading Filter
-      if (req.videoFilter) {
-        switch (req.videoFilter) {
-          case "sepia":
-            finalFilter += ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131";
+      // 1. Download videos on-demand for ONLY current batch
+      await Promise.all(batchScenes.map(async (scene, bIdx) => {
+        const globalIdx = batchIdx + bIdx;
+        const videoPath = path.join(tempDir, `vid_${globalIdx}.mp4`);
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await downloadFile(scene.videoUrl, videoPath);
             break;
-          case "grayscale":
-            finalFilter += ",hue=s=0";
-            break;
-          case "contrast":
-            finalFilter += ",eq=contrast=1.5:brightness=-0.05";
-            break;
-          case "vintage":
-            finalFilter += ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,eq=contrast=1.2:brightness=-0.05:saturation=0.8";
-            break;
-          case "teal":
-            finalFilter += ",hue=h=-15:s=1.35,eq=contrast=1.15";
-            break;
-          case "high-contrast":
-            finalFilter += ",eq=contrast=1.8:brightness=-0.05:saturation=1.25";
-            break;
+          } catch (e: any) {
+            retries--;
+            console.error(`Failed to download ${scene.videoUrl}, retries left: ${retries}`);
+            if (retries === 0) throw new Error(`Failed to download video for scene ${globalIdx + 1}: ${e.message}`);
+            await new Promise(r => setTimeout(r, 500));
+          }
         }
-      }
+      }));
 
-      // Apply Visual Style Harmonizer Tint
-      if (req.visualStyle) {
-        switch (req.visualStyle) {
-          case "realistic":
-            finalFilter += ",eq=contrast=1.05:brightness=0.0:saturation=1.05";
-            break;
-          case "cyberpunk":
-            finalFilter += ",hue=h=10:s=1.4,eq=contrast=1.1";
-            break;
-          case "3d-animation":
-            finalFilter += ",eq=contrast=1.1:brightness=0.02:saturation=1.3";
-            break;
-          case "watercolor":
-            finalFilter += ",eq=contrast=0.9:brightness=0.02:saturation=0.9,hue=h=5";
-            break;
-          case "anime":
-            finalFilter += ",eq=contrast=1.05:brightness=0.05:saturation=1.25";
-            break;
-        }
-      }
+      // 2. Render each scene in current batch
+      for (let bIdx = 0; bIdx < batchScenes.length; bIdx++) {
+        const scene = batchScenes[bIdx];
+        const globalIdx = batchIdx + bIdx;
 
-      // Apply Subtitles / Captions Drawtext Burn-In
-      if (req.subtitleStyle?.enabled && scene.caption) {
-        const cleanCaption = scene.caption
-          .replace(/['’]/g, "") // remove single quotes completely for 100% safety
-          .replace(/[:]/g, " ")  // replace colons with spaces
-          .replace(/\\/g, "");  // remove backslashes
+        const videoPath = path.join(tempDir, `vid_${globalIdx}.mp4`);
+        const audioPath = path.join(tempDir, `aud_${globalIdx}.wav`);
+        const outPath = path.join(tempDir, `out_${globalIdx}.mp4`);
 
-        const fontColor = req.subtitleStyle.color || "white";
-        const fontSize = Math.floor(height * 0.048);
-
-        let yPos = "h*0.82";
-        if (req.subtitleStyle.position === "middle") {
-          yPos = "h*0.5";
-        } else if (req.subtitleStyle.position === "top") {
-          yPos = "h*0.18";
+        if (scene.ttsAudioBuffer) {
+          await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
         }
 
-        let boxStyle = "";
-        if (req.subtitleStyle.backgroundColor) {
-          const bgColor = req.subtitleStyle.backgroundColor.replace("#", "0x");
-          boxStyle = `:box=1:boxcolor=${bgColor}@0.5:boxborderw=10`;
+        const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
+        const hasAudio = !!scene.ttsAudioBuffer;
+
+        let baseScale = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},setsar=1,fps=30,format=yuv420p`;
+        if (isImage) {
+          const totalFrames = Math.max(30, Math.round(scene.duration * 30));
+          // Dynamic Ken Burns pan & zoom effect (slow zoom-in from 1.00 -> 1.12)
+          baseScale = `zoompan=z='min(zoom+0.0012,1.12)':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height},${baseScale}`;
+        }
+
+        let finalFilter = baseScale;
+
+        if (scene.duration >= 1.0) {
+          const fadeDur = Math.min(0.25, scene.duration / 4);
+          const fadeOutStart = Math.max(0, scene.duration - fadeDur).toFixed(2);
+          finalFilter += `,fade=t=in:st=0:d=${fadeDur.toFixed(2)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(2)}`;
+        }
+
+        if (req.videoFilter) {
+          switch (req.videoFilter) {
+            case "sepia":
+              finalFilter += ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131";
+              break;
+            case "grayscale":
+              finalFilter += ",hue=s=0";
+              break;
+            case "contrast":
+              finalFilter += ",eq=contrast=1.5:brightness=-0.05";
+              break;
+            case "vintage":
+              finalFilter += ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,eq=contrast=1.2:brightness=-0.05:saturation=0.8";
+              break;
+            case "teal":
+              finalFilter += ",hue=h=-15:s=1.35,eq=contrast=1.15";
+              break;
+            case "high-contrast":
+              finalFilter += ",eq=contrast=1.8:brightness=-0.05:saturation=1.25";
+              break;
+          }
+        }
+
+        if (req.visualStyle) {
+          switch (req.visualStyle) {
+            case "realistic":
+              finalFilter += ",eq=contrast=1.05:brightness=0.0:saturation=1.05";
+              break;
+            case "cyberpunk":
+              finalFilter += ",hue=h=10:s=1.4,eq=contrast=1.1";
+              break;
+            case "3d-animation":
+              finalFilter += ",eq=contrast=1.1:brightness=0.02:saturation=1.3";
+              break;
+            case "watercolor":
+              finalFilter += ",eq=contrast=0.9:brightness=0.02:saturation=0.9,hue=h=5";
+              break;
+            case "anime":
+              finalFilter += ",eq=contrast=1.05:brightness=0.05:saturation=1.25";
+              break;
+          }
+        }
+
+        if (req.subtitleStyle?.enabled && scene.caption) {
+          const cleanCaption = scene.caption
+            .replace(/['’]/g, "")
+            .replace(/[:]/g, " ")
+            .replace(/\\/g, "");
+
+          const fontColor = req.subtitleStyle.color || "white";
+          const fontSize = Math.floor(height * 0.048);
+
+          let yPos = "h*0.82";
+          if (req.subtitleStyle.position === "middle") {
+            yPos = "h*0.5";
+          } else if (req.subtitleStyle.position === "top") {
+            yPos = "h*0.18";
+          }
+
+          let boxStyle = "";
+          if (req.subtitleStyle.backgroundColor) {
+            const bgColor = req.subtitleStyle.backgroundColor.replace("#", "0x");
+            boxStyle = `:box=1:boxcolor=${bgColor}@0.5:boxborderw=10`;
+          } else {
+            boxStyle = `:borderw=2:bordercolor=black`;
+          }
+
+          finalFilter += `,drawtext=text='${cleanCaption}':font='Sans':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yPos}${boxStyle}`;
+        }
+
+        let cmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -avoid_negative_ts make_zero `;
+        if (isImage) {
+          cmd += `-loop 1 `;
         } else {
-          boxStyle = `:borderw=2:bordercolor=black`;
+          cmd += `-stream_loop 50 `;
         }
 
-        // Use standard system font 'Sans' which is universally available on Linux
-        finalFilter += `,drawtext=text='${cleanCaption}':font='Sans':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yPos}${boxStyle}`;
-      }
+        cmd += `-i "${videoPath}" `;
 
-      // Execute FFmpeg command for segment
-      let cmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -avoid_negative_ts make_zero `;
-      if (isImage) {
-        cmd += `-loop 1 `;
-      } else {
-        cmd += `-stream_loop 50 `;
-      }
+        if (hasAudio) {
+          cmd += `-fflags +genpts -avoid_negative_ts make_zero -i "${audioPath}" `;
+        } else {
+          cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
+        }
 
-      cmd += `-i "${videoPath}" `;
+        cmd += `-vf "${finalFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
-      if (hasAudio) {
-        cmd += `-fflags +genpts -avoid_negative_ts make_zero -i "${audioPath}" `;
-      } else {
-        cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
-      }
+        console.log(`Running FFmpeg for scene segment ${globalIdx + 1}...`);
+        await runCommand(cmd);
 
-      // Precise duration constraint via -t while forcing constant frame rate and standard 90k timescale with crisp CRF quality and uniform GOP
-      cmd += `-vf "${finalFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+        const sceneExists = await fs.access(outPath).then(() => true).catch(() => false);
+        if (!sceneExists) {
+          throw new Error(`Failed to produce processed video file for scene ${globalIdx + 1}`);
+        }
 
-      console.log(`Running FFmpeg for scene segment ${i}...`);
-      await runCommand(cmd);
-
-      // Verify scene file exists
-      const sceneExists = await fs.access(outPath).then(() => true).catch(() => false);
-      if (!sceneExists) {
-        throw new Error(`Failed to produce processed video file for scene ${i}`);
-      }
-
-      // 4. IMMEDIATELY clean up raw downloaded asset and TTS WAV audio for this segment
-      try {
+        // Immediately clean up raw downloaded asset & WAV audio
         await fs.unlink(videoPath).catch(() => {});
         if (hasAudio) {
           await fs.unlink(audioPath).catch(() => {});
         }
-      } catch (cleanupErr) {
-        console.warn(`Eager scene ${i} asset cleanup failed:`, cleanupErr);
+
+        batchSceneFiles.push(outPath);
+        processedCount++;
       }
 
-      sceneFiles.push(outPath);
-      processedCount++;
-      if (onProgress) {
-        onProgress(`Processed scene ${processedCount}/${req.scenes.length}`, 5 + (processedCount / req.scenes.length) * 75);
+      // 3. Concat current batch into intermediate chunk_X.mp4
+      const chunkListPath = path.join(tempDir, `chunk_list_${batchIdx}.txt`);
+      const chunkListContent = batchSceneFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n");
+      await fs.writeFile(chunkListPath, chunkListContent);
+
+      const chunkOutPath = path.join(tempDir, `chunk_${Math.floor(batchIdx / BATCH_SIZE)}.mp4`);
+      const chunkConcatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${chunkListPath}" -c copy -movflags +faststart "${chunkOutPath}"`;
+      
+      try {
+        await runCommand(chunkConcatCmd);
+      } catch (err) {
+        const fallbackChunkCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${chunkListPath}" -c:v libx264 -preset superfast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${chunkOutPath}"`;
+        await runCommand(fallbackChunkCmd);
       }
+
+      chunkFiles.push(chunkOutPath);
+
+      // Clean up individual scene files for this batch immediately
+      for (const f of batchSceneFiles) {
+        await fs.unlink(f).catch(() => {});
+      }
+      await fs.unlink(chunkListPath).catch(() => {});
     }
 
-    // Concatenate all scenes using absolute paths with safe=0
-    if (onProgress) onProgress("Stitching scenes together...", 85);
+    // Concatenate all chunks using absolute paths with safe=0
+    if (onProgress) onProgress("Stitching chunks together...", 85);
     const listPath = path.join(tempDir, "list.txt");
-    const listContent = sceneFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n");
+    const listContent = chunkFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n");
     await fs.writeFile(listPath, listContent);
 
     const concatPath = path.join(tempDir, "concat.mp4");
-    // All segments are pre-rendered to identical 1080p geometry, 30fps CFR, YUV420p, and GOP=30.
+    // All chunk segments are pre-rendered to identical geometry, 30fps CFR, YUV420p, and GOP=30.
     // Try lightning fast direct stream-copy concatenation first for lossless seamless transition.
     const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${concatPath}"`;
-    console.log("Stitching video segments...");
-    if (onProgress) onProgress("Stitching scenes together (Final phase)...", 85);
+    console.log("Stitching video chunks...");
+    if (onProgress) onProgress("Stitching video chunks (Final phase)...", 85);
     
     try {
       await runCommand(concatCmd);
@@ -353,9 +364,9 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       throw new Error("Failed to produce concatenated video file.");
     }
 
-    // Eagerly delete all individual scene MP4 files as the concatenated master is successfully ready
-    console.log("Eagerly cleaning up intermediate scene files...");
-    for (const f of sceneFiles) {
+    // Eagerly delete all intermediate chunk MP4 files as the concatenated master is successfully ready
+    console.log("Eagerly cleaning up intermediate chunk files...");
+    for (const f of chunkFiles) {
       try {
         await fs.unlink(f).catch(() => {});
       } catch (e) {}
