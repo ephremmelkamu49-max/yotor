@@ -481,6 +481,13 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
   } catch (err) {
     console.error("Render error:", err);
+    // Delete the entire temp directory to prevent orphan files
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+      console.log(`[Storage Cleanup] Cleared temporary directory on error: ${tempDir}`);
+    } catch (rmErr) {
+      console.warn("Failed to delete temp dir on error:", rmErr);
+    }
     throw err;
   }
 }

@@ -18,7 +18,9 @@
     "buffer": "^6.0.3",
     "dotenv": "^17.2.3",
     "edge-tts-universal": "^1.4.0",
+    "esbuild": "^0.25.12",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.6.0",
     "fix-webm-duration": "^1.0.6",
     "google-tts-api": "^2.0.2",
     "lucide-react": "^0.546.0",
@@ -26,12 +28,11 @@
     "multer": "^2.2.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3",
-    "webm-duration-fix": "^1.0.4",
-    "esbuild": "^0.25.12",
     "tsx": "^4.23.1",
     "typescript": "~5.8.2",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite": "^6.2.3",
+    "vite-plugin-pwa": "^1.3.0",
+    "webm-duration-fix": "^1.0.4"
   },
   "devDependencies": {
     "@types/express": "^4.17.25",

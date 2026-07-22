@@ -6,11 +6,22 @@ import multer from "multer";
 import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/genai";
 import { EdgeTTS } from "edge-tts-universal";
 import dotenv from "dotenv";
+import { rateLimit } from "express-rate-limit";
 import { renderVideo, RenderRequest } from "./server/ffmpegRenderer.js";
+
+// 🛡️ UNCAUGHT ERROR HANDLING (Crash Prevention)
+process.on("uncaughtException", (error) => {
+  console.error("🔴 UNCAUGHT EXCEPTION DETECTED:", error);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("🔴 UNHANDLED REJECTION DETECTED at:", promise, "reason:", reason);
+});
 
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = 3000;
 
 // Ensure uploads directory exists
@@ -1766,10 +1777,22 @@ const renderJobs = {
   }
 };
 
+const cleanupJobFolder = async (filePath: string) => {
+  try {
+    const dirPath = path.dirname(filePath);
+    if (dirPath && dirPath.includes("yotor-render-") && fs.existsSync(dirPath)) {
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+      console.log(`[Storage Cleanup] Successfully cleaned up job folder: ${dirPath}`);
+    }
+  } catch (e) {
+    console.warn(`[Storage Cleanup] Failed to delete directory for path ${filePath}:`, e);
+  }
+};
+
 const cleanupOldJobs = async () => {
   try {
     const now = Date.now();
-    const maxAgeMs = 60 * 60 * 1000; // Keep files for 60 minutes so users have plenty of time to download
+    const maxAgeMs = 10 * 60 * 1000; // Keep files for at most 10 minutes to save disk space
     const jobsList = Array.from(memoryJobs.entries());
 
     let changed = false;
@@ -1789,24 +1812,16 @@ const cleanupOldJobs = async () => {
       const isTooOld = now - createdAt > maxAgeMs;
 
       // Keep track of completed or error jobs to only clean up excess non-active jobs
-      if (job.status !== "processing") {
+      if (job.status !== "processing" && job.status !== "waiting") {
         completedOrErrorCount++;
       }
 
-      // Restrict active storage: keep at most 6 completed/error jobs. Never clean up active "processing" jobs!
-      const isExcess = job.status !== "processing" && completedOrErrorCount > 6;
+      // Restrict active storage: keep at most 3 completed/error jobs to prevent disk overflow. Never clean up active processing jobs!
+      const isExcess = (job.status !== "processing" && job.status !== "waiting") && completedOrErrorCount > 3;
 
       if (isTooOld || isExcess) {
         if (job.outPath) {
-          try {
-            const dirPath = path.dirname(job.outPath);
-            if (dirPath && dirPath.includes("yotor-render-") && fs.existsSync(dirPath)) {
-              await fs.promises.rm(dirPath, { recursive: true, force: true }).catch(() => {});
-              console.log(`[Storage Cleanup] Successfully purged excess/stale job folder: ${dirPath}`);
-            }
-          } catch (e) {
-            console.warn(`[Storage Cleanup] Failed to delete directory for job ${id}:`, e);
-          }
+          await cleanupJobFolder(job.outPath);
         }
         memoryJobs.delete(id);
         changed = true;
@@ -1821,37 +1836,128 @@ const cleanupOldJobs = async () => {
   }
 };
 
-app.post("/api/render-ffmpeg", express.json({ limit: '500mb' }), async (req, res) => {
+// Set up a proactive 5-minute periodic interval to clean stale files
+setInterval(() => {
+  cleanupOldJobs().catch(err => console.error("Periodic cleanup error:", err));
+}, 5 * 60 * 1000);
+
+interface QueueTask {
+  jobId: string;
+  payload: RenderRequest;
+}
+
+class RenderQueue {
+  private queue: QueueTask[] = [];
+  private activeCount = 0;
+  private maxConcurrency = 2; // Maximum concurrent FFmpeg renderings allowed at once
+
+  enqueue(jobId: string, payload: RenderRequest) {
+    this.queue.push({ jobId, payload });
+    const job = renderJobs.get(jobId);
+    if (job) {
+      renderJobs.set(jobId, { 
+        ...job, 
+        status: "waiting", 
+        log: `Waiting in queue... Position: ${this.queue.length} of ${this.queue.length}` 
+      });
+    }
+    this.processNext();
+  }
+
+  private async processNext() {
+    if (this.activeCount >= this.maxConcurrency || this.queue.length === 0) {
+      this.updateWaitingPositions();
+      return;
+    }
+
+    const task = this.queue.shift()!;
+    this.activeCount++;
+    this.updateWaitingPositions();
+
+    const { jobId, payload } = task;
+    renderJobs.set(jobId, { 
+      status: "processing", 
+      progress: 0, 
+      log: "Slot acquired. Initiating compilation...", 
+      createdAt: Date.now() 
+    });
+
+    try {
+      console.log(`[Queue] Running job ${jobId} (Active slots: ${this.activeCount}/${this.maxConcurrency})`);
+      
+      // Safety timeout: 15 minutes limit per render job to prevent any frozen thread from blocking the queue
+      const renderPromise = renderVideo(payload, (msg, progress) => {
+        const job = renderJobs.get(jobId);
+        if (job) {
+          renderJobs.set(jobId, { ...job, progress, log: msg });
+        }
+      });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Video rendering exceeded safety limit timeout (15 minutes).")), 15 * 60 * 1000)
+      );
+
+      const outPath = await Promise.race([renderPromise, timeoutPromise]);
+      
+      console.log(`[Queue] Render job SUCCESS: ${jobId}`, outPath);
+      const currentJob = renderJobs.get(jobId) || {};
+      renderJobs.set(jobId, { ...currentJob, status: "done", progress: 100, log: "Compilation SUCCESS", outPath });
+    } catch (err: any) {
+      console.error(`[Queue] Render job FAILED: ${jobId}`, err);
+      const currentJob = renderJobs.get(jobId) || {};
+      renderJobs.set(jobId, { ...currentJob, status: "error", progress: 0, log: `Error: ${err.message}`, error: err.message });
+      
+      // Clean up directory if left over on failure
+      if (currentJob.outPath) {
+        await cleanupJobFolder(currentJob.outPath);
+      }
+    } finally {
+      this.activeCount--;
+      console.log(`[Queue] Freed slot. Active slots: ${this.activeCount}/${this.maxConcurrency}. Waiting queue size: ${this.queue.length}`);
+      this.processNext();
+    }
+  }
+
+  private updateWaitingPositions() {
+    this.queue.forEach((task, idx) => {
+      const job = renderJobs.get(task.jobId);
+      if (job && job.status === "waiting") {
+        renderJobs.set(task.jobId, {
+          ...job,
+          log: `Waiting in queue... Position: ${idx + 1} of ${this.queue.length}`
+        });
+      }
+    });
+  }
+}
+
+const renderQueue = new RenderQueue();
+
+// 🛡️ API Rate Limiter specifically to prevent DDoS on server CPUs via render-ffmpeg
+const renderRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 15, // Limit each IP to 15 render requests per 5 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many render requests from this IP. Please wait 5 minutes before submitting again."
+  }
+});
+
+app.post("/api/render-ffmpeg", renderRateLimiter, express.json({ limit: '500mb' }), async (req, res) => {
   const jobId = Math.random().toString(36).substring(2, 15);
   const payload = req.body as RenderRequest;
   
   // Trigger cleanup in background to proactively free memory/disk before starting the next compile
   cleanupOldJobs().catch(err => console.error("Background cleanup error:", err));
 
-  renderJobs.set(jobId, { status: "processing", progress: 0, log: "Starting render job...", createdAt: Date.now() });
+  renderJobs.set(jobId, { status: "waiting", progress: 0, log: "Initializing queue entry...", createdAt: Date.now() });
   
-  // Respond immediately with the jobId
+  // Respond immediately with the jobId so client can start polling status
   res.json({ jobId });
 
-  // Start the background job
-  (async () => {
-    try {
-      console.log(`Starting background render job: ${jobId}`);
-      const outPath = await renderVideo(payload, (msg, progress) => {
-        const job = renderJobs.get(jobId);
-        if (job) {
-          renderJobs.set(jobId, { ...job, progress, log: msg });
-        }
-      });
-      console.log(`Background render job complete: ${jobId}`, outPath);
-      const currentJob = renderJobs.get(jobId) || {};
-      renderJobs.set(jobId, { ...currentJob, status: "done", progress: 100, log: "Compilation SUCCESS", outPath });
-    } catch (err: any) {
-      console.error(`Background FFmpeg render job ${jobId} failed:`, err);
-      const currentJob = renderJobs.get(jobId) || {};
-      renderJobs.set(jobId, { ...currentJob, status: "error", progress: 0, log: `Error: ${err.message}`, error: err.message });
-    }
-  })();
+  // Add rendering job into the in-memory concurrency queue
+  renderQueue.enqueue(jobId, payload);
 });
 
 app.get("/api/render-jobs", (req, res) => { res.json(Array.from(renderJobs.entries())); });
@@ -1910,6 +2016,14 @@ app.get("/api/render-download", (req, res) => {
     "Access-Control-Allow-Headers": "*"
   };
 
+  const scheduleFolderCleanup = (filePath: string) => {
+    // Schedule a small delay of 15 seconds before deleting, ensuring client streaming range-requests
+    // and complete browser downloads fully succeed without abrupt network interruption.
+    setTimeout(async () => {
+      await cleanupJobFolder(filePath);
+    }, 15000);
+  };
+
   if (download) {
     console.log(`Using res.download for job ${jobId}`);
     return res.download(
@@ -1920,6 +2034,9 @@ app.get("/api/render-download", (req, res) => {
         if (err) {
           if (res.headersSent) return;
           console.error(`Download error for job ${jobId}:`, err);
+        } else {
+          console.log(`Download completed successfully for job ${jobId}. Scheduling cleanup.`);
+          scheduleFolderCleanup(job.outPath);
         }
       }
     );
@@ -1938,6 +2055,9 @@ app.get("/api/render-download", (req, res) => {
         if (err) {
           if (res.headersSent) return;
           console.error(`Playback streaming error for job ${jobId}:`, err);
+        } else {
+          console.log(`Playback complete/interrupted for job ${jobId}. Scheduling cleanup.`);
+          scheduleFolderCleanup(job.outPath);
         }
       }
     );
