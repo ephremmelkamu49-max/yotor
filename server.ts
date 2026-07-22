@@ -24,14 +24,20 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = 3000;
 
-// Ensure uploads directory exists
+// Ensure uploads and exports directories exist
 const uploadsDir = path.join(process.cwd(), "uploads");
+const exportsDir = path.join(process.cwd(), "public", "exports");
+
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (!fs.existsSync(exportsDir)) {
+  fs.mkdirSync(exportsDir, { recursive: true });
 }
 
 // Serve uploaded files statically
 app.use("/uploads", express.static(uploadsDir));
+app.use("/public/exports", express.static(exportsDir));
 
 // Multer disk storage configuration
 const storage = multer.diskStorage({
@@ -1899,13 +1905,22 @@ class RenderQueue {
 
       const outPath = await Promise.race([renderPromise, timeoutPromise]);
       
-      console.log(`[Queue] Render job SUCCESS: ${jobId}`, outPath);
+      const finalFileName = `video_${jobId}.mp4`;
+      const finalPath = path.join(exportsDir, finalFileName);
+      await fs.promises.copyFile(outPath, finalPath);
+      
+      // Clean up the temporary render directory
+      await cleanupJobFolder(outPath);
+      
+      const downloadUrl = `/public/exports/${finalFileName}`;
+
+      console.log(`[Queue] Render job SUCCESS: ${jobId}`, finalPath);
       const currentJob = renderJobs.get(jobId) || {};
-      renderJobs.set(jobId, { ...currentJob, status: "done", progress: 100, log: "Compilation SUCCESS", outPath });
+      renderJobs.set(jobId, { ...currentJob, status: "completed", progress: 100, log: "Compilation SUCCESS", outPath: finalPath, downloadUrl });
     } catch (err: any) {
       console.error(`[Queue] Render job FAILED: ${jobId}`, err);
       const currentJob = renderJobs.get(jobId) || {};
-      renderJobs.set(jobId, { ...currentJob, status: "error", progress: 0, log: `Error: ${err.message}`, error: err.message });
+      renderJobs.set(jobId, { ...currentJob, status: "failed", progress: 0, log: `Error: ${err.message}`, error: err.message });
       
       // Clean up directory if left over on failure
       if (currentJob.outPath) {
@@ -1944,30 +1959,30 @@ const renderRateLimiter = rateLimit({
   }
 });
 
-app.post("/api/render-ffmpeg", renderRateLimiter, express.json({ limit: '500mb' }), async (req, res) => {
+app.post("/api/render", renderRateLimiter, express.json({ limit: '500mb' }), async (req, res) => {
   const jobId = Math.random().toString(36).substring(2, 15);
   const payload = req.body as RenderRequest;
   
   // Trigger cleanup in background to proactively free memory/disk before starting the next compile
   cleanupOldJobs().catch(err => console.error("Background cleanup error:", err));
 
-  renderJobs.set(jobId, { status: "waiting", progress: 0, log: "Initializing queue entry...", createdAt: Date.now() });
+  renderJobs.set(jobId, { status: "processing", progress: 0, log: "Initializing queue entry...", createdAt: Date.now() });
   
   // Respond immediately with the jobId so client can start polling status
-  res.json({ jobId });
+  res.json({ jobId, status: "processing" });
 
   // Add rendering job into the in-memory concurrency queue
   renderQueue.enqueue(jobId, payload);
 });
 
 app.get("/api/render-jobs", (req, res) => { res.json(Array.from(renderJobs.entries())); });
-app.get("/api/render-status", (req, res) => {
-  const jobId = req.query.jobId as string;
+app.get("/api/status/:jobId", (req, res) => {
+  const jobId = req.params.jobId;
   const job = renderJobs.get(jobId);
   if (!job) {
     return res.status(404).json({ error: "Job not found" });
   }
-  if (job.status === "done" && job.outPath && fs.existsSync(job.outPath)) {
+  if (job.status === "completed" && job.outPath && fs.existsSync(job.outPath)) {
     const stats = fs.statSync(job.outPath);
     const sizeInMb = (stats.size / (1024 * 1024)).toFixed(2);
     return res.json({
@@ -1978,91 +1993,7 @@ app.get("/api/render-status", (req, res) => {
   res.json(job);
 });
 
-app.options("/api/render-download", (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  res.sendStatus(204);
-});
-
-app.get("/api/render-download", (req, res) => {
-  const jobId = req.query.jobId as string;
-  const download = req.query.download === "true";
-  const job = renderJobs.get(jobId);
-  
-  if (!job) {
-    console.warn(`Download failed: Job ${jobId} not found`);
-    return res.status(404).json({ error: "Job not found" });
-  }
-  
-  if (job.status !== "done" || !job.outPath) {
-    console.warn(`Download failed: Job ${jobId} status is ${job.status}`);
-    return res.status(400).json({ error: `Job not ready (Status: ${job.status})` });
-  }
-
-  // Verify file exists on disk
-  if (!fs.existsSync(job.outPath)) {
-    console.error(`Download failed: Output file missing at ${job.outPath}`);
-    return res.status(500).json({ error: "Rendered file missing on server. It may have been cleaned up." });
-  }
-
-  console.log(`Sending rendered file for job ${jobId} (download=${download}): ${job.outPath}`);
-  
-  const streamHeaders: Record<string, any> = {
-    "X-Accel-Buffering": "no",
-    "Cache-Control": "public, max-age=0, must-revalidate",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "*"
-  };
-
-  const scheduleFolderCleanup = (filePath: string) => {
-    // Schedule a small delay of 15 seconds before deleting, ensuring client streaming range-requests
-    // and complete browser downloads fully succeed without abrupt network interruption.
-    setTimeout(async () => {
-      await cleanupJobFolder(filePath);
-    }, 15000);
-  };
-
-  if (download) {
-    console.log(`Using res.download for job ${jobId}`);
-    return res.download(
-      job.outPath,
-      `yotor_official_video_${jobId}.mp4`,
-      { headers: streamHeaders },
-      (err) => {
-        if (err) {
-          if (res.headersSent) return;
-          console.error(`Download error for job ${jobId}:`, err);
-        } else {
-          console.log(`Download completed successfully for job ${jobId}. Scheduling cleanup.`);
-          scheduleFolderCleanup(job.outPath);
-        }
-      }
-    );
-  } else {
-    console.log(`Using res.sendFile for job ${jobId}`);
-    return res.sendFile(
-      job.outPath,
-      {
-        acceptRanges: true,
-        headers: {
-          ...streamHeaders,
-          "Content-Type": "video/mp4"
-        }
-      },
-      (err) => {
-        if (err) {
-          if (res.headersSent) return;
-          console.error(`Playback streaming error for job ${jobId}:`, err);
-        } else {
-          console.log(`Playback complete/interrupted for job ${jobId}. Scheduling cleanup.`);
-          scheduleFolderCleanup(job.outPath);
-        }
-      }
-    );
-  }
-});
+// Download endpoint removed - static files are now served directly from /public/exports
 
 // 5. Vite Dev Server & Static Production Routing
 async function startServer() {

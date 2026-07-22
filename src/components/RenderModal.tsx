@@ -863,7 +863,7 @@ export default function RenderModal({
       
       addLog("Starting backend compilation...");
       
-      const response = await fetch("/api/render-ffmpeg", {
+      const response = await fetch("/api/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -890,13 +890,13 @@ export default function RenderModal({
         if (abortController.signal.aborted) return;
 
         try {
-          const statusRes = await fetch(`/api/render-status?jobId=${jobId}`, { signal: abortController.signal });
+          const statusRes = await fetch(`/api/status/${jobId}`, { signal: abortController.signal });
           
           if (!statusRes.ok) {
             consecutiveErrors++;
             if (consecutiveErrors < 15) {
               console.warn(`[Render Poll] status is ${statusRes.status}, retrying shortly (attempt ${consecutiveErrors}/15)...`);
-              setTimeout(pollJob, 3500);
+              setTimeout(pollJob, 3000);
               return;
             }
             const text = await statusRes.text().catch(() => "");
@@ -913,7 +913,7 @@ export default function RenderModal({
             consecutiveErrors++;
             if (consecutiveErrors < 15) {
               console.warn(`[Render Poll] received HTML instead of JSON, retrying shortly (attempt ${consecutiveErrors}/15)...`);
-              setTimeout(pollJob, 3500);
+              setTimeout(pollJob, 3000);
               return;
             }
             throw new Error("Received invalid HTML page instead of status JSON from server");
@@ -926,7 +926,7 @@ export default function RenderModal({
             consecutiveErrors++;
             if (consecutiveErrors < 15) {
               console.warn(`[Render Poll] failed to parse JSON, retrying shortly (attempt ${consecutiveErrors}/15)...`);
-              setTimeout(pollJob, 3500);
+              setTimeout(pollJob, 3000);
               return;
             }
             throw new Error("Failed to parse server status JSON");
@@ -935,15 +935,15 @@ export default function RenderModal({
           // Reset error counter upon receiving a valid, parsed status
           consecutiveErrors = 0;
 
-          if (job.status === 'processing') {
+          if (job.status === 'processing' || job.status === 'waiting') {
             setProgress(job.progress || 0);
             if (job.log) addLog(job.log);
-            setTimeout(pollJob, 2500);
-          } else if (job.status === 'done') {
+            setTimeout(pollJob, 3000);
+          } else if (job.status === 'completed') {
             addLog("✅ [Cloud Render] Remote compilation complete!");
             setProgress(100);
 
-            const downloadUrl = `${window.location.origin}/api/render-download?jobId=${jobId}`;
+            const downloadUrl = job.downloadUrl;
             setDownloadExtension("mp4");
             
             const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
@@ -960,7 +960,30 @@ export default function RenderModal({
             addLog("✅ [Direct Download] ቪዲዮው በተሳካ ሁኔታ ተጠናቋል። አሁን በቀጥታ በከፍተኛ ፍጥነት ማውረድ ይችላሉ! (Video completed successfully! Ready for high-speed direct download!)");
             cloudRenderAbortControllerRef.current = null;
             if (onRenderComplete) onRenderComplete();
-          } else if (job.status === 'error') {
+
+            // Auto-trigger clean browser download natively
+            try {
+              addLog("Triggering automatic direct file download...");
+              
+              const a = document.createElement('a');
+              a.style.display = 'none';
+              a.href = downloadUrl;
+              a.download = `generated-video.mp4`;
+              document.body.appendChild(a);
+              a.click();
+              
+              // Clean up immediately
+              setTimeout(() => {
+                document.body.removeChild(a);
+              }, 500);
+              
+              addLog("✅ Automatic download triggered successfully.");
+            } catch (err) {
+              console.error("Auto-download failed:", err);
+              addLog("⚠️ Auto-download blocked or failed, please use the Download Video Now button below.");
+            }
+
+          } else if (job.status === 'failed' || job.status === 'error') {
             throw new Error(job.error || job.log || "Unknown server rendering error");
           }
         } catch (pollErr: any) {
@@ -1610,24 +1633,19 @@ export default function RenderModal({
 
                   if (renderedBlobUrl) {
                     try {
-                      const fileName = `yotor_official_video_${Date.now()}.${downloadExtension}`;
-                      if (renderedBlobUrl.startsWith('blob:')) {
-                        const res = await fetch(renderedBlobUrl);
-                        const blob = await res.blob();
-                        await downloadLargeMediaFile({
-                          filename: fileName,
-                          blob,
-                        });
-                      } else {
-                        const a = document.createElement('a');
-                        a.href = renderedBlobUrl.includes('download=true') ? renderedBlobUrl : `${renderedBlobUrl}&download=true`;
-                        a.download = fileName;
-                        a.target = '_blank';
-                        document.body.appendChild(a);
-                        a.click();
-                        setTimeout(() => document.body.removeChild(a), 1000);
-                      }
+                      const a = document.createElement('a');
+                      a.style.display = 'none';
+                      a.href = renderedBlobUrl;
+                      a.download = `generated-video.mp4`;
+                      document.body.appendChild(a);
+                      a.click();
+                      
+                      setTimeout(() => {
+                        document.body.removeChild(a);
+                      }, 500);
                     } catch (err) {
+                      console.error("Fallback download failed:", err);
+                      // Fallback to opening in a new tab
                       window.open(renderedBlobUrl, '_blank');
                     }
                   }
@@ -1637,7 +1655,7 @@ export default function RenderModal({
               >
                 <span className="flex items-center justify-center gap-2.5">
                   <Download size={20} className="stroke-[3px]" />
-                  {language === 'am' ? 'ተጠናቋል! ቪዲዮውን ወደ ስልክዎ ይጫኑ' : 'DOWNLOAD MASTER VIDEO'}
+                  {language === 'am' ? 'ተጠናቋል! ቪዲዮውን ወደ ስልክዎ ይጫኑ' : 'DOWNLOAD VIDEO NOW'}
                 </span>
               </button>
             </div>
