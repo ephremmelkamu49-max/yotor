@@ -166,6 +166,18 @@ export const GOOGLE_TTS_LANGUAGES = [
   { code: "fr", name: "French - Français" }
 ];
 
+export function getTtsUrl(text: string, voice: string = "en"): string {
+  if (!text) return "";
+  let url = `/api/tts?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(voice)}`;
+  if (voice && voice.startsWith("openai-")) {
+    const key = typeof window !== "undefined" ? (localStorage.getItem("openai_api_key") || "") : "";
+    if (key) {
+      url += `&openai_key=${encodeURIComponent(key)}`;
+    }
+  }
+  return url;
+}
+
 export const VISUAL_STYLES = [
   { id: 'realistic', name: 'Realistic / Cinematic', am: 'እውነተኛ / ሲኒማቲክ' },
   { id: '3d-animation', name: '3D Pixar Animation', am: '3D አኒሜሽን (Pixar)' },

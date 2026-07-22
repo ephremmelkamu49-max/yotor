@@ -5,6 +5,7 @@ import {
   DEFAULT_MUSIC,
   GOOGLE_TTS_LANGUAGES,
   VISUAL_STYLES,
+  getTtsUrl,
 } from "./data";
 import ScriptInput from "./components/ScriptInput";
 import Timeline from "./components/Timeline";
@@ -14,6 +15,7 @@ import AccessGate from "./components/AccessGate";
 import ProjectLibrary from "./components/ProjectLibrary";
 import { Language, translations } from "./translations";
 import { extractDescriptiveQueries } from "./utils/keywordExtractor";
+import { VideoGenerationPipeline, PipelineStage } from "./utils/VideoGenerationPipeline";
 
 // --- DEBUG PATCH ---
 const originalStringify = JSON.stringify;
@@ -57,16 +59,7 @@ import {
   Redo2,
 } from "lucide-react";
 
-export const getTtsUrl = (text: string, lang: string): string => {
-  let url = `/api/tts?text=${encodeURIComponent(text)}&lang=${lang}`;
-  if (lang && lang.startsWith("openai-")) {
-    const key = localStorage.getItem("openai_api_key") || "";
-    if (key) {
-      url += `&openai_key=${encodeURIComponent(key)}`;
-    }
-  }
-  return url;
-};
+export { getTtsUrl };
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => {
@@ -422,242 +415,27 @@ export default function App() {
       }
 
       if (videoMode === "stock" || videoMode === "pollinations") {
-        const stylePrefix =
-          videoMode === "pollinations"
-            ? "3d pixar animation cinematic highly detailed "
-            : "cinematic professional movement high depth of field ";
-        setLoadingStage(t.stage_matching_cinematic);
+        const pipeline = new VideoGenerationPipeline();
+        
+        const pipelineResult = await pipeline.execute({
+          script,
+          visualStyle: projectConfig.visualStyle,
+          inputMode,
+          videoMode,
+          voiceLanguage: projectConfig.voiceLanguage,
+          credentials: { pexelsKey, pixabayKey, coverrKey },
+          concurrencyLimit: 3,
+          onStageChange: (stage, message) => {
+            setLoadingStage(message);
+          },
+          onScenesUpdated: (updatedScenes) => {
+            setScenes(updatedScenes);
+          },
+        });
 
-        // Parallelize searches to speed up process significantly while staying respectul of limits
-        const populatedScenes: Scene[] = await Promise.all(
-          rawScenes.map(async (scene: any, i: number) => {
-            let videoUrl = "";
-            let previewUrl = "";
-            let videoThumb = "";
-            let author = "";
-
-            // Random jitter to spread out hits slightly even in parallel
-            await new Promise((r) => setTimeout(r, i * 120));
-
-            // Format search query dynamically to prevent extremely long prompts and non-ASCII character URLs (e.g. Amharic) which trigger 431 errors
-            let cleanKeywords = (scene.keywords || "")
-              // Strip brackets like [0:00 - 1:15]
-              .replace(/\[\d+:\d+\s*-\s*\d+:\d+\]/gi, "")
-              .replace(/\(\s*The\s+Hook\s*\)/gi, "")
-              .replace(/['"“»«]/g, "")
-              .trim();
-
-            // Extract ASCII only characters (English/numbers) so we don't blow up the url encode
-            let asciiKeywords = cleanKeywords.replace(/[^\x00-\x7F]+/g, " ").replace(/\s+/g, " ").trim();
-
-            if (!asciiKeywords || asciiKeywords.length < 3) {
-              // Extract English terms from scene.text if any exist
-              const textAscii = (scene.text || "").replace(/[^\x00-\x7F]+/g, " ").trim();
-              const words = textAscii.split(/\s+/).filter(w => w.length > 2 && !w.includes("[") && !w.includes("]"));
-              if (words.length > 0) {
-                asciiKeywords = words.slice(0, 5).join(" ");
-              } else {
-                asciiKeywords = "cinematic highly detailed epic storytelling visual";
-              }
-            }
-
-            // Cap overall length at 120 characters to guarantee no 431 HTTP error
-            if (asciiKeywords.length > 120) {
-              asciiKeywords = asciiKeywords.substring(0, 120).trim();
-            }
-
-            const searchQuery = `${stylePrefix}${asciiKeywords}`;
-
-            if (videoMode === "pollinations") {
-              // Use Pollinations AI (Free 3D Animation Image Generator)
-              const seed = Math.floor(Math.random() * 1000000);
-              videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(searchQuery)}?width=1280&height=720&nologo=true&seed=${seed}`;
-              videoThumb = videoUrl;
-              author = "Pollinations Model";
-            } else {
-              // Extract 1-2 visually descriptive English keywords with cascading fallbacks
-              const uniqueQueries = extractDescriptiveQueries(scene.keywords, scene.text);
-
-              // Attempt each query until success
-              for (const query of uniqueQueries) {
-                if (videoUrl) break;
-
-                // Try Pexels first
-                if (pexelsKey || !pixabayKey) {
-                  try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 6000);
-                    const pexelsResponse = await fetch(
-                      `/api/pexels/search?query=${encodeURIComponent(query)}`,
-                      {
-                        headers: { "x-pexels-key": pexelsKey || "" },
-                        signal: controller.signal,
-                      },
-                    );
-                    clearTimeout(timeout);
-                    if (pexelsResponse.ok) {
-                      const text = await pexelsResponse.text();
-                      if (text && !text.trim().startsWith("<")) {
-                        const pexelsData = JSON.parse(text);
-                        if (pexelsData.videos?.length > 0) {
-                          // Iterate through videos to find a clip with HD/4K MP4 files
-                          for (const bestClip of pexelsData.videos) {
-                            const files = bestClip.video_files || [];
-                            const mp4Files = files.filter(
-                              (f: any) =>
-                                (f.file_type === "video/mp4" || f.link?.includes(".mp4")),
-                            );
-                            // Sort MP4 files by resolution descending to get absolute maximum quality!
-                            const sortedMp4Files = [...mp4Files].sort((a: any, b: any) => {
-                              const sizeA = (Number(a.width) || 0) * (Number(a.height) || 0);
-                              const sizeB = (Number(b.width) || 0) * (Number(b.height) || 0);
-                              return sizeB - sizeA;
-                            });
-
-                            // Filter strictly for HD/4K resolution (minimum width >= 1280 or height >= 720)
-                            const hdMp4Files = sortedMp4Files.filter(
-                              (f: any) => Number(f.width) >= 1280 || Number(f.height) >= 720 || f.quality === "hd" || f.quality === "4k" || f.quality === "uhd"
-                            );
-
-                            const highestQualityVid = hdMp4Files[0] || sortedMp4Files[0];
-
-                            // Reject SD clips (<720p) unless no other file exists, preferring strictly HD/4K
-                            if (highestQualityVid && (Number(highestQualityVid.width) >= 1280 || Number(highestQualityVid.height) >= 720 || highestQualityVid.quality === "hd" || highestQualityVid.quality === "4k" || highestQualityVid.quality === "uhd")) {
-                              const previewVid = sortedMp4Files.find((f: any) => Number(f.width) <= 1280 && Number(f.width) >= 640) || highestQualityVid;
-                              videoUrl = highestQualityVid.link || "";
-                              previewUrl = previewVid?.link || videoUrl;
-                              videoThumb = bestClip.video_pictures?.[0]?.picture || "";
-                              author = bestClip.user?.name || "Stock Creator";
-                              break;
-                            }
-                          }
-                        }
-                      }
-                    }
-                  } catch (e) {
-                    console.warn(`Pexels try for "${query}" failed/timed out:`, e);
-                  }
-                }
-
-                // If Pexels fails, try Pixabay
-                if (!videoUrl && (pixabayKey || !pexelsKey)) {
-                  try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 6000);
-                    const pixabayResponse = await fetch(
-                      `/api/pixabay/search?query=${encodeURIComponent(query)}`,
-                      {
-                        headers: { "x-pixabay-key": pixabayKey || "" },
-                        signal: controller.signal,
-                      },
-                    );
-                    clearTimeout(timeout);
-                    if (pixabayResponse.ok) {
-                      const text = await pixabayResponse.text();
-                      if (text && !text.trim().startsWith("<")) {
-                        const pixabayData = JSON.parse(text);
-                        if (pixabayData.hits?.length > 0) {
-                          // Iterate through hits to find a clip with HD or 4K streams
-                          for (const bestClip of pixabayData.hits) {
-                            const videos = bestClip.videos || {};
-                            // Strictly pick large (1080p/4K) or medium (720p HD). Reject small/tiny SD clips!
-                            let selectedVid = null;
-                            let previewVid = null;
-
-                            if (videos.large && videos.large.url && (Number(videos.large.width) >= 1280 || Number(videos.large.height) >= 720 || Number(videos.large.size) > 0)) {
-                              selectedVid = videos.large;
-                              previewVid = videos.medium || videos.large;
-                            } else if (videos.medium && videos.medium.url && (Number(videos.medium.width) >= 1280 || Number(videos.medium.height) >= 720)) {
-                              selectedVid = videos.medium;
-                              previewVid = videos.medium;
-                            }
-
-                            if (selectedVid && selectedVid.url) {
-                              videoUrl = selectedVid.url;
-                              previewUrl = previewVid?.url || videoUrl;
-                              videoThumb = bestClip.picture_id
-                                ? `https://i.vimeocdn.com/video/${bestClip.picture_id}_295x166.jpg`
-                                : "";
-                              author = bestClip.user || "Pixabay Creator";
-                              break;
-                            }
-                          }
-                        }
-                      }
-                    }
-                  } catch (e) {
-                    console.warn(`Pixabay try for "${query}" failed/timed out:`, e);
-                  }
-                }
-
-                // If Pexels & Pixabay fail, try Coverr
-                if (!videoUrl && (coverrKey || (!pexelsKey && !pixabayKey))) {
-                  try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 6000);
-                    const coverrResponse = await fetch(
-                      `/api/coverr/search?query=${encodeURIComponent(query)}`,
-                      {
-                        headers: { "x-coverr-key": coverrKey || "" },
-                        signal: controller.signal,
-                      },
-                    );
-                    clearTimeout(timeout);
-                    if (coverrResponse.ok) {
-                      const text = await coverrResponse.text();
-                      if (text && !text.trim().startsWith("<")) {
-                        const coverrData = JSON.parse(text);
-                        if (coverrData.hits?.length > 0) {
-                          const bestClip = coverrData.hits[0];
-                          const selectedVid = bestClip.urls?.mp4 || bestClip.urls?.mp4_download || '';
-                          if (selectedVid) {
-                            videoUrl = selectedVid;
-                            videoThumb = bestClip.thumbnail || "";
-                            author = bestClip.author?.name || "Coverr Creator";
-                          }
-                        }
-                      }
-                    }
-                  } catch (e) {
-                    console.warn(`Coverr try for "${query}" failed/timed out:`, e);
-                  }
-                }
-              }
-
-              // Fallback to stock catalog if both APIs returned zero
-              if (!videoUrl) {
-                const fallbackVid = DEFAULT_CATALOG[i % DEFAULT_CATALOG.length];
-                videoUrl = fallbackVid.url;
-                videoThumb = fallbackVid.thumbnail;
-                author = fallbackVid.author;
-              }
-
-              // Ultimate security failover
-              if (!videoUrl) {
-                videoUrl =
-                  "https://samplelib.com/lib/preview/mp4/sample-5s.mp4";
-              }
-            }
-
-            return {
-              id: scene.id || `sc_${i}_${Date.now()}`,
-              text: scene.text,
-              keywords: scene.keywords,
-              caption: scene.caption || scene.text,
-              duration: scene.duration || 4.5,
-              videoUrl,
-              previewUrl: previewUrl || videoUrl,
-              videoThumb,
-              videoAuthor: author,
-              videoAuthorUrl: "#",
-              voiceoverUrl: getTtsUrl(scene.text, projectConfig.voiceLanguage),
-              originalIndex: i,
-              transitionToNext: "random" as any,
-            };
-          }),
-        );
-
-        setScenes(populatedScenes);
+        if (pipelineResult.scenes && pipelineResult.scenes.length > 0) {
+          setScenes(pipelineResult.scenes);
+        }
       } else {
         // Veo Mode: Generate AI Video
         setLoadingStage(

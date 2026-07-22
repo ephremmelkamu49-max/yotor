@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Scene, ProjectConfig } from '../types';
-import { DEFAULT_MUSIC } from '../data';
+import { DEFAULT_MUSIC, getTtsUrl } from '../data';
 import { Language, translations } from '../translations';
-import { getTtsUrl } from '../App';
 import { 
   Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu
 } from 'lucide-react';

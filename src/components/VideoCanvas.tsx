@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Scene, AspectRatio, ProjectConfig, AnimationStyle } from "../types";
-import { DEFAULT_MUSIC, DEFAULT_CATALOG, GOOGLE_TTS_LANGUAGES } from "../data";
+import { DEFAULT_MUSIC, DEFAULT_CATALOG, GOOGLE_TTS_LANGUAGES, getTtsUrl } from "../data";
 import { Language, translations } from "../translations";
-import { getTtsUrl } from "../App";
 import {
   Play,
   Pause,
