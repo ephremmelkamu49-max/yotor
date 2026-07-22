@@ -69,7 +69,7 @@ export default function RenderModal({
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
   const [downloadExtension, setDownloadExtension] = useState<string>('webm');
   const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('premium');
-  const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('local');
+  const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('cloud');
   const [ramLimit, setRamLimit] = useState<number>(() => {
     const saved = localStorage.getItem('yotor_ram_limit');
     return saved ? parseInt(saved, 10) : 32; // Default to 32 GB
@@ -1091,66 +1091,26 @@ export default function RenderModal({
               )}
             </div>
 
-            {/* 📥 የማውረጃ ዘዴ ይምረጡ / Choose Download Option */}
+            {/* 📥 የማውረጃ ዘዴ መረጃ / Choose Download Option (Server-side default for 100% Mobile Stability) */}
             <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
-              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block flex items-center gap-1">
-                📥 {language === 'am' ? 'የማውረጃ ዘዴ ይምረጡ (Choose Download Option)' : 'Choose Export Method'}
+              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-550 uppercase block flex items-center gap-1">
+                📥 {language === 'am' ? 'የማውረጃ ዘዴ (Export Method)' : 'Export Method'}
               </span>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* 1. Local Browser Render (Fast and 100% Reliable) */}
-                <button
-                  type="button"
-                  onClick={() => setExportMethod('local')}
-                  className={`p-3.5 border rounded-xl flex flex-col text-left transition-all ${
-                    exportMethod === 'local'
-                      ? 'bg-emerald-500/5 border-emerald-500 text-emerald-400 font-bold shadow-sm shadow-emerald-500/5'
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold flex items-center gap-1.5">
-                      ⚡ {language === 'am' ? 'በስልክ/በኮምፒውተር ላይ ፈጣን ማውረጃ' : 'Local Device Render'}
-                    </span>
-                    {exportMethod === 'local' && (
-                      <span className="text-[8px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider">
-                        {language === 'am' ? 'የሚመከር' : 'Recommended'}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[9.5px] text-zinc-400 mt-2 leading-normal font-sans">
-                    {language === 'am' 
-                      ? 'ያለ ምንም ተጨማሪ የኢንተርኔት ዳታ በቀጥታ በስልክዎ/በኮምፒተርዎ ላይ በሰከንዶች ውስጥ ያዘጋጃል። 100% አስተማማኝ፣ እጅግ ፈጣን እና ቀላል ነው! 🚀' 
-                      : 'Renders in your browser using hardware acceleration. Uses 0 additional internet bandwidth, 100% reliable and instant download.'}
+              <div className="p-3.5 bg-indigo-500/5 border border-indigo-500/20 rounded-xl flex flex-col text-left">
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold text-indigo-400 flex items-center gap-1.5">
+                    ☁️ {language === 'am' ? 'በክላውድ ሰርቨር ላይ ማቀናበሪያ (ንቁ)' : 'Cloud Server Render (Active)'}
                   </span>
-                </button>
-
-                {/* 2. Cloud Server Render */}
-                <button
-                  type="button"
-                  onClick={() => setExportMethod('cloud')}
-                  className={`p-3.5 border rounded-xl flex flex-col text-left transition-all ${
-                    exportMethod === 'cloud'
-                      ? 'bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold shadow-sm shadow-indigo-500/5'
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold flex items-center gap-1.5">
-                      ☁️ {language === 'am' ? 'በክላውድ ሰርቨር ላይ ማቀናበሪያ' : 'Cloud Server Render'}
-                    </span>
-                    {exportMethod === 'cloud' && (
-                      <span className="text-[8px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider font-bold">
-                        {language === 'am' ? 'ሰርቨር' : 'Server'}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[9.5px] text-zinc-400 mt-2 leading-normal font-sans">
-                    {language === 'am' 
-                      ? 'ማቀናበሩን በክላውድ ሰርቨራችን ላይ ያደርጋል። ይህ ምርጫ ከፍተኛ የኢንተርኔት ግንኙነት (ፈጣን ዳታ) እና ረጅም ጊዜ ሊጠይቅ ይችላል።' 
-                      : 'Compiles frames on high-performance cloud GPUs. Requires high internet speed to upload resources and may take longer.'}
+                  <span className="text-[8px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 px-1.5 py-0.5 rounded uppercase font-mono tracking-wider font-bold">
+                    {language === 'am' ? 'ሰርቨር' : 'Server'}
                   </span>
-                </button>
+                </div>
+                <p className="text-[9.5px] text-zinc-400 mt-2 leading-normal font-sans">
+                  {language === 'am' 
+                    ? 'ሁሉም ከባድ የቪዲዮ ስራዎች በከፍተኛ አፈፃፀም ባለው Node.js/Express የጀርባ ሰርቨር (Backend Server) ላይ ያለምንም መቆራረጥ ይከናወናሉ። ይህ ስልክዎ እንዳይሞቅ እና የማህደረ ትውስታ (OOM) ብልሽት ሙሉ በሙሉ ይከላከላል! 🚀' 
+                    : 'Heavy rendering operations run on a high-performance Node.js/Express backend. This prevents device overheating and eliminates browser Out-Of-Memory (OOM) crashes completely.'}
+                </p>
               </div>
             </div>
 
@@ -1471,29 +1431,19 @@ export default function RenderModal({
                     alert(language === 'am' ? 'እባክዎ መጀመሪያ ነጻ ኮታዎን ይሙሉ!' : 'Please refill your free quota first!');
                     return;
                   }
-                  if (exportMethod === 'local') {
-                    initiateRenderAndStitching(); // Local browser-side renderer
-                  } else {
-                    initiateCloudRender(); // Cloud server-side renderer
-                  }
+                  initiateCloudRender(); // Always compile on the cloud to bypass mobile OOM limits!
                 }}
                 className={`py-4 text-white font-black text-xs sm:text-sm uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 transition-all border ${
                   exportQuota > 0
-                    ? exportMethod === 'local'
-                      ? 'bg-emerald-600 hover:bg-emerald-550 border-emerald-400/30 shadow-xl shadow-emerald-600/40 active:scale-95 cursor-pointer'
-                      : 'bg-indigo-600 hover:bg-indigo-505 border-indigo-400/30 shadow-xl shadow-indigo-600/40 active:scale-95 cursor-pointer'
+                    ? 'bg-indigo-600 hover:bg-indigo-505 border-indigo-400/30 shadow-xl shadow-indigo-600/40 active:scale-95 cursor-pointer'
                     : 'bg-zinc-800 border-zinc-900 cursor-not-allowed opacity-40'
                 }`}
                 id="render-start-btn"
               >
                 <Download size={18} fill="currentColor" className={exportQuota > 0 ? "animate-bounce" : ""} />
                 {language === 'am' 
-                  ? (exportQuota > 0 
-                      ? (exportMethod === 'local' ? 'በስልክ ላይ ማቀናበሪያ ጀምር (የሚመከር)' : 'በክላውድ ላይ ማቀናበሪያ ጀምር') 
-                      : 'ኮታ የለም • ኮታውን ይሙሉ') 
-                  : (exportQuota > 0 
-                      ? (exportMethod === 'local' ? 'START LOCAL EXPORT (RECOMMENDED)' : 'START CLOUD EXPORT') 
-                      : 'EMPTY QUOTA • REFILL NOW')}
+                  ? (exportQuota > 0 ? 'በክላውድ ላይ ማቀናበሪያ ጀምር' : 'ኮታ የለም • ኮታውን ይሙሉ') 
+                  : (exportQuota > 0 ? 'START CLOUD EXPORT' : 'EMPTY QUOTA • REFILL NOW')}
               </button>
             </div>
           </div>
