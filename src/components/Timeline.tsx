@@ -380,17 +380,17 @@ export default function Timeline({
   };
 
   return (
-    <div className="bg-[#0c0c0e]/95 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-5" id="timeline-orchestra">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+    <div className="bento-card p-6 space-y-5" id="timeline-orchestra">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-violet-500/15 pb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-xl">
+          <div className="p-3 bg-[#00D2D3]/10 text-[#00D2D3] rounded-2xl border border-[#00D2D3]/20 shadow-[0_0_15px_rgba(0,210,211,0.2)]">
             <Film size={20} />
           </div>
           <div>
-            <h2 className="text-sm uppercase tracking-widest font-semibold text-zinc-300">{t.timeline_title}</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <h2 className="text-sm uppercase tracking-widest font-extrabold text-white font-display">{t.timeline_title}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
               {language === 'am' ? 'ጠቅላላ የቪዲዮ ክፍሎች ርዝመት:' : 'Total Playback Duration:'}{" "}
-              <span className="text-indigo-400 font-mono font-bold">
+              <span className="text-[#00D2D3] font-mono font-bold">
                 {parseFloat(totalDuration) >= 60 
                   ? `${Math.floor(parseFloat(totalDuration) / 60)}m ${Math.round(parseFloat(totalDuration) % 60)}s` 
                   : `${totalDuration}s`}
@@ -401,30 +401,30 @@ export default function Timeline({
         <div className="flex flex-wrap gap-2">
           {projectConfig && onUpdateConfig && (
             <>
-              <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors cursor-pointer select-none">
+              <label className="flex items-center gap-2 px-3 py-1.5 bg-[#141026] border border-violet-500/20 text-slate-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-xl transition-colors cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={!!projectConfig.autoDuckNarration}
                   onChange={(e) => onUpdateConfig({ autoDuckNarration: e.target.checked })}
-                  className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  className="rounded border-violet-500/30 bg-[#0B0914] text-[#00D2D3] focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 />
                 <span>{language === 'am' ? 'ራስ-ሰር ድምጽ ቅነሳ (Auto-Duck)' : 'Auto-Duck Music'}</span>
               </label>
-              <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors cursor-pointer select-none">
+              <label className="flex items-center gap-2 px-3 py-1.5 bg-[#141026] border border-violet-500/20 text-slate-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-xl transition-colors cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={!!projectConfig.autoAlignVoiceover}
                   onChange={(e) => onUpdateConfig({ autoAlignVoiceover: e.target.checked })}
-                  className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  className="rounded border-violet-500/30 bg-[#0B0914] text-[#00D2D3] focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 />
                 <span>{language === 'am' ? 'የጊዜ አሰላለፍ (Auto-Align TTS)' : 'Auto-Align Subtitles to TTS'}</span>
               </label>
-              <label className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors cursor-pointer select-none">
+              <label className="flex items-center gap-2 px-3 py-1.5 bg-[#141026] border border-violet-500/20 text-slate-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-xl transition-colors cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={!!projectConfig.autoLevelVoiceover}
                   onChange={(e) => onUpdateConfig({ autoLevelVoiceover: e.target.checked })}
-                  className="rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  className="rounded border-violet-500/30 bg-[#0B0914] text-[#00D2D3] focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 />
                 <span>{language === 'am' ? 'ድምጽ ማመጣጠኛ (Auto-Level Voice)' : 'Auto-Level Voiceovers'}</span>
               </label>
@@ -434,16 +434,16 @@ export default function Timeline({
             <>
               <button
                 onClick={() => setIsTransitionPlannerOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-600 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-all shadow-lg shadow-cyan-500/5"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-[#00D2D3]/10 border border-[#00D2D3]/30 text-[#00D2D3] hover:bg-[#00D2D3] hover:text-[#0B0914] text-xs font-semibold uppercase tracking-wider rounded-xl transition-all shadow-lg"
               >
-                <Layers size={14} className="text-cyan-400" />
+                <Layers size={14} className="text-[#00D2D3]" />
                 {language === 'am' ? 'የሽግግር እቅድ' : 'Transition Planner'}
               </button>
               <button
                 onClick={() => setIsSmartTimingOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-450 hover:bg-indigo-600 hover:text-white text-xs font-semibold uppercase tracking-wider rounded-lg transition-all shadow-lg shadow-indigo-500/5"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-[#FF6B6B]/10 border border-[#FF6B6B]/30 text-[#FF6B6B] hover:bg-[#FF6B6B] hover:text-white text-xs font-semibold uppercase tracking-wider rounded-xl transition-all shadow-lg"
               >
-                <Sparkles size={14} className="text-indigo-400 animate-pulse" />
+                <Sparkles size={14} className="text-[#FF6B6B] animate-pulse" />
                 {language === 'am' ? 'ብልህ ጊዜ' : 'Smart Timing'}
               </button>
               <button

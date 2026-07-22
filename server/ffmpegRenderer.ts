@@ -22,6 +22,15 @@ async function runCommand(cmd: string) {
 // Prefer native system ffmpeg (/usr/bin/ffmpeg) over node_modules binary to guarantee architecture compatibility and executable permissions
 const ffmpegPath = "/usr/bin/ffmpeg";
 
+async function hasAudioStream(filePath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync(`/usr/bin/ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "${filePath}"`);
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export interface RenderScene {
   id: string;
   videoUrl: string;
@@ -191,7 +200,8 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         }
 
         const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
-        const hasAudio = !!scene.ttsAudioBuffer;
+        const hasTTS = !!scene.ttsAudioBuffer;
+        const videoHasAudio = !isImage && (await hasAudioStream(videoPath));
 
         let baseScale = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},setsar=1,fps=30,format=yuv420p`;
         if (isImage) {
@@ -287,13 +297,38 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
         cmd += `-i "${videoPath}" `;
 
-        if (hasAudio) {
+        if (hasTTS) {
           cmd += `-fflags +genpts -avoid_negative_ts make_zero -i "${audioPath}" `;
-        } else {
+        } else if (!videoHasAudio) {
           cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
         }
 
-        cmd += `-vf "${finalFilter}" -t ${scene.duration} -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+        // Build unified filter_complex for both video and dynamic audio ducking
+        let filterGraph = "";
+        if (hasTTS && videoHasAudio) {
+          // Both Voiceover (TTS) and Ambient Video Audio exist
+          // Dynamic sidechain compression: lower ambient sound to 10-15% when TTS speaks, smoothly recover to 40-50% during pauses
+          filterGraph = `[0:v]${finalFilter}[v];` +
+            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[tts];` +
+            `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.45[ambient];` +
+            `[tts]asplit=2[tts_main][tts_sc];` +
+            `[ambient][tts_sc]sidechaincompress=threshold=0.03:ratio=10:attack=15:release=300:level_in=1.0[ambient_ducked];` +
+            `[tts_main][ambient_ducked]amix=inputs=2:duration=first:dropout_transition=2[a]`;
+        } else if (hasTTS && !videoHasAudio) {
+          // Voiceover exists, video is silent or an image
+          filterGraph = `[0:v]${finalFilter}[v];` +
+            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[a]`;
+        } else if (!hasTTS && videoHasAudio) {
+          // No Voiceover for this scene, keep ambient video audio at audible level
+          filterGraph = `[0:v]${finalFilter}[v];` +
+            `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.5[a]`;
+        } else {
+          // Neither Voiceover nor ambient audio exist, pad with silence
+          filterGraph = `[0:v]${finalFilter}[v];` +
+            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a]`;
+        }
+
+        cmd += `-filter_complex "${filterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
         console.log(`Running FFmpeg for scene segment ${globalIdx + 1}...`);
         await runCommand(cmd);
@@ -305,7 +340,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
         // Immediately clean up raw downloaded asset & WAV audio
         await fs.unlink(videoPath).catch(() => {});
-        if (hasAudio) {
+        if (hasTTS) {
           await fs.unlink(audioPath).catch(() => {});
         }
 
@@ -408,14 +443,24 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
           cumulativeTime += scene.duration;
         }
 
-        const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol}`;
+        const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol.toFixed(2)}`;
         
-        // Mix concatenated audio with music audio
-        // amix with duration=first ensures the mixed audio stream terminates exactly when the video terminates
-        // Using -c:v copy allows lightning-fast rendering while preserving the perfect CFR and PTS structure of the input video
-        const mixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -movflags +faststart "${finalPath}"`;
-        console.log("Mixing background music...");
-        await runCommand(mixCmd);
+        // Dynamic sidechain ducking filter graph: compress background music down to ~10-15% when voiceover/master audio is active
+        const musicMixFilter = `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[bg_music];` +
+          `[0:a]aformat=sample_rates=44100:channel_layouts=stereo[main_audio];` +
+          `[main_audio]asplit=2[main_out][main_sc];` +
+          `[bg_music][main_sc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=350[bg_ducked];` +
+          `[main_out][bg_ducked]amix=inputs=2:duration=first:dropout_transition=2[a]`;
+
+        const mixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${concatPath}" -i "${musicPath}" -filter_complex "${musicMixFilter}" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
+        console.log("Mixing background music with dynamic audio ducking...");
+        try {
+          await runCommand(mixCmd);
+        } catch (mixErr) {
+          console.warn("Sidechain ducking mix failed for background music, falling back to standard amix:", mixErr);
+          const fallbackMixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
+          await runCommand(fallbackMixCmd);
+        }
         
         const finalExists = await fs.access(finalPath).then(() => true).catch(() => false);
         if (!finalExists) {

@@ -1657,15 +1657,15 @@ export default function VideoCanvas({
 
   return (
     <div
-      className="bg-[#0c0c0e]/95 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-5 flex flex-col h-full justify-between"
+      className="bento-card p-6 space-y-5 flex flex-col h-full justify-between"
       id="visual-studio"
     >
       {/* Aspect Ratio and Configurations Head */}
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-violet-500/15 pb-3">
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 text-xs text-indigo-400 font-bold bg-indigo-500/5 px-2.5 py-1 rounded-md border border-indigo-500/15">
-              <Sparkles size={11} className="fill-current" />
+            <span className="flex items-center gap-1.5 text-xs text-[#00D2D3] font-extrabold bg-[#00D2D3]/10 px-3 py-1.5 rounded-xl border border-[#00D2D3]/20 shadow-[0_0_12px_rgba(0,210,211,0.2)] font-display">
+              <Sparkles size={13} className="fill-current text-[#00D2D3]" />
               {language === "am"
                 ? "የቀጥታ ቅንብር (Live Compositor)"
                 : "Live Compositor"}
@@ -1673,48 +1673,48 @@ export default function VideoCanvas({
           </div>
 
           {/* Dynamic tabs */}
-          <div className="flex items-center overflow-x-auto whitespace-nowrap flex-nowrap scrollbar-none max-w-full bg-slate-900/80 p-1 border border-slate-800 rounded-xl text-xs gap-1">
+          <div className="flex items-center overflow-x-auto whitespace-nowrap flex-nowrap scrollbar-none max-w-full bg-[#0B0914] p-1.5 border border-violet-500/20 rounded-2xl text-xs gap-1">
             <button
               onClick={() => setShowConfigTabs("ratio")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "ratio" ? "bg-cyan-600 text-white font-bold shadow" : "text-slate-500 hover:text-slate-300"}`}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${showConfigTabs === "ratio" ? "bg-[#00D2D3] text-[#0B0914] shadow-md" : "text-slate-400 hover:text-slate-200"}`}
             >
               {t.tab_size}
             </button>
             <button
               onClick={() => setShowConfigTabs("subtitle")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "subtitle" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${showConfigTabs === "subtitle" ? "bg-[#FF6B6B] text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
             >
               {t.tab_subtitles}
             </button>
             <button
               onClick={() => setShowConfigTabs("music")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "music" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${showConfigTabs === "music" ? "bg-violet-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
             >
               {t.tab_music}
             </button>
             <button
               onClick={() => setShowConfigTabs("motion")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "motion" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${showConfigTabs === "motion" ? "bg-violet-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
             >
               {t.tab_motion}
             </button>
             <button
               onClick={() => setShowConfigTabs("filters")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ${showConfigTabs === "filters" ? "bg-indigo-650 text-white font-bold" : "text-zinc-500 hover:text-zinc-300"}`}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${showConfigTabs === "filters" ? "bg-violet-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
             >
               Filters
             </button>
             <button
               onClick={() => setShowConfigTabs("analyzer")}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 flex items-center gap-1 ${showConfigTabs === "analyzer" ? "bg-indigo-650 text-white font-bold" : "text-indigo-400 hover:text-indigo-300"}`}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 ${showConfigTabs === "analyzer" ? "bg-[#00D2D3] text-[#0B0914] shadow-md" : "text-[#00D2D3] hover:text-[#00D2D3]/80"}`}
               title="Analyze active video scene with Gemini 3.1 Pro"
             >
               <Cpu
-                size={12}
+                size={13}
                 className={
                   showConfigTabs === "analyzer"
-                    ? "text-white"
-                    : "text-indigo-400"
+                    ? "text-[#0B0914]"
+                    : "text-[#00D2D3]"
                 }
               />
               <span>{t.tab_analyzer}</span>

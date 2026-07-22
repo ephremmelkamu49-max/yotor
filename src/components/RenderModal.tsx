@@ -997,19 +997,20 @@ export default function RenderModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-50 flex items-center justify-center p-4 animate-fadeIn" id="render-workbench">
-      <div className="bg-[#0c0c0e]/95 border border-zinc-805 rounded-3xl max-w-xl w-full p-6 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] relative">
+    <div className="fixed inset-0 bg-[#0B0914]/90 backdrop-blur-2xl z-50 flex items-center justify-center p-4 animate-fadeIn" id="render-workbench">
+      <div className="bento-card max-w-xl w-full p-6 relative overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Visual particles glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-32 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-36 bg-[#00D2D3]/10 rounded-full blur-[90px] pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-64 h-32 bg-[#FF6B6B]/10 rounded-full blur-[90px] pointer-events-none" />
 
         {/* Header bar */}
-        <div className="text-center pb-4 mb-5 border-b border-zinc-805">
-          <h1 className="text-sm font-light text-zinc-100 uppercase tracking-widest justify-center flex items-center gap-2">
-            <FileVideo className="text-indigo-400" size={18} />
+        <div className="text-center pb-4 mb-5 border-b border-violet-500/15">
+          <h1 className="text-sm font-extrabold text-white uppercase tracking-widest justify-center flex items-center gap-2 font-display">
+            <FileVideo className="text-[#00D2D3]" size={18} />
             {t.render_studio}
           </h1>
-          <p className="text-xs text-zinc-500 mt-1.5">
+          <p className="text-xs text-slate-400 mt-1.5 font-sans">
             {renderStatus === 'idle' && (language === 'am' ? 'የቪዲዮ ማውረጃ ምርጫዎችን ያስተካክሉ' : 'Configure video export parameters')}
             {(renderStatus === 'rendering' || renderStatus === 'processing') && t.render_log_assembling}
             {renderStatus === 'completed' && (language === 'am' ? 'ቪዲዮው በተሳካ ሁኔታ ተጠናቋል!' : 'Master export completed successfully!')}

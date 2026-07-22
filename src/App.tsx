@@ -667,49 +667,59 @@ export default function App() {
 
   return (
     <AccessGate>
-      <div className="min-h-screen bg-[#020617] text-slate-100 font-sans antialiased pb-12 selection:bg-cyan-500/30 selection:text-cyan-200">
-        {/* Absolute visual space sparks */}
-        <div className="fixed top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-cyan-950/20 via-blue-900/10 to-transparent blur-[120px] pointer-events-none" />
-        <div className="absolute top-4 left-6 py-1 px-3 bg-cyan-500/10 border border-cyan-500/20 text-[10px] uppercase font-mono tracking-widest text-cyan-400 rounded-full flex items-center gap-1.5 shadow-lg shadow-cyan-500/5">
-          <Sparkles size={11} className="fill-current text-cyan-500" />
-          YOTOR STUDIO NEXUS
+      <div className="min-h-screen bg-[#0B0914] text-slate-100 font-sans antialiased pb-12 selection:bg-[#00D2D3] selection:text-[#0B0914] relative overflow-x-hidden">
+        {/* Animated Cyber-Organic Aurora background blobs */}
+        <div className="aurora-bg-container">
+          <div className="aurora-blob-1" />
+          <div className="aurora-blob-2" />
+          <div className="aurora-blob-3" />
         </div>
 
-        {/* Main Container Head */}
-        <header className="max-w-[90rem] mx-auto px-6 pt-16 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10 border-b border-white/5">
-          <div>
-            <div className="flex items-center gap-4">
-              <div className="p-3.5 bg-gradient-to-br from-cyan-400 to-blue-600 text-white rounded-2xl shadow-xl shadow-cyan-500/20 ring-1 ring-white/10">
-                <Video size={26} className="text-white drop-shadow-md" />
+        {/* Top Status Badge */}
+        <div className="pt-4 px-6 max-w-[92rem] mx-auto flex items-center justify-between relative z-10">
+          <div className="py-1.5 px-3.5 bg-[#141026]/80 border border-[#00D2D3]/30 text-[10px] uppercase font-mono tracking-widest text-[#00D2D3] rounded-full flex items-center gap-2 backdrop-blur-xl shadow-[0_0_15px_rgba(0,210,211,0.15)]">
+            <Sparkles size={12} className="text-[#00D2D3] animate-pulse" />
+            <span>YOTOR AURORA STUDIO NEXUS</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#00D2D3] animate-ping" />
+            <span className="text-[10px] font-mono text-[#00D2D3] uppercase tracking-wider">LIVE GPU ENGINE</span>
+          </div>
+        </div>
+
+        {/* Main Header */}
+        <header className="max-w-[92rem] mx-auto px-6 pt-6 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+          <div className="flex items-center gap-4">
+            <div className="p-4 bg-gradient-to-br from-[#00D2D3] to-[#7000FF] text-white rounded-3xl shadow-lg shadow-[#00D2D3]/25 ring-1 ring-white/20 active:scale-95 transition-transform">
+              <Video size={28} className="text-white drop-shadow-md" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] uppercase tracking-[0.25em] font-extrabold text-[#00D2D3] font-mono">
+                  {t.logo_sub || "NEXT-GEN CYBER-STUDIO"}
+                </span>
               </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_12px_rgba(34,211,238,0.8)] animate-pulse"></span>
-                  <span className="text-[10px] uppercase tracking-[0.25em] font-black text-cyan-400">
-                    {t.logo_sub || "CINEMATIC ENGINE"}
-                  </span>
-                </div>
-                <h1 className="text-4xl font-black text-white font-sans tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-                  {t.studio_title}
-                </h1>
-              </div>
+              <h1 className="text-3xl md:text-4xl font-extrabold text-white font-display tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-[#00D2D3]">
+                {t.studio_title}
+              </h1>
             </div>
           </div>
 
-          <div className="flex items-center flex-wrap gap-3">
+          <div className="flex items-center flex-wrap gap-2.5">
             {/* Visual Undo Button */}
             <button
               type="button"
               onClick={handleUndo}
               disabled={undoStack.length === 0}
-              className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl border transition-all text-[10px] uppercase tracking-wider font-bold ${
+              className={`btn-aurora-glass flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-[10px] uppercase tracking-wider font-bold ${
                 undoStack.length > 0
-                  ? "bg-slate-900/80 backdrop-blur-md border-white/10 text-slate-200 hover:bg-slate-800 hover:text-white hover:border-white/20 active:scale-[0.98]"
-                  : "bg-slate-950/40 border-white/5 text-slate-600 cursor-not-allowed opacity-50"
+                  ? "text-slate-200 hover:text-white"
+                  : "opacity-40 cursor-not-allowed"
               }`}
               title={language === "am" ? "ድርጊት መልስ (Ctrl+Z)" : "Undo Last Action (Ctrl+Z)"}
             >
-              <Undo2 size={13} className={undoStack.length > 0 ? "text-indigo-400" : "text-slate-600"} />
+              <Undo2 size={14} className={undoStack.length > 0 ? "text-[#00D2D3]" : "text-slate-500"} />
               <span className="hidden xl:inline">{language === "am" ? "መልስ" : "Undo"}</span>
             </button>
 
@@ -718,34 +728,34 @@ export default function App() {
               type="button"
               onClick={handleRedo}
               disabled={redoStack.length === 0}
-              className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl border transition-all text-[10px] uppercase tracking-wider font-bold ${
+              className={`btn-aurora-glass flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-[10px] uppercase tracking-wider font-bold ${
                 redoStack.length > 0
-                  ? "bg-slate-900/80 backdrop-blur-md border-white/10 text-slate-200 hover:bg-slate-800 hover:text-white hover:border-white/20 active:scale-[0.98]"
-                  : "bg-slate-950/40 border-white/5 text-slate-600 cursor-not-allowed opacity-50"
+                  ? "text-slate-200 hover:text-white"
+                  : "opacity-40 cursor-not-allowed"
               }`}
               title={language === "am" ? "የተመለሰውን መልስ (Ctrl+Y)" : "Redo Action (Ctrl+Y)"}
             >
-              <Redo2 size={13} className={redoStack.length > 0 ? "text-indigo-400" : "text-slate-600"} />
+              <Redo2 size={14} className={redoStack.length > 0 ? "text-[#00D2D3]" : "text-slate-500"} />
               <span className="hidden xl:inline">{language === "am" ? "ድገም" : "Redo"}</span>
             </button>
 
-            {/* Elegant Settings Toggle Button */}
+            {/* Settings Button */}
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-900/80 backdrop-blur-md border border-white/10 hover:border-white/20 hover:bg-slate-800 text-slate-300 hover:text-white text-[10px] uppercase tracking-widest font-bold rounded-2xl transition-all relative"
+              className="btn-aurora-glass flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] uppercase tracking-widest font-bold relative"
             >
-              <Settings size={14} className="text-slate-400" />
+              <Settings size={14} className="text-[#00D2D3]" />
               <span>{t.settings}</span>
               {deferredPrompt && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500 ring-2 ring-[#020617]"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF6B6B] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#FF6B6B] ring-2 ring-[#0B0914]"></span>
                 </span>
               )}
             </button>
 
-            {/* Application Refresh / Hard Reset */}
+            {/* Refresh App */}
             <button
               type="button"
               onClick={() => {
@@ -758,18 +768,18 @@ export default function App() {
                 localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft, replacer));
                 window.location.reload();
               }}
-              className="flex items-center justify-center gap-2 px-5 py-3 bg-slate-900/80 backdrop-blur-md border border-white/10 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-white/20 text-[10px] uppercase tracking-widest font-bold rounded-2xl transition-all"
+              className="btn-aurora-glass flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] uppercase tracking-widest font-bold"
               title="Refresh / Reload Application"
             >
-              <RefreshCw size={14} />
-              <span className="hidden sm:inline">Refresh App</span>
+              <RefreshCw size={14} className="text-slate-300" />
+              <span className="hidden sm:inline">Refresh</span>
             </button>
 
-
+            {/* Export Master Video Button */}
             <button
               onClick={() => setIsRenderOpen(true)}
               disabled={scenes.length === 0}
-              className="group relative flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-[11px] uppercase tracking-widest rounded-2xl transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] disabled:opacity-30 disabled:pointer-events-none active:scale-[0.98] ring-1 ring-white/20"
+              className="btn-aurora-coral flex items-center justify-center gap-2 px-5 py-2.5 text-[11px] uppercase tracking-widest disabled:opacity-30 disabled:pointer-events-none"
               id="bake-video-btn"
             >
               <Download size={16} className="stroke-[2.5px] drop-shadow-md" />
@@ -778,8 +788,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Primary Layout Grid */}
-        <main className="max-w-[90rem] mx-auto px-6 pt-10 grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
+        {/* Primary Bento Grid Layout */}
+        <main className="max-w-[92rem] mx-auto px-6 pt-4 grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
           {/* Left Column: Inputs & Scenarios Sequence (Grids 7) */}
           <div className="lg:col-span-7 space-y-8 flex flex-col">
             <ScriptInput
