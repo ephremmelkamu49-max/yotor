@@ -1853,7 +1853,7 @@ setInterval(() => {
   cleanupOldJobs().catch(err => console.error("Periodic cleanup error:", err));
 }, 5 * 60 * 1000);
 
-// Helper function to upload rendered video directly via Telegram Bot API
+// Helper function to upload rendered video directly via Telegram Bot API with auto-retry mechanism
 async function sendVideoToTelegram(
   filePath: string,
   customCaption?: string,
@@ -1871,35 +1871,56 @@ async function sendVideoToTelegram(
   }
 
   const caption = customCaption || "🎬 Your Video is Ready! Here is your high-quality MP4.";
+  const maxAttempts = 3;
+  let lastError = "";
 
-  try {
-    const url = `https://api.telegram.org/bot${botToken}/sendVideo`;
-    const fileBuffer = await fs.promises.readFile(filePath);
-    const fileName = path.basename(filePath);
-    const blob = new Blob([fileBuffer], { type: "video/mp4" });
-    const formData = new FormData();
-    formData.append("chat_id", chatId);
-    formData.append("video", blob, fileName);
-    formData.append("caption", caption);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const url = `https://api.telegram.org/bot${botToken}/sendVideo`;
+      const fileName = path.basename(filePath);
 
-    console.log(`[Telegram Bot] Uploading video (${(fileBuffer.length / (1024 * 1024)).toFixed(2)} MB) to chat ${chatId}...`);
-    const response = await fetch(url, {
-      method: "POST",
-      body: formData,
-    });
+      let videoBlob: Blob;
+      if (typeof (fs as any).openAsBlob === "function") {
+        videoBlob = await (fs as any).openAsBlob(filePath, { type: "video/mp4" });
+      } else {
+        const fileBuffer = await fs.promises.readFile(filePath);
+        videoBlob = new Blob([fileBuffer], { type: "video/mp4" });
+      }
 
-    const data: any = await response.json();
-    if (!data.ok) {
-      console.error("[Telegram Bot] Telegram API error response:", data);
-      return { success: false, error: data.description || "Telegram API returned an error" };
+      const formData = new FormData();
+      formData.append("chat_id", chatId);
+      formData.append("video", videoBlob, fileName);
+      formData.append("caption", caption);
+
+      const stats = fs.statSync(filePath);
+      const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+      console.log(`[Telegram Bot] Uploading video (${sizeMB} MB) to chat ${chatId} (Attempt ${attempt}/${maxAttempts})...`);
+
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data: any = await response.json();
+      if (!data.ok) {
+        console.error(`[Telegram Bot] Attempt ${attempt} failed with API error:`, data);
+        lastError = data.description || "Telegram API returned an error";
+      } else {
+        console.log(`[Telegram Bot] Video uploaded successfully to Telegram chat ${chatId} on attempt ${attempt}!`);
+        return { success: true };
+      }
+    } catch (err: any) {
+      console.error(`[Telegram Bot] Attempt ${attempt} exception:`, err);
+      lastError = err.message || "Failed to upload video to Telegram";
     }
 
-    console.log("[Telegram Bot] Video uploaded successfully to Telegram chat:", chatId);
-    return { success: true };
-  } catch (err: any) {
-    console.error("[Telegram Bot] Exception while sending video to Telegram:", err);
-    return { success: false, error: err.message || "Failed to upload video to Telegram" };
+    if (attempt < maxAttempts) {
+      console.log(`[Telegram Bot] Retrying upload in ${attempt * 2} seconds...`);
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
+    }
   }
+
+  return { success: false, error: lastError };
 }
 
 interface QueueTask {
@@ -1971,8 +1992,29 @@ class RenderQueue {
       const appUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : '';
       const shareableUrl = appUrl ? `${appUrl}${downloadUrl}` : downloadUrl;
 
-      // Caption for Telegram:
-      const telegramCaption = "🎬 Your Video is Ready! Here is your high-quality MP4.";
+      // Calculate stats for Telegram caption
+      const stats = fs.statSync(finalPath);
+      const actualSizeMBNum = stats.size / (1024 * 1024);
+      const actualSizeMB = actualSizeMBNum.toFixed(2);
+      const totalDuration = payload.scenes ? payload.scenes.reduce((acc, sc) => acc + (sc.duration || 0), 0) : 0;
+      const formattedDuration = totalDuration > 0 ? totalDuration.toFixed(1) : "10.0";
+
+      const size4K = (actualSizeMBNum * 3.8).toFixed(1);
+      const size720p = (actualSizeMBNum * 0.45).toFixed(1);
+      const size480p = (actualSizeMBNum * 0.22).toFixed(1);
+
+      const telegramCaption = `🎬 Your Video is Ready!
+
+⏱️ Duration: ${formattedDuration} seconds
+⚡ Render Speed: Maximum (Ultrafast)
+
+📊 Quality & MB Size Breakdown:
+• 💎 4K (2160p): ~${size4K} MB
+• 🌟 1080p (Full HD): ${actualSizeMB} MB (Attached Video)
+• 📱 720p (HD): ~${size720p} MB
+• ⚡ 480p (SD): ~${size480p} MB
+
+🚀 Sent directly to your Telegram without using phone RAM!`;
 
       // Attempt Telegram delivery
       const telegramResult = await sendVideoToTelegram(

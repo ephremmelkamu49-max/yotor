@@ -144,14 +144,14 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     }
     
     let crf = 16;
-    let preset = 'superfast';
+    let preset = 'ultrafast';
     
     if (req.exportQuality === '720p') {
       crf = 18;
-      preset = 'superfast';
+      preset = 'ultrafast';
     } else if (req.exportQuality === '4k') {
       crf = 14;
-      preset = 'veryfast';
+      preset = 'ultrafast';
     }
 
     // Batch Processing & Chunking Architecture for 10-30+ min videos
@@ -328,7 +328,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
             `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a]`;
         }
 
-        cmd += `-filter_complex "${filterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+        cmd += `-filter_complex "${filterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
         console.log(`Running FFmpeg for scene segment ${globalIdx + 1}...`);
         await runCommand(cmd);
@@ -359,7 +359,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       try {
         await runCommand(chunkConcatCmd);
       } catch (err) {
-        const fallbackChunkCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${chunkListPath}" -c:v libx264 -preset superfast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${chunkOutPath}"`;
+        const fallbackChunkCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${chunkListPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${chunkOutPath}"`;
         await runCommand(fallbackChunkCmd);
       }
 
@@ -389,7 +389,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       await runCommand(concatCmd);
     } catch (concatErr) {
       console.warn("Stream copy concat failed, falling back to unified re-encode:", concatErr);
-      const fallbackConcatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -preset superfast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
+      const fallbackConcatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
       await runCommand(fallbackConcatCmd);
     }
 
