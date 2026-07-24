@@ -2693,6 +2693,7 @@ export default function VideoCanvas({
             ref={canvasRef}
             className={`${getAspectClass(projectConfig.aspectRatio)} rounded-2xl shadow-2xl shadow-black/80`}
             id="rendering-canvas"
+            style={{ transform: 'translateZ(0)', willChange: 'transform', WebkitFontSmoothing: 'antialiased' }}
           />
           
 
@@ -2743,7 +2744,7 @@ export default function VideoCanvas({
                 playsInline
                 crossOrigin="anonymous"
                 className="pointer-events-none absolute -z-50 w-64 h-36 object-cover opacity-[0.002]"
-                style={{ transform: 'translateZ(0)', willChange: 'transform, opacity', WebkitFontSmoothing: 'antialiased', objectFit: 'cover' }}
+                style={{ objectFit: "cover" }}
                 preload="auto"
                 onCanPlayThrough={() => {
                   if (idx === playbackIndex) {

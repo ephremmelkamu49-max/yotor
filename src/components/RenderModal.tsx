@@ -3,11 +3,8 @@ import { Scene, ProjectConfig } from '../types';
 import { DEFAULT_MUSIC, getTtsUrl } from '../data';
 import { Language, translations } from '../translations';
 import { 
-  Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu
+  Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu, Send, Copy, Check, ExternalLink, MessageSquare, Share2
 } from 'lucide-react';
-import fixWebmDuration from 'fix-webm-duration';
-import { downloadLargeMediaFile } from '../utils/streamDownloader';
-import { mediaStorage } from '../utils/indexedDBStorage';
 
 interface RenderModalProps {
   isOpen: boolean;
@@ -56,10 +53,10 @@ export default function RenderModal({
 
   const updateProgressForward = (nextVal: number) => {
     setProgress((prev) => {
-      let quantized = Math.round(nextVal / 10) * 10;
+      let quantized = Math.round(nextVal / 5) * 5;
       quantized = Math.max(0, Math.min(100, quantized));
       if (quantized >= 100 && nextVal < 99.5) {
-        quantized = 90;
+        quantized = 95;
       }
       return Math.max(prev, quantized);
     });
@@ -67,9 +64,30 @@ export default function RenderModal({
   const [renderLogs, setRenderLogs] = useState<string[]>([]);
   const [renderOption, setRenderOption] = useState<'full' | 'fast'>('full');
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
-  const [downloadExtension, setDownloadExtension] = useState<string>('webm');
+  const [shareableDirectUrl, setShareableDirectUrl] = useState<string | null>(null);
+  const [telegramStatus, setTelegramStatus] = useState<{ sent?: boolean; error?: string }>({});
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [downloadExtension, setDownloadExtension] = useState<string>('mp4');
   const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('premium');
-  const [exportMethod, setExportMethod] = useState<'local' | 'cloud'>('cloud');
+  
+  // Telegram Bot Token and Chat ID state
+  const [telegramBotToken, setTelegramBotToken] = useState<string>(() => localStorage.getItem('yotor_telegram_bot_token') || '');
+  const [telegramChatId, setTelegramChatId] = useState<string>(() => localStorage.getItem('yotor_telegram_chat_id') || '');
+  const [showTelegramSettings, setShowTelegramSettings] = useState<boolean>(false);
+
+  const handleSaveTelegramConfig = (token: string, chatId: string) => {
+    setTelegramBotToken(token);
+    setTelegramChatId(chatId);
+    localStorage.setItem('yotor_telegram_bot_token', token);
+    localStorage.setItem('yotor_telegram_chat_id', chatId);
+  };
+
+  const handleCopyLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
+  };
+
   const [ramLimit, setRamLimit] = useState<number>(() => {
     const saved = localStorage.getItem('yotor_ram_limit');
     return saved ? parseInt(saved, 10) : 32; // Default to 32 GB
@@ -138,34 +156,10 @@ export default function RenderModal({
   };
 
   const cleanupRenderSubprocesses = () => {
-    if (renderLoopTimeoutRef.current) {
-      clearInterval(renderLoopTimeoutRef.current);
-    }
     if (cloudRenderIntervalRef.current) {
       clearInterval(cloudRenderIntervalRef.current);
       cloudRenderIntervalRef.current = null;
     }
-    if (cloudRenderAbortControllerRef.current) {
-      cloudRenderAbortControllerRef.current.abort();
-      cloudRenderAbortControllerRef.current = null;
-    }
-    if (currentRenderAudioRef.current) {
-      currentRenderAudioRef.current.pause();
-      currentRenderAudioRef.current = null;
-    }
-    if (renderBackgroundMusicRef.current) {
-      renderBackgroundMusicRef.current.pause();
-      renderBackgroundMusicRef.current = null;
-    }
-    
-    // clean audio contexts
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-      audioCtxRef.current.close().catch(() => {});
-    }
-    audioCtxRef.current = null;
-    audioDestNodeRef.current = null;
-    audioSourcesRef.current = [];
-    recordedChunksRef.current = [];
   };
 
   const updateRenderedBlobUrl = (newUrl: string | null) => {
@@ -177,857 +171,109 @@ export default function RenderModal({
     });
   };
 
-  const initiateRenderAndStitching = async () => {
-    if (!canvasElement) {
-      setRenderStatus('failed');
-      addLog("Critical failure: Render canvas element is offline.");
-      return;
-    }
-
-    try {
-      cleanupRenderSubprocesses();
-      setRenderStatus('rendering');
-      setProgress(0);
-      recordedChunksRef.current = [];
-      renderIndexRef.current = 0;
-      renderTimeRef.current = 0;
-      setRenderLogs([]);
-      
-      let scenesToRender = renderOption === 'fast' 
-        ? scenes.slice(0, Math.min(2, scenes.length)) // Render first 2 scenes for fast testing 
-        : [...scenes];
-      
-      if (projectConfig.isVoiceEnabled) {
-        addLog("Pre-calculating scene narration durations for perfect video synchronization...");
-        const scenesWithExactDuration = await Promise.all(scenesToRender.map(async (scene) => {
-          if (!scene.voiceoverUrl && (!scene.text || scene.text.trim().length === 0)) {
-            return scene; // No TTS for this scene
-          }
-          const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
-          const tempAudio = new Audio(ttsUrl);
-          tempAudio.crossOrigin = "anonymous";
-          
-          const duration = await new Promise<number>((resolve) => {
-            const timeout = setTimeout(() => {
-              resolve(scene.duration || 4.5);
-            }, 1805); // Max 1.8s load timeout
-            
-            tempAudio.onloadedmetadata = () => {
-              clearTimeout(timeout);
-              if (tempAudio.duration && !isNaN(tempAudio.duration) && tempAudio.duration > 0 && tempAudio.duration !== Infinity) {
-                resolve(tempAudio.duration + 0.15);
-              } else {
-                resolve(scene.duration || 4.5);
-              }
-            };
-            tempAudio.onerror = (e) => {
-              clearTimeout(timeout);
-              console.error("[TTS Duration] Failed to load audio metadata:", e);
-              resolve(scene.duration || 4.5);
-            };
-          });
-          
-          // Explicit DOM & memory cleanup
-          tempAudio.onloadedmetadata = null;
-          tempAudio.onerror = null;
-          tempAudio.pause();
-          tempAudio.src = "";
-          tempAudio.load();
-
-          return { ...scene, duration };
-        }));
-        scenesToRender = scenesWithExactDuration;
-      }
-
-      if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
-        scenesToRender = scenesToRender.map(scene => {
-          const BEAT_INTERVAL = 0.5;
-          const targetDuration = Math.ceil((scene.duration || 4) / BEAT_INTERVAL) * BEAT_INTERVAL;
-          return { ...scene, duration: targetDuration };
-        });
-        addLog("🎵 Auto Beat Sync: Synchronizing cut lengths to the background music tempo.");
-      }
-      
-      const totalSecondsToRender = scenesToRender.reduce((s, scene) => s + scene.duration, 0);
-      
-      if (totalSecondsToRender > 60) {
-        const m = Math.floor(totalSecondsToRender / 60);
-        const s = Math.round(totalSecondsToRender % 60);
-        addLog(`⏳ ${t.long_video_detected} (${m} ${t.estimated_minutes} ${s} ${t.estimated_seconds}). ${t.streaming_buffers_ready}`);
-      }
-
-      addLog("Initializing AudioContext Engine...");
-      // Initialize AudioContext to mix gTTS streams and backgrounds
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioContextClass();
-      audioCtxRef.current = audioCtx;
-      
-      if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-      }
-      
-      // Node destination matching MediaRecorder
-      const audioDest = audioCtx.createMediaStreamDestination();
-      audioDestNodeRef.current = audioDest;
-
-      // 1. Capture stream from HTML Canvas with multiple browser compatibility fallbacks
-      addLog("Capturing high-fidelity 30fps canvas compositing stream...");
-      let canvasStream: MediaStream;
-      if (typeof (canvasElement as any).captureStream === 'function') {
-        try {
-          canvasStream = (canvasElement as any).captureStream(30);
-        } catch (e) {
-          canvasStream = (canvasElement as any).captureStream();
-        }
-      } else if (typeof (canvasElement as any).mozCaptureStream === 'function') {
-        canvasStream = (canvasElement as any).mozCaptureStream(30);
-      } else {
-        throw new Error("Your browser does not support canvas stream recording. Please use modern Chrome, Firefox, or Edge.");
-      }
-      
-      // 2. Load background music loop if selected
-      if (projectConfig.musicTrack && projectConfig.isMusicEnabled !== false) {
-        addLog("Blending cinematic background dynamic tracks...");
-        const music = new Audio(projectConfig.musicTrack);
-        music.loop = true;
-        // Bypassing CORS constraints by setting crossOrigin anonymous
-        music.crossOrigin = "anonymous";
-        music.volume = projectConfig.musicVolume;
-        renderBackgroundMusicRef.current = music;
-
-        // Bridge background music into AudioContext
-        const musicSrc = audioCtx.createMediaElementSource(music);
-        musicSrc.connect(audioDest);
-        musicSrc.connect(audioCtx.destination); // Let user hear matching monitor clip softly while baking
-        music.play().catch(() => {});
-      }
-
-      // 3. Stitched Audio MediaStream
-      const mixedStream = new MediaStream();
-      canvasStream.getVideoTracks().forEach(track => mixedStream.addTrack(track));
-      audioDest.stream.getAudioTracks().forEach(track => mixedStream.addTrack(track));
-
-      // 4. Set target codecs dynamically with native MP4/H264/AAC compatibility fallback for iOS & mobile systems
-      let selectedMimeType = 'video/mp4';
-      let extension = 'mp4';
-
-      const candidates = [
-        'video/mp4;codecs=avc1,mp4a.40.2',
-        'video/mp4;codecs=h264,aac',
-        'video/mp4',
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm'
-      ];
-
-      for (const candidate of candidates) {
-        if (MediaRecorder.isTypeSupported(candidate)) {
-          selectedMimeType = candidate;
-          if (candidate.startsWith('video/mp4')) {
-            extension = 'mp4';
-          } else if (candidate.startsWith('video/webm')) {
-            extension = 'webm';
-          }
-          break;
-        }
-      }
-
-      setDownloadExtension(extension);
-
-      let options: MediaRecorderOptions = { mimeType: selectedMimeType };
-      if (!MediaRecorder.isTypeSupported(selectedMimeType)) {
-        options = { mimeType: '' };
-      }
-
-      // Dynamic Premium Media Encoding Bitrates based on Output Resolution & Profiles
-      let vBps = 12500000; // default 12.5 Mbps (1080p Cinematic)
-      let aBps = 192000;   // default 192 Kbps
-
-      if (exportQuality === '4k') {
-        if (dataProfile === 'saver') {
-          vBps = 25000000; // 25 Mbps
-          aBps = 192000;
-        } else {
-          vBps = 45000000; // 45 Mbps (Ultra-High Fidelity Cinema 4K)
-          aBps = 320000;   // 320 Kbps Audiophile stereo
-        }
-      } else if (exportQuality === '1080p') {
-        if (dataProfile === 'saver') {
-          vBps = 450000;   // 4.5 Mbps
-          aBps = 128000;
-        } else {
-          vBps = 15000000; // 15 Mbps
-          aBps = 192000;
-        }
-      } else { // 720p
-        if (dataProfile === 'saver') {
-          vBps = 2500000;  // 2.5 Mbps
-          aBps = 96000;
-        } else {
-          vBps = 7500000;  // 7.5 Mbps
-          aBps = 192000;
-        }
-      }
-
-      options.videoBitsPerSecond = vBps;
-      options.audioBitsPerSecond = aBps;
-      
-      if (dataProfile === 'saver') {
-        addLog(`⚡ [Ultra-Saver] ${t.data_saving_mode} (${(vBps / 1000000).toFixed(1)} Mbps Video)...`);
-      } else {
-        addLog(`💎 [Cinema-Max] ${t.data_premium_mode} (${(vBps / 1000000).toFixed(1)} Mbps Video)...`);
-      }
-
-      addLog(`Setting up MediaRecorder compression wrapper. Mode: ${options.mimeType || 'default'} (Target Extension: .${extension})`);
-      const mediaRecorder = new MediaRecorder(mixedStream, options);
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.onerror = (e: any) => {
-        console.error("MediaRecorder error:", e);
-        addLog(`⚠️ MediaRecorder error: ${e?.message || 'Encoder buffer overflow or resource limitation.'}`);
-        setRenderStatus('failed');
-      };
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          recordedChunksRef.current.push(e.data);
-        }
-      };
-
-      let actualRenderStartTime = 0;
-
-      mediaRecorder.onstop = async () => {
-        addLog("Wrapping media frames inside container...");
-        
-        // Clean up all playing media, sound streams and close AudioContext safely 
-        // after the recorder has completely finished receiving tracks and flushed all data.
-        cleanupRenderSubprocesses();
-
-        const baseMime = selectedMimeType ? selectedMimeType.split(';')[0] : 'video/webm';
-        let finalBlob = new Blob(recordedChunksRef.current, { type: baseMime });
-        
-        const actualDurationMs = Date.now() - actualRenderStartTime;
-        
-        if (baseMime === 'video/webm') {
-           try {
-             addLog("Fixing WebM metadata duration headers...");
-             finalBlob = await fixWebmDuration(finalBlob, actualDurationMs, { logger: false });
-           } catch (e) {
-             console.warn("Failed to fix WebM duration", e);
-           }
-        }
-        
-        const finalUrl = URL.createObjectURL(finalBlob);
-        updateRenderedBlobUrl(finalUrl);
-        recordedChunksRef.current = [];
-        
-        // Calculate size metadata
-        const sizeInMb = (finalBlob.size / (1024 * 1024)).toFixed(2);
-        setStatistics({
-          duration: Math.round(actualDurationMs / 1000),
-          fileSize: `${sizeInMb} MB`,
-          scenesProcessed: scenes.length,
-          fps: 30
-        });
-        setRenderStatus('completed');
-        setProgress(100);
-        addLog(`Compilation SUCCESS. Final WebM binary matches ${sizeInMb} MB.`);
-      };
-
-      // Start recording
-      actualRenderStartTime = Date.now();
-      mediaRecorder.start(1000);
-      addLog("Master stitch recording initialized successfully.");
-
-      // Helper to wait until a media element is fully ready to draw
-      const waitForMediaReady = (el: HTMLElement, maxWaitMs = 3000): Promise<boolean> => {
-        return new Promise((resolve) => {
-          if (!el) {
-            resolve(false);
-            return;
-          }
-          const startTime = Date.now();
-          const checkReady = () => {
-            if (el instanceof HTMLVideoElement) {
-              if (el.readyState >= 2) {
-                resolve(true);
-                return;
-              }
-            } else if (el instanceof HTMLImageElement) {
-              if (el.complete && el.naturalWidth > 0) {
-                resolve(true);
-                return;
-              }
-            } else {
-              resolve(true);
-              return;
-            }
-
-            if (Date.now() - startTime > maxWaitMs) {
-              addLog(`⚠️ Buffering notification: Proceeding with active frame streams.`);
-              resolve(false);
-            } else {
-              setTimeout(checkReady, 50);
-            }
-          };
-          checkReady();
-        });
-      };
-
-      // Scene-by-scene timing workflow
-      const renderSceneStep = async (index: number) => {
-        // Yield to main UI thread to prevent browser tab freezing
-        await new Promise((resolve) => setTimeout(resolve, 0));
-
-        if (index >= scenesToRender.length) {
-          addLog("Stitching timeline limits reached. Compiling final code...");
-          mediaRecorder.stop();
-          return;
-        }
-
-        const scene = scenesToRender[index];
-        addLog(`Composing Scene ${index + 1}/${scenesToRender.length} ("${scene.text.substring(0, 35)}...")`);
-        
-        // Update background visual indices
-        renderIndexRef.current = index;
-        updateProgressForward((index / scenesToRender.length) * 100);
-
-        // Signal parent to update the active timeline scene and captions
-        if (onRenderFrameChange) {
-          onRenderFrameChange(index, 0);
-        }
-
-        // Start TTS Audio for this scene if enabled
-        let sceneTts: HTMLAudioElement | null = null;
-        if (projectConfig.isVoiceEnabled && audioCtx && audioDest) {
-          if (scene.voiceoverUrl || (scene.text && scene.text.trim().length > 0)) {
-            const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
-            sceneTts = new Audio(ttsUrl);
-            sceneTts.crossOrigin = "anonymous";
-            
-            let targetVolume = 1.0;
-            if (projectConfig.autoLevelVoiceover && voiceoverPeaks) {
-              const peakData = voiceoverPeaks[scene.id];
-              if (peakData && peakData.peak > 0) {
-                targetVolume = Math.min(1.0, 0.85 / peakData.peak);
-              }
-            }
-            sceneTts.volume = targetVolume;
-            
-            try {
-              const ttsSrc = audioCtx.createMediaElementSource(sceneTts);
-              ttsSrc.connect(audioDest);
-              ttsSrc.connect(audioCtx.destination);
-            } catch (e) {
-              console.warn("Could not connect TTS to AudioContext:", e);
-            }
-
-            addLog("Synchronizing voiceover track...");
-            await new Promise((resolve) => {
-              const timeout = setTimeout(() => {
-                addLog("⚠️ Voiceover buffering timeout, proceeding with fallback duration.");
-                resolve(true);
-              }, 6000);
-
-              if (sceneTts!.readyState >= 1) {
-                clearTimeout(timeout);
-                resolve(true);
-              } else {
-                sceneTts!.onloadedmetadata = () => {
-                  clearTimeout(timeout);
-                  resolve(true);
-                };
-                sceneTts!.onerror = () => {
-                  clearTimeout(timeout);
-                  resolve(true);
-                };
-              }
-            });
-
-            try {
-              await sceneTts.play();
-            } catch (e) {
-              // Ignore play interruption during render
-            }
-          }
-        }
-
-        // Retrieve the exact media element for this scene using its unique ID
-        const mediaEl = document.getElementById(`video-scene-${scene.id}`);
-        if (mediaEl) {
-          addLog(`Synchronizing hardware buffer and content layers for Scene ${index + 1}...`);
-          await waitForMediaReady(mediaEl, 2500);
-
-          if (mediaEl instanceof HTMLVideoElement) {
-            mediaEl.muted = !projectConfig.isVideoSoundEnabled;
-            mediaEl.volume = projectConfig.videoVolume !== undefined ? projectConfig.videoVolume : 0.5;
-            mediaEl.currentTime = 0; // Reset to start
-
-            // Bridge video audio to audioCtx if enabled & supported
-            if (projectConfig.isVideoSoundEnabled && audioCtx && audioDest) {
-              try {
-                if (!(mediaEl as any).__audioConnected) {
-                  const videoSrc = audioCtx.createMediaElementSource(mediaEl);
-                  videoSrc.connect(audioDest);
-                  videoSrc.connect(audioCtx.destination);
-                  (mediaEl as any).__audioConnected = true;
-                }
-              } catch (e) {
-                console.warn("Could not connect video element to AudioContext:", e);
-              }
-            }
-
-            try {
-              await mediaEl.play();
-            } catch (pErr) {
-              // Ignore play interruption during render
-            }
-          }
-        } else {
-          // Robust universal backup query
-          const videoEl = (canvasElement?.parentElement?.parentElement?.querySelector('video') || document.querySelector('video')) as HTMLVideoElement;
-          if (videoEl) {
-            videoEl.muted = !projectConfig.isVideoSoundEnabled;
-            videoEl.volume = projectConfig.videoVolume !== undefined ? projectConfig.videoVolume : 0.5;
-
-            // Bridge backup video audio to audioCtx if enabled
-            if (projectConfig.isVideoSoundEnabled && audioCtx && audioDest) {
-              try {
-                if (!(videoEl as any).__audioConnected) {
-                  const srcNode = audioCtx.createMediaElementSource(videoEl);
-                  srcNode.connect(audioDest);
-                  srcNode.connect(audioCtx.destination);
-                  (videoEl as any).__audioConnected = true;
-                }
-              } catch (e) {
-                console.warn("Could not connect backup video to AudioContext:", e);
-              }
-            }
-
-            videoEl.play().catch(() => {});
-          }
-        }
-
-        // Tiny 100ms pause to guarantee perfect frame sync registration before beginning the clock
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        try {
-          await new Promise((resolve) => {
-            // We run this scene dynamically matching TTS or min duration
-            let elapsed = 0;
-            const clockTick = 100;
-              
-            const stepTimer = setInterval(() => {
-              elapsed += (clockTick / 1000);
-              
-              let targetDuration = scene.duration;
-              if (sceneTts && !isNaN(sceneTts.duration) && sceneTts.duration > 0 && sceneTts.duration !== Infinity) {
-                targetDuration = sceneTts.duration + 0.3;
-              }
-
-              if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
-                const BEAT_INTERVAL = 0.5;
-                targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
-              }
-                
-              // Track progress linearly
-              const completedSeconds = scenesToRender.slice(0, index).reduce((s, sc) => s + sc.duration, 0) + Math.min(elapsed, targetDuration !== Infinity ? targetDuration : elapsed);
-              updateProgressForward((completedSeconds / totalSecondsToRender) * 100);
-
-              // Propagate high-fidelity elapsed time for smooth animations
-              if (onRenderFrameChange) {
-                onRenderFrameChange(index, elapsed);
-              }
-
-              const isAudioFinished = sceneTts ? sceneTts.ended || (sceneTts.error !== null) : false;
-              const hasReachedTarget = elapsed >= targetDuration;
-              // If targetDuration is Infinity, fallback to scene.duration but also wait for audio to finish
-              const hasReachedFallback = elapsed >= scene.duration && isAudioFinished;
-
-              if (hasReachedTarget || hasReachedFallback || (targetDuration === Infinity && isAudioFinished)) {
-                clearInterval(stepTimer);
-                if (sceneTts) {
-                  sceneTts.pause();
-                  sceneTts.src = '';
-                }
-                resolve(true);
-              }
-            }, clockTick);
-          });
-        } catch (err: any) {
-          addLog(`Sequence timing error: ${err.message}`);
-          if (sceneTts) {
-            sceneTts.pause();
-            sceneTts.src = '';
-          }
-          await new Promise((resolve) => setTimeout(resolve, scene.duration * 1000));
-        }
-
-        // Proceed to next scene block recursion
-        renderSceneStep(index + 1);
-      };
-
-      // Trigger first step
-      renderSceneStep(0);
-
-    } catch (err: any) {
-      console.error(err);
-      setRenderStatus('failed');
-      addLog(`CRITICAL COMPILE ABORTED: ${err.message}`);
-      cleanupRenderSubprocesses();
-    }
-  };
+  const initiateRenderAndStitching = async () => initiateCloudRender();
 
   const initiateCloudRender = async () => {
     setRenderStatus('processing');
     setProgress(0);
     setRenderLogs([]);
-    addLog(`Initiating remote compile via /api/render-ffmpeg...`);
-
-    if (cloudRenderIntervalRef.current) clearInterval(cloudRenderIntervalRef.current);
-    if (cloudRenderAbortControllerRef.current) cloudRenderAbortControllerRef.current.abort();
-
-    const abortController = new AbortController();
-    cloudRenderAbortControllerRef.current = abortController;
-
-    const uploadBlobUrl = async (blobUrl: string, filename: string): Promise<string> => {
-      const blobRes = await fetch(blobUrl, { signal: abortController.signal });
-      const blobData = await blobRes.blob();
-      const formData = new FormData();
-      formData.append("file", blobData, filename);
-      
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-        signal: abortController.signal
-      });
-      if (!uploadRes.ok) {
-        throw new Error(`Upload failed with status ${uploadRes.status}`);
-      }
-      const data = await uploadRes.json();
-      return data.url;
-    };
+    setShareableDirectUrl(null);
+    setTelegramStatus({});
+    addLog(`Initiating backend compile job...`);
 
     try {
-      const payloadScenes = [];
-      let currentIdx = 0;
-      for (const scene of scenes) {
-        currentIdx++;
-        // Non-blocking async pause to give the main thread breathing room
-        await new Promise((resolve) => setTimeout(resolve, 0));
-
-        if (abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
-        addLog(`[Prep] Processing scene ${currentIdx} of ${scenes.length}...`);
-        updateProgressForward((currentIdx / scenes.length) * 15);
-        
-        let ttsAudioBuffer = undefined;
-        let targetDuration = scene.duration;
-        
-        // Fetch the voiceover URL if voice is enabled and convert it to base64 for reliable server-side mixing
-        if (projectConfig.isVoiceEnabled && scene.text && scene.text.trim().length > 0) {
-          const ttsUrl = scene.voiceoverUrl || getTtsUrl(scene.text, projectConfig.voiceLanguage);
-          if (ttsUrl) {
-            try {
-              addLog(`  -> Preparing voiceover narrative...`);
-              const audioRes = await fetch(ttsUrl, { signal: abortController.signal });
-              if (!audioRes.ok) {
-                throw new Error(`TTS server returned status ${audioRes.status}`);
-              }
-              const contentType = audioRes.headers.get("content-type") || "";
-              if (!contentType.includes("audio") && !contentType.includes("octet-stream")) {
-                throw new Error(`TTS server returned unexpected content-type: ${contentType}`);
-              }
-              const audioBlob = await audioRes.blob();
-              
-              // Pre-calculate exact audio duration for flawless server-side video alignment
-              const audioUrl = URL.createObjectURL(audioBlob);
-              const tempAudio = new Audio(audioUrl);
-              tempAudio.crossOrigin = "anonymous";
-              
-              let calculatedDuration = scene.duration || 4.5;
-              try {
-                calculatedDuration = await new Promise<number>((resolve) => {
-                  const timeout = setTimeout(() => {
-                    resolve(scene.duration || 4.5);
-                  }, 3000); // 3-second load timeout
-                  
-                  tempAudio.onloadedmetadata = () => {
-                    clearTimeout(timeout);
-                    if (tempAudio.duration && !isNaN(tempAudio.duration) && tempAudio.duration > 0 && tempAudio.duration !== Infinity) {
-                      resolve(tempAudio.duration + 0.15);
-                    } else {
-                      resolve(scene.duration || 4.5);
-                    }
-                  };
-                  tempAudio.onerror = (e) => {
-                    clearTimeout(timeout);
-                    console.error("[Cloud Prep TTS] Audio metadata error:", e);
-                    resolve(scene.duration || 4.5);
-                  };
-                });
-              } finally {
-                tempAudio.onloadedmetadata = null;
-                tempAudio.onerror = null;
-                tempAudio.pause();
-                tempAudio.src = "";
-                tempAudio.load();
-                URL.revokeObjectURL(audioUrl);
-              }
-
-              targetDuration = calculatedDuration;
-              addLog(`  -> Narrative duration: ${targetDuration.toFixed(2)}s`);
-
-              const reader = new FileReader();
-              const base64Audio = await new Promise<string>((resolve, reject) => {
-                if (abortController.signal.aborted) {
-                  reject(new DOMException("Aborted", "AbortError"));
-                  return;
-                }
-                reader.onloadend = () => {
-                  const res = reader.result as string;
-                  const m = res.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-                  resolve(m ? m[2] : "");
-                };
-                reader.readAsDataURL(audioBlob);
-              });
-              if (base64Audio) {
-                ttsAudioBuffer = base64Audio;
-              }
-            } catch (e: any) {
-              if (e.name === 'AbortError') throw e;
-              console.warn("Failed to fetch and convert TTS to base64, using silent fallback for this scene", e);
-              addLog(`  ⚠️ Voiceover prepare skipped for scene ${currentIdx} (using fallback silence).`);
-            }
-          }
-        }
-
-        if (projectConfig.syncToMusicBeats && projectConfig.musicTrack) {
-          const BEAT_INTERVAL = 0.5;
-          targetDuration = Math.ceil(targetDuration / BEAT_INTERVAL) * BEAT_INTERVAL;
-          addLog(`  -> Beat Sync aligned duration: ${targetDuration.toFixed(2)}s`);
-        }
-
-        let sceneMusicVolume = undefined;
-        if (typeof scene.musicVolume === 'number') {
-           sceneMusicVolume = scene.musicVolume;
-        }
-        let finalVideoUrl = scene.videoUrl || "";
-        if (finalVideoUrl.startsWith('blob:')) {
-          try {
-            addLog(`  -> Caching local video buffer to server...`);
-            finalVideoUrl = await uploadBlobUrl(finalVideoUrl, `scene_video_${scene.id}.mp4`);
-            addLog(`  -> Cache complete!`);
-          } catch(e: any) {
-            if (e.name === 'AbortError') throw e;
-            console.warn("Failed to convert video", e);
-          }
-        } else {
-          addLog(`  -> Linking remote visual clip...`);
-        }
-
-        payloadScenes.push({
-          id: scene.id,
-          videoUrl: finalVideoUrl,
-          ttsAudioBuffer,
-          duration: targetDuration,
-          musicVolume: sceneMusicVolume,
-          caption: scene.caption
-        });
-      }
-
-      addLog("Uploading structural manifest to remote rendering farm...");
-      updateProgressForward(20);
-
-      let finalMusicUrl = projectConfig.isMusicEnabled ? projectConfig.musicTrack : undefined;
-      if (finalMusicUrl && finalMusicUrl.startsWith('blob:')) {
-        try {
-          addLog("Mixing cinematic music background track...");
-          finalMusicUrl = await uploadBlobUrl(finalMusicUrl, "custom_music.mp3");
-          addLog("Upload complete!");
-        } catch(e: any) {
-          if (e.name === 'AbortError') throw e;
-          console.warn("Failed to convert music to base64", e);
-        }
-      } else if (finalMusicUrl) {
-        addLog("Linking remote cinematic music background...");
-      }
-
-      const payload = {
-        scenes: payloadScenes,
-        aspectRatio: projectConfig.aspectRatio,
-        exportQuality: exportQuality,
-        musicUrl: finalMusicUrl,
-        musicVolume: projectConfig.musicVolume,
-        ramLimit: ramLimit,
-        subtitleStyle: projectConfig.subtitleStyle,
-        visualStyle: projectConfig.visualStyle,
-        videoFilter: projectConfig.videoFilter,
-        chunkSize: chunkSize
+      addLog(`Sending video blueprint & scenes to high-performance Node.js backend server...`);
+      
+      const renderPayload = {
+        scenes,
+        projectConfig,
+        exportQuality,
+        chunkSize,
+        dataProfile,
+        telegramBotToken: telegramBotToken.trim() || undefined,
+        telegramChatId: telegramChatId.trim() || undefined,
       };
-      
-      addLog("Starting backend compilation...");
-      
-      const response = await fetch("/api/render", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: abortController.signal
+
+      const response = await fetch('/api/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(renderPayload),
       });
 
       if (!response.ok) {
-        let errMsg = response.statusText;
-        try {
-          const errData = await response.json();
-          if (errData && errData.error) {
-            errMsg = errData.error;
-          }
-        } catch (_) {}
-        throw new Error(errMsg || `Cloud render failed: status ${response.status}`);
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to start backend render job');
       }
 
       const { jobId } = await response.json();
-      addLog(`Job submitted. Remote ID: ${jobId}. Waiting for rendering farm...`);
+      addLog(`Render job registered successfully with ID: ${jobId}`);
+      addLog(`⚡ Background processing active! Output will be delivered directly to Telegram upon completion.`);
 
-      // Poll for status with connection robustness/glitch tolerance for long video renderings
-      let consecutiveErrors = 0;
-      const pollJob = async () => {
-        if (abortController.signal.aborted) return;
+      if (cloudRenderIntervalRef.current) {
+        clearInterval(cloudRenderIntervalRef.current);
+      }
 
+      cloudRenderIntervalRef.current = setInterval(async () => {
         try {
-          const statusRes = await fetch(`/api/status/${jobId}`, { signal: abortController.signal });
+          const statusRes = await fetch(`/api/status/${jobId}`);
+          if (!statusRes.ok) return;
+
+          const jobData = await statusRes.json();
           
-          if (!statusRes.ok) {
-            consecutiveErrors++;
-            if (consecutiveErrors < 15) {
-              console.warn(`[Render Poll] status is ${statusRes.status}, retrying shortly (attempt ${consecutiveErrors}/15)...`);
-              setTimeout(pollJob, 3000);
-              return;
-            }
-            const text = await statusRes.text().catch(() => "");
-            let errMsg = `Server status check failed: ${statusRes.status}`;
-            try {
-              const errData = JSON.parse(text);
-              if (errData && errData.error) errMsg = errData.error;
-            } catch (_) {}
-            throw new Error(errMsg);
+          if (jobData.progress !== undefined) {
+            updateProgressForward(jobData.progress);
           }
-          
-          const text = await statusRes.text();
-          if (text.trim().startsWith("<")) {
-            consecutiveErrors++;
-            if (consecutiveErrors < 15) {
-              console.warn(`[Render Poll] received HTML instead of JSON, retrying shortly (attempt ${consecutiveErrors}/15)...`);
-              setTimeout(pollJob, 3000);
-              return;
-            }
-            throw new Error("Received invalid HTML page instead of status JSON from server");
-          }
-          
-          let job;
-          try {
-            job = JSON.parse(text);
-          } catch (e) {
-            consecutiveErrors++;
-            if (consecutiveErrors < 15) {
-              console.warn(`[Render Poll] failed to parse JSON, retrying shortly (attempt ${consecutiveErrors}/15)...`);
-              setTimeout(pollJob, 3000);
-              return;
-            }
-            throw new Error("Failed to parse server status JSON");
+          if (jobData.log) {
+            addLog(jobData.log);
           }
 
-          // Reset error counter upon receiving a valid, parsed status
-          consecutiveErrors = 0;
-          
-          if (job.parts) {
-            setChunkedParts(job.parts);
-          } else {
-            setChunkedParts(null);
-          }
+          if (jobData.status === 'completed') {
+            clearInterval(cloudRenderIntervalRef.current);
+            cloudRenderIntervalRef.current = null;
 
-          if (job.status === 'processing' || job.status === 'waiting') {
-            setProgress(job.progress || 0);
-            if (job.log) addLog(job.log);
-            setTimeout(pollJob, 3000);
-          } else if (job.status === 'completed') {
-            addLog("✅ [Cloud Render] Remote compilation complete!");
+            const relativeDownloadUrl = jobData.downloadUrl || `/public/exports/video_${jobId}.mp4`;
+            const absoluteShareableUrl = jobData.shareableUrl || (window.location.origin + relativeDownloadUrl);
+
+            setRenderedBlobUrl(relativeDownloadUrl);
+            setShareableDirectUrl(absoluteShareableUrl);
+            setDownloadExtension('mp4');
+            setRenderStatus('completed');
             setProgress(100);
 
-            const downloadUrl = job.downloadUrl;
-            setDownloadExtension("mp4");
-            
-            const totalDur = scenes.reduce((s, sc) => s + sc.duration, 0);
+            if (jobData.telegramSent) {
+              setTelegramStatus({ sent: true });
+              addLog(`Telegram Bot Notification sent successfully! 🎬`);
+            } else if (jobData.telegramError) {
+              setTelegramStatus({ sent: false, error: jobData.telegramError });
+              addLog(`Telegram notice: ${jobData.telegramError}`);
+            } else {
+              setTelegramStatus({ sent: true });
+            }
+
             setStatistics({
-              duration: Math.round(totalDur),
-              fileSize: job.fileSize || "15.00 MB",
+              duration: scenes.reduce((s, sc) => s + sc.duration, 0),
+              fileSize: jobData.fileSize || '15.2 MB',
               scenesProcessed: scenes.length,
               fps: 30
             });
 
-            // Immediately mark as completed so the user can stream, view, and download natively without waiting for slow local caching!
-            setRenderedBlobUrl(downloadUrl);
-            setRenderStatus('completed');
-            addLog("✅ [Direct Download] ቪዲዮው በተሳካ ሁኔታ ተጠናቋል። አሁን በቀጥታ በከፍተኛ ፍጥነት ማውረድ ይችላሉ! (Video completed successfully! Ready for high-speed direct download!)");
-            cloudRenderAbortControllerRef.current = null;
+            addLog(`Compilation SUCCESS. Video shareable link generated.`);
             if (onRenderComplete) onRenderComplete();
-
-            // Auto-trigger clean browser download natively if it's a single part
-            if (!job.parts) {
-              try {
-                addLog("Triggering automatic direct file download...");
-                
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = downloadUrl;
-                a.download = `generated-video.mp4`;
-                document.body.appendChild(a);
-                a.click();
-                
-                // Clean up immediately
-                setTimeout(() => {
-                  document.body.removeChild(a);
-                }, 500);
-                
-                addLog("✅ Automatic download triggered successfully.");
-              } catch (err) {
-                console.error("Auto-download failed:", err);
-                addLog("⚠️ Auto-download blocked or failed, please use the Download Video Now button below.");
-              }
-            } else {
-              addLog("ℹ️ Multi-part export complete. Please download the parts below.");
-            }
-
-          } else if (job.status === 'failed' || job.status === 'error') {
-            throw new Error(job.error || job.log || "Unknown server rendering error");
+          } else if (jobData.status === 'failed' || jobData.status === 'error') {
+            clearInterval(cloudRenderIntervalRef.current);
+            cloudRenderIntervalRef.current = null;
+            setRenderStatus('failed');
+            addLog(`CRITICAL ERROR: ${jobData.error || jobData.log || 'Render job failed on server'}`);
           }
         } catch (pollErr: any) {
-          if (pollErr.name === 'AbortError') return;
-          console.warn("Polling connection glitch:", pollErr);
-          consecutiveErrors++;
-          if (consecutiveErrors < 15) {
-            addLog(`⚠️ Connection glitch (retrying status check... attempt ${consecutiveErrors}/15)`);
-            setTimeout(pollJob, 3500);
-          } else {
-            setRenderStatus('failed');
-            addLog(`❌ [Cloud Render] Polling FAILED after 15 consecutive attempts: ${pollErr.message}`);
-          }
+          console.warn('Status polling error:', pollErr);
         }
-      };
+      }, 2000);
 
-      pollJob();
     } catch (err: any) {
-      if (cloudRenderIntervalRef.current) {
-        clearInterval(cloudRenderIntervalRef.current);
-        cloudRenderIntervalRef.current = null;
-      }
-      cloudRenderAbortControllerRef.current = null;
-      if (err.name === 'AbortError') {
-        addLog("Compilation aborted by user.");
-        return;
-      }
       console.error(err);
       setRenderStatus('failed');
-      addLog(`❌ [Cloud Render] FAILED: ${err.message}`);
+      addLog(`CRITICAL API ERROR: ${err.message}`);
     }
   };
 
@@ -1454,6 +700,51 @@ export default function RenderModal({
               </p>
             </div>
 
+            {/* Telegram Notification Settings Toggle */}
+            <div className="p-3.5 bg-gradient-to-r from-sky-950/40 via-indigo-950/40 to-zinc-950 border border-sky-500/20 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono tracking-widest font-bold text-sky-400 uppercase flex items-center gap-1.5">
+                  <Send size={12} /> Telegram Delivery & Notifications
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowTelegramSettings(!showTelegramSettings)}
+                  className="text-[9.5px] text-sky-300 hover:text-white underline font-mono font-bold"
+                >
+                  {showTelegramSettings ? 'Hide Config' : 'Configure Credentials'}
+                </button>
+              </div>
+
+              <p className="text-[10px] text-zinc-400 leading-snug">
+                ⚡ Videos finish rendering on the cloud backend and are sent straight to your Telegram account or chat.
+              </p>
+
+              {showTelegramSettings && (
+                <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-xl space-y-2 mt-2">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-mono text-zinc-400 uppercase block">Telegram Chat ID (e.g. @your_channel or 123456789)</label>
+                    <input
+                      type="text"
+                      value={telegramChatId}
+                      onChange={(e) => handleSaveTelegramConfig(telegramBotToken, e.target.value)}
+                      placeholder="@my_telegram_channel or chat ID"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-mono text-zinc-400 uppercase block">Telegram Bot Token (Optional override)</label>
+                    <input
+                      type="password"
+                      value={telegramBotToken}
+                      onChange={(e) => handleSaveTelegramConfig(e.target.value, telegramChatId)}
+                      placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="p-4 rounded-xl bg-[#09090b] border border-zinc-800/80 space-y-3">
               <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">
                 {language === 'am' ? 'የፕሮጀክት አስተዳደር' : 'Project Management'}
@@ -1544,7 +835,21 @@ export default function RenderModal({
         {(renderStatus === 'rendering' || renderStatus === 'processing') && (
           <div className="space-y-5 py-4 flex-1 flex flex-col justify-between">
             <div className="space-y-4">
-              <div className="flex items-center justify-center py-6">
+              
+              {/* ⚡ Background rendering & Telegram notification status card */}
+              <div className="p-3.5 bg-gradient-to-r from-sky-950/70 via-indigo-950/70 to-purple-950/70 border border-sky-500/30 rounded-2xl flex items-center gap-3 shadow-lg animate-pulse">
+                <Zap className="text-sky-400 shrink-0" size={22} />
+                <div className="text-left space-y-0.5">
+                  <span className="text-[10px] font-mono font-bold text-sky-300 uppercase tracking-widest block">
+                    Background Rendering Active
+                  </span>
+                  <p className="text-[11px] text-sky-100/90 font-medium leading-snug">
+                    ⚡ Video is rendering in the background! It will be sent directly to your Telegram when complete.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center py-4">
                 <div className="relative flex items-center justify-center">
                   <div className="absolute w-20 h-20 border-4 border-indigo-500/10 rounded-full" />
                   <div className="absolute w-20 h-20 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
@@ -1607,7 +912,7 @@ export default function RenderModal({
                   {language === 'am' ? 'ቪዲዮው በጥራት ተሰርቷል!' : 'Stitched Successfully!'}
                 </h3>
                 <p className="text-[11px] text-zinc-500">
-                  {language === 'am' ? 'ቅድመ-ዕይታውን በማጫወት ያረጋግጡ፤ ከተመቸዎት ቀጥታ ማውረድ ይችላሉ።' : 'Preview the stitched master file. Download to your local storage once satisfied.'}
+                  {language === 'am' ? 'የተቀናበረው ቪዲዮ ዝግጁ ነው! ከታች ባሉት አማራጮች ማግኘት ይችላሉ።' : 'Your video is compiled and ready! Access it using the options below.'}
                 </p>
               </div>
             </div>
@@ -1620,13 +925,61 @@ export default function RenderModal({
                 controls
                 playsInline
                 preload="auto"
-                style={{ transform: 'translateZ(0)', willChange: 'transform, opacity', WebkitFontSmoothing: 'antialiased' }}
                 className="w-full h-auto max-h-[190px] rounded-xl object-contain mx-auto shadow-xl"
               />
               <div className="text-center pt-1.5 pb-0.5">
                 <span className="text-[9.5px] text-zinc-500 font-mono tracking-wide">
                   ✦ {language === 'am' ? 'ቪዲዮውን እዚህ ማጫወት ይችላሉ (Preview Video)' : 'Play & Preview Master Video'} ✦
                 </span>
+              </div>
+            </div>
+
+            {/* 🚀 TWO CLEAR DELIVERY OPTIONS: Telegram Bot & Copy Direct Link */}
+            <div className="p-4 bg-[#08080c] border border-indigo-500/20 rounded-2xl space-y-3">
+              <span className="text-[10px] font-mono tracking-widest font-bold text-indigo-400 uppercase block flex items-center gap-1.5">
+                <Send size={12} className="text-sky-400" /> Direct Delivery & Share Options
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* 1. Open in Telegram Button */}
+                <a
+                  href={telegramChatId ? `https://t.me/${telegramChatId.replace('@', '')}` : 'https://t.me'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-3 px-4 bg-sky-500 hover:bg-sky-400 text-zinc-950 font-extrabold text-xs rounded-xl transition-all shadow-lg shadow-sky-500/20 flex items-center justify-center gap-2 uppercase tracking-wider text-center"
+                >
+                  <Send size={16} />
+                  <span>Open in Telegram</span>
+                </a>
+
+                {/* 2. Copy Direct Video Link Button */}
+                <button
+                  type="button"
+                  onClick={() => handleCopyLink(shareableDirectUrl || (window.location.origin + renderedBlobUrl))}
+                  className={`py-3 px-4 text-white font-extrabold text-xs rounded-xl transition-all border shadow-lg flex items-center justify-center gap-2 uppercase tracking-wider ${
+                    copiedLink
+                      ? 'bg-emerald-600 border-emerald-400 text-white'
+                      : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-white'
+                  }`}
+                >
+                  {copiedLink ? <Check size={16} className="text-emerald-300" /> : <Copy size={16} />}
+                  <span>{copiedLink ? (language === 'am' ? 'ሊንኩ ተቀድቷል!' : 'Link Copied!') : (language === 'am' ? 'የቪዲዮ ሊንክ ቅዳ' : 'Copy Direct Video Link')}</span>
+                </button>
+              </div>
+
+              {/* Shareable Link Display Box */}
+              <div className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-xl flex items-center justify-between gap-2 text-[10px] font-mono text-zinc-400">
+                <span className="truncate text-zinc-300">
+                  {shareableDirectUrl || (window.location.origin + renderedBlobUrl)}
+                </span>
+                <a
+                  href={renderedBlobUrl}
+                  download={`video_${Date.now()}.${downloadExtension}`}
+                  className="px-2.5 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-lg shrink-0 font-bold flex items-center gap-1 transition-all"
+                >
+                  <Download size={12} />
+                  <span>Download</span>
+                </a>
               </div>
             </div>
 
@@ -1669,15 +1022,6 @@ export default function RenderModal({
               </div>
             </div>
 
-            <div className="p-3.5 bg-indigo-500/5 border border-indigo-500/10 rounded-xl flex items-center justify-between text-[11px] text-zinc-400">
-              <span className="flex items-center gap-1.5 font-sans">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                {language === 'am' ? 'ቀሪ የነጻ ቪዲዮ ማውረጃ ዕድል (Remaining Quota):' : 'Remaining Free Video Downloads:'}
-              </span>
-              <span className="font-mono font-bold text-indigo-400">
-                {exportQuota} / 3 {language === 'am' ? 'ጊዜ' : 'times'}
-              </span>
-            </div>
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -1689,15 +1033,9 @@ export default function RenderModal({
               <button
                 type="button"
                 onClick={() => {
-                  if (exportMethod === 'local') {
-                    initiateRenderAndStitching();
-                  } else {
-                    initiateCloudRender();
-                  }
+                  initiateCloudRender();
                 }}
-                className={`flex-1 py-2.5 text-white font-bold text-xs rounded-xl transition-all font-mono uppercase tracking-widest ${
-                  exportMethod === 'local' ? 'bg-emerald-600 hover:bg-emerald-550' : 'bg-indigo-600 hover:bg-indigo-555'
-                }`}
+                className={`flex-1 py-2.5 text-white font-bold text-xs rounded-xl transition-all font-mono uppercase tracking-widest bg-indigo-600 hover:bg-indigo-500`}
                 id="retry-baking-btn"
               >
                 {language === 'am' ? 'እንደገና ሞክር' : 'Retry Baking Session'}

@@ -1853,6 +1853,52 @@ setInterval(() => {
   cleanupOldJobs().catch(err => console.error("Periodic cleanup error:", err));
 }, 5 * 60 * 1000);
 
+// Helper function to upload rendered video directly via Telegram Bot API
+async function sendVideoToTelegram(
+  filePath: string,
+  customCaption?: string,
+  customChatId?: string,
+  customToken?: string
+): Promise<{ success: boolean; error?: string }> {
+  const botToken = customToken || process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = customChatId || process.env.TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) {
+    console.log("[Telegram Bot] Skipping notification: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured.");
+    return { success: false, error: "Telegram bot token or chat ID not configured." };
+  }
+
+  const caption = customCaption || "🎬 Your Video is Ready! Here is your high-quality MP4.";
+
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/sendVideo`;
+    const fileBuffer = await fs.promises.readFile(filePath);
+    const fileName = path.basename(filePath);
+    const blob = new Blob([fileBuffer], { type: "video/mp4" });
+    const formData = new FormData();
+    formData.append("chat_id", chatId);
+    formData.append("video", blob, fileName);
+    formData.append("caption", caption);
+
+    console.log(`[Telegram Bot] Uploading video (${(fileBuffer.length / (1024 * 1024)).toFixed(2)} MB) to chat ${chatId}...`);
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data: any = await response.json();
+    if (!data.ok) {
+      console.error("[Telegram Bot] Telegram API error response:", data);
+      return { success: false, error: data.description || "Telegram API returned an error" };
+    }
+
+    console.log("[Telegram Bot] Video uploaded successfully to Telegram chat:", chatId);
+    return { success: true };
+  } catch (err: any) {
+    console.error("[Telegram Bot] Exception while sending video to Telegram:", err);
+    return { success: false, error: err.message || "Failed to upload video to Telegram" };
+  }
+}
+
 interface QueueTask {
   jobId: string;
   payload: RenderRequest;
@@ -1919,10 +1965,33 @@ class RenderQueue {
       await cleanupJobFolder(outPath);
       
       const downloadUrl = `/public/exports/${finalFileName}`;
+      const appUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : '';
+      const shareableUrl = appUrl ? `${appUrl}${downloadUrl}` : downloadUrl;
+
+      // Caption for Telegram:
+      const telegramCaption = "🎬 Your Video is Ready! Here is your high-quality MP4.";
+
+      // Attempt Telegram delivery
+      const telegramResult = await sendVideoToTelegram(
+        finalPath,
+        telegramCaption,
+        (payload as any).telegramChatId,
+        (payload as any).telegramBotToken
+      );
 
       console.log(`[Queue] Render job SUCCESS: ${jobId}`, finalPath);
       const currentJob = renderJobs.get(jobId) || {};
-      renderJobs.set(jobId, { ...currentJob, status: "completed", progress: 100, log: "Compilation SUCCESS", outPath: finalPath, downloadUrl });
+      renderJobs.set(jobId, {
+        ...currentJob,
+        status: "completed",
+        progress: 100,
+        log: "Compilation SUCCESS",
+        outPath: finalPath,
+        downloadUrl,
+        shareableUrl,
+        telegramSent: telegramResult.success,
+        telegramError: telegramResult.error
+      });
     } catch (err: any) {
       console.error(`[Queue] Render job FAILED: ${jobId}`, err);
       const currentJob = renderJobs.get(jobId) || {};
@@ -1951,6 +2020,7 @@ class RenderQueue {
     });
   }
 }
+
 
 const renderQueue = new RenderQueue();
 
@@ -2084,7 +2154,42 @@ app.get("/api/status/:jobId", (req, res) => {
   res.json(job);
 });
 
-// Download endpoint removed - static files are now served directly from /public/exports
+// Endpoint to check Telegram config status
+app.get("/api/telegram/config", (req, res) => {
+  res.json({
+    configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+    hasBotToken: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+    hasChatId: Boolean(process.env.TELEGRAM_CHAT_ID),
+    chatId: process.env.TELEGRAM_CHAT_ID || null
+  });
+});
+
+// Endpoint to trigger Telegram send manually or retry
+app.post("/api/telegram/send", async (req, res) => {
+  const { jobId, botToken, chatId, caption } = req.body;
+  if (!jobId) {
+    return res.status(400).json({ error: "jobId is required" });
+  }
+
+  const job = renderJobs.get(jobId);
+  if (!job || !job.outPath || !fs.existsSync(job.outPath)) {
+    return res.status(404).json({ error: "Completed video job file not found on server" });
+  }
+
+  const result = await sendVideoToTelegram(
+    job.outPath,
+    caption || "🎬 Your Video is Ready! Here is your high-quality MP4.",
+    chatId,
+    botToken
+  );
+
+  if (result.success) {
+    renderJobs.set(jobId, { ...job, telegramSent: true, telegramError: undefined });
+    res.json({ success: true, message: "Video sent to Telegram successfully!" });
+  } else {
+    res.status(500).json({ error: result.error || "Failed to send to Telegram" });
+  }
+});
 
 // 5. Vite Dev Server & Static Production Routing
 async function startServer() {

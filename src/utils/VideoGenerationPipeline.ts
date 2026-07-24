@@ -9,7 +9,7 @@ export enum PipelineStage {
   TTS_GENERATION = "TTS_GENERATION",
   VIDEO_FETCHING = "VIDEO_FETCHING",
   ASSET_SYNCING = "ASSET_SYNCING",
-  FFMPEG_RENDERING = "FFMPEG_RENDERING",
+  CLOUD_RENDERING = "CLOUD_RENDERING",
   COMPLETED = "COMPLETED",
   FAILED = "FAILED",
 }
@@ -99,7 +99,7 @@ export async function runWithConcurrencyLimit<T, R>(
 
 /**
  * Centralized Video Generation Orchestrator & Pipeline
- * Strictly coordinates Script Parsing -> TTS Generation -> Stock Video Fetching -> Asset Syncing -> FFmpeg Prep.
+ * Strictly coordinates Script Parsing -> TTS Generation -> Stock Video Fetching -> Asset Syncing -> Cloud API Prep.
  */
 export class VideoGenerationPipeline {
   private memoryManager = new MemoryManager();
@@ -434,9 +434,9 @@ export class VideoGenerationPipeline {
       }
 
       // ==========================================
-      // STEP 5: FFMPEG RENDERING PREPARATION
+      // STEP 5: CLOUD RENDERING PREPARATION
       // ==========================================
-      updateStage(PipelineStage.FFMPEG_RENDERING, "Preparing high-speed FFmpeg 1080p 30FPS render payload...", 95);
+      updateStage(PipelineStage.CLOUD_RENDERING, "Preparing high-speed Cloud API 1080p 30FPS render payload...", 95);
 
       const renderPayload = {
         scenes: scenesWithVideo,

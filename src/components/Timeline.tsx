@@ -61,7 +61,7 @@ function StockClipCard({ clip, index, onSelect, language }: StockClipCardProps) 
           autoPlay
           playsInline
           preload="auto"
-          style={{ transform: 'translateZ(0)', willChange: 'transform, opacity', WebkitFontSmoothing: 'antialiased' }}
+          
           className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 animate-fadeIn"
         />
       )}
