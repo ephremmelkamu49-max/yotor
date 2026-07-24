@@ -60,6 +60,8 @@ function StockClipCard({ clip, index, onSelect, language }: StockClipCardProps) 
           muted
           autoPlay
           playsInline
+          preload="auto"
+          style={{ transform: 'translateZ(0)', willChange: 'transform, opacity', WebkitFontSmoothing: 'antialiased' }}
           className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 animate-fadeIn"
         />
       )}
@@ -696,6 +698,9 @@ export default function Timeline({
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
+                              if (scene.voiceoverUrl && scene.voiceoverUrl.startsWith('blob:')) {
+                                URL.revokeObjectURL(scene.voiceoverUrl);
+                              }
                               const url = URL.createObjectURL(file);
                               onUpdateScene(scene.id, { voiceoverUrl: url });
                             }
@@ -775,6 +780,10 @@ export default function Timeline({
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file && searchSceneId) {
+                      const targetScene = scenes.find(s => s.id === searchSceneId);
+                      if (targetScene && targetScene.videoUrl && targetScene.videoUrl.startsWith('blob:')) {
+                        URL.revokeObjectURL(targetScene.videoUrl);
+                      }
                       const url = URL.createObjectURL(file);
                       onUpdateScene(searchSceneId, {
                         videoUrl: url,

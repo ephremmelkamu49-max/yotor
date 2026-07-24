@@ -269,6 +269,10 @@ export default function ProjectLibrary({
                         ) : (
                           <video
                             src={firstSceneThumb || undefined}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            style={{ transform: 'translateZ(0)', willChange: 'transform' }}
                             className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
                           />
                         )

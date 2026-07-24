@@ -1790,8 +1790,14 @@ const cleanupJobFolder = async (filePath: string) => {
       await fs.promises.rm(dirPath, { recursive: true, force: true });
       console.log(`[Storage Cleanup] Successfully cleaned up job folder: ${dirPath}`);
     }
+    
+    // Also delete the final exported mp4 file if it exists in public/exports
+    if (filePath && filePath.endsWith('.mp4') && fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+      console.log(`[Storage Cleanup] Successfully removed exported file: ${filePath}`);
+    }
   } catch (e) {
-    console.warn(`[Storage Cleanup] Failed to delete directory for path ${filePath}:`, e);
+    console.warn(`[Storage Cleanup] Failed to delete file or directory for path ${filePath}:`, e);
   }
 };
 
@@ -1960,19 +1966,56 @@ const renderRateLimiter = rateLimit({
 });
 
 app.post("/api/render", renderRateLimiter, express.json({ limit: '500mb' }), async (req, res) => {
-  const jobId = Math.random().toString(36).substring(2, 15);
+  const masterJobId = Math.random().toString(36).substring(2, 15);
   const payload = req.body as RenderRequest;
+  const chunkSize = req.body.chunkSize || 0; // Number of scenes per part
   
   // Trigger cleanup in background to proactively free memory/disk before starting the next compile
   cleanupOldJobs().catch(err => console.error("Background cleanup error:", err));
 
-  renderJobs.set(jobId, { status: "processing", progress: 0, log: "Initializing queue entry...", createdAt: Date.now() });
-  
-  // Respond immediately with the jobId so client can start polling status
-  res.json({ jobId, status: "processing" });
+  if (chunkSize > 0 && payload.scenes && payload.scenes.length > chunkSize) {
+    const parts = [];
+    const totalScenes = payload.scenes.length;
+    
+    for (let i = 0; i < totalScenes; i += chunkSize) {
+      const partScenes = payload.scenes.slice(i, i + chunkSize);
+      const partJobId = `${masterJobId}_part_${parts.length + 1}`;
+      
+      const partPayload = { ...payload, scenes: partScenes };
+      
+      renderJobs.set(partJobId, {
+        status: "waiting",
+        progress: 0,
+        log: `Initializing queue entry for Part ${parts.length + 1}...`,
+        createdAt: Date.now()
+      });
+      
+      renderQueue.enqueue(partJobId, partPayload);
+      parts.push({
+        jobId: partJobId,
+        partIndex: parts.length + 1,
+        startScene: i + 1,
+        endScene: Math.min(i + chunkSize, totalScenes)
+      });
+    }
+    
+    renderJobs.set(masterJobId, {
+      status: "processing",
+      progress: 0,
+      createdAt: Date.now(),
+      parts
+    });
+    
+    res.json({ jobId: masterJobId, status: "processing", parts });
+  } else {
+    renderJobs.set(masterJobId, { status: "processing", progress: 0, log: "Initializing queue entry...", createdAt: Date.now() });
+    
+    // Respond immediately with the jobId so client can start polling status
+    res.json({ jobId: masterJobId, status: "processing" });
 
-  // Add rendering job into the in-memory concurrency queue
-  renderQueue.enqueue(jobId, payload);
+    // Add rendering job into the in-memory concurrency queue
+    renderQueue.enqueue(masterJobId, payload);
+  }
 });
 
 app.get("/api/render-jobs", (req, res) => { res.json(Array.from(renderJobs.entries())); });
@@ -1982,6 +2025,54 @@ app.get("/api/status/:jobId", (req, res) => {
   if (!job) {
     return res.status(404).json({ error: "Job not found" });
   }
+  
+  if (job.parts) {
+    let allCompleted = true;
+    let anyFailed = false;
+    let totalProgress = 0;
+    
+    const populatedParts = job.parts.map((p: any) => {
+      const partJob = renderJobs.get(p.jobId);
+      if (!partJob) {
+        allCompleted = false;
+        return p;
+      }
+      
+      if (partJob.status !== "completed") allCompleted = false;
+      if (partJob.status === "failed" || partJob.status === "error") anyFailed = true;
+      totalProgress += (partJob.progress || 0);
+      
+      return { 
+        ...p, 
+        status: partJob.status, 
+        progress: partJob.progress, 
+        log: partJob.log, 
+        downloadUrl: partJob.downloadUrl,
+        error: partJob.error
+      };
+    });
+    
+    let newStatus = job.status;
+    if (anyFailed) newStatus = "failed";
+    else if (allCompleted) newStatus = "completed";
+    
+    const avgProgress = totalProgress / job.parts.length;
+    
+    const masterJobResponse = {
+      ...job,
+      status: newStatus,
+      progress: Math.round(avgProgress),
+      parts: populatedParts
+    };
+    
+    // Update master job state slightly to reflect overall completion
+    if (newStatus !== job.status || Math.round(avgProgress) !== job.progress) {
+       renderJobs.set(jobId, { ...job, status: newStatus, progress: Math.round(avgProgress) });
+    }
+    
+    return res.json(masterJobResponse);
+  }
+
   if (job.status === "completed" && job.outPath && fs.existsSync(job.outPath)) {
     const stats = fs.statSync(job.outPath);
     const sizeInMb = (stats.size / (1024 * 1024)).toFixed(2);

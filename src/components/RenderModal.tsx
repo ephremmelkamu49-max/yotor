@@ -81,6 +81,9 @@ export default function RenderModal({
     fps: 30
   });
 
+  const [chunkSize, setChunkSize] = useState<number>(0);
+  const [chunkedParts, setChunkedParts] = useState<any[] | null>(null);
+  
   const getSubscribedPlan = (): '720p' | '1080p' | '4k' => {
     return '4k';
   };
@@ -858,7 +861,8 @@ export default function RenderModal({
         ramLimit: ramLimit,
         subtitleStyle: projectConfig.subtitleStyle,
         visualStyle: projectConfig.visualStyle,
-        videoFilter: projectConfig.videoFilter
+        videoFilter: projectConfig.videoFilter,
+        chunkSize: chunkSize
       };
       
       addLog("Starting backend compilation...");
@@ -934,6 +938,12 @@ export default function RenderModal({
 
           // Reset error counter upon receiving a valid, parsed status
           consecutiveErrors = 0;
+          
+          if (job.parts) {
+            setChunkedParts(job.parts);
+          } else {
+            setChunkedParts(null);
+          }
 
           if (job.status === 'processing' || job.status === 'waiting') {
             setProgress(job.progress || 0);
@@ -961,26 +971,30 @@ export default function RenderModal({
             cloudRenderAbortControllerRef.current = null;
             if (onRenderComplete) onRenderComplete();
 
-            // Auto-trigger clean browser download natively
-            try {
-              addLog("Triggering automatic direct file download...");
-              
-              const a = document.createElement('a');
-              a.style.display = 'none';
-              a.href = downloadUrl;
-              a.download = `generated-video.mp4`;
-              document.body.appendChild(a);
-              a.click();
-              
-              // Clean up immediately
-              setTimeout(() => {
-                document.body.removeChild(a);
-              }, 500);
-              
-              addLog("✅ Automatic download triggered successfully.");
-            } catch (err) {
-              console.error("Auto-download failed:", err);
-              addLog("⚠️ Auto-download blocked or failed, please use the Download Video Now button below.");
+            // Auto-trigger clean browser download natively if it's a single part
+            if (!job.parts) {
+              try {
+                addLog("Triggering automatic direct file download...");
+                
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = downloadUrl;
+                a.download = `generated-video.mp4`;
+                document.body.appendChild(a);
+                a.click();
+                
+                // Clean up immediately
+                setTimeout(() => {
+                  document.body.removeChild(a);
+                }, 500);
+                
+                addLog("✅ Automatic download triggered successfully.");
+              } catch (err) {
+                console.error("Auto-download failed:", err);
+                addLog("⚠️ Auto-download blocked or failed, please use the Download Video Now button below.");
+              }
+            } else {
+              addLog("ℹ️ Multi-part export complete. Please download the parts below.");
             }
 
           } else if (job.status === 'failed' || job.status === 'error') {
@@ -1385,6 +1399,61 @@ export default function RenderModal({
               )}
             </div>
 
+            {/* 🎞️ Chunked Export Architecture / Split into Parts */}
+            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase flex items-center gap-1.5">
+                  <Film size={11} className="text-pink-400" />
+                  {language === 'am' ? 'ረጃጅም ቪዲዮዎችን ከፋፍሎ ማውጣት (Chunked Export)' : 'Split Video into Parts (Chunked Export)'}
+                </span>
+                <span className="text-[10.5px] font-bold font-mono text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full">
+                  {chunkSize === 0 ? 'Full Video' : `${chunkSize} Scenes/Part`}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChunkSize(0)}
+                  className={`py-2 text-[10px] font-bold rounded-lg border transition-all ${
+                    chunkSize === 0
+                      ? 'bg-pink-500/10 border-pink-500/30 text-pink-400'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  Full Video
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChunkSize(3)}
+                  className={`py-2 text-[10px] font-bold rounded-lg border transition-all ${
+                    chunkSize === 3
+                      ? 'bg-pink-500/10 border-pink-500/30 text-pink-400'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  3 Scenes/Part
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChunkSize(5)}
+                  className={`py-2 text-[10px] font-bold rounded-lg border transition-all ${
+                    chunkSize === 5
+                      ? 'bg-pink-500/10 border-pink-500/30 text-pink-400'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  5 Scenes/Part
+                </button>
+              </div>
+              
+              <p className="text-[9.5px] text-zinc-500 leading-normal font-sans">
+                {language === 'am' 
+                  ? 'እጅግ ረጃጅም ቪዲዮዎችን በትንሽ በትንሹ ከፋፍሎ በማቀናበር (ለምሳሌ: Part 1, Part 2) ለ CapCut እና ለሌሎች ኤዲተሮች እንዲመች ያደርጋል። ይህ የሰርቨሩን ጫና በመቀነስ የቪዲዮውን ጥራት ከፍተኛ ያደርገዋል።' 
+                  : 'Divide extremely long videos into manageable chunks (e.g., Part 1, Part 2) for CapCut editing. Prevents memory limits and maintains pristine export quality.'}
+              </p>
+            </div>
+
             <div className="p-4 rounded-xl bg-[#09090b] border border-zinc-800/80 space-y-3">
               <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">
                 {language === 'am' ? 'የፕሮጀክት አስተዳደር' : 'Project Management'}
@@ -1550,7 +1619,8 @@ export default function RenderModal({
                 src={renderedBlobUrl || undefined}
                 controls
                 playsInline
-                preload="metadata"
+                preload="auto"
+                style={{ transform: 'translateZ(0)', willChange: 'transform, opacity', WebkitFontSmoothing: 'antialiased' }}
                 className="w-full h-auto max-h-[190px] rounded-xl object-contain mx-auto shadow-xl"
               />
               <div className="text-center pt-1.5 pb-0.5">
@@ -1577,10 +1647,10 @@ export default function RenderModal({
               </div>
               <div className="space-y-1">
                 <span className="text-zinc-600 uppercase tracking-widest text-[8px] font-mono block">
-                  {language === 'am' ? 'የተዋሃዱ ክፍሎች' : 'Scenes Built'}
+                  {language === 'am' ? 'የተቀናበሩ ትዕይንቶች' : 'Scenes'}
                 </span>
                 <p className="text-zinc-200 font-mono font-bold text-sm">
-                  {statistics.scenesProcessed} {language === 'am' ? 'ክፍሎች' : 'Segments'}
+                  {statistics.scenesProcessed} {language === 'am' ? 'ትዕይንቶች' : 'clips'}
                 </p>
               </div>
               <div className="space-y-1">
@@ -1608,135 +1678,6 @@ export default function RenderModal({
                 {exportQuota} / 3 {language === 'am' ? 'ጊዜ' : 'times'}
               </span>
             </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setRenderStatus('idle');
-                  setRenderedBlobUrl(null);
-                }}
-                className="flex-1 py-3 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-semibold font-mono uppercase tracking-widest transition-colors animate-fade-in"
-                id="render-again-btn"
-              >
-                {language === 'am' ? 'የማቀናበሪያ ገጽ' : 'Render settings'}
-              </button>
-              
-              <button
-                type="button"
-                onClick={async () => {
-                  if (exportQuota > 0) {
-                    const nextQ = exportQuota - 1;
-                    setExportQuota(nextQ);
-                    localStorage.setItem('yotor_video_quota', String(nextQ));
-                  }
-
-                  if (renderedBlobUrl) {
-                    try {
-                      const a = document.createElement('a');
-                      a.style.display = 'none';
-                      a.href = renderedBlobUrl;
-                      a.download = `generated-video.mp4`;
-                      document.body.appendChild(a);
-                      a.click();
-                      
-                      setTimeout(() => {
-                        document.body.removeChild(a);
-                      }, 500);
-                    } catch (err) {
-                      console.error("Fallback download failed:", err);
-                      // Fallback to opening in a new tab
-                      window.open(renderedBlobUrl, '_blank');
-                    }
-                  }
-                }}
-                className="flex-1 py-5 bg-gradient-to-r from-emerald-600 to-teal-650 hover:from-emerald-500 hover:to-teal-600 text-white font-black block text-center rounded-2xl text-sm shadow-xl shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer font-mono uppercase tracking-[0.1em] border border-emerald-400/20"
-                id="download-master-video-file-btn"
-              >
-                <span className="flex items-center justify-center gap-2.5">
-                  <Download size={20} className="stroke-[3px]" />
-                  {language === 'am' ? 'ተጠናቋል! ቪዲዮውን ወደ ስልክዎ ይጫኑ' : 'DOWNLOAD VIDEO NOW'}
-                </span>
-              </button>
-            </div>
-
-            {/* Direct High-Speed Download Buttons for Chrome / Telegram Export */}
-            <div className="p-4 bg-gradient-to-r from-blue-950/20 to-indigo-950/20 border border-blue-500/10 rounded-2xl space-y-3 mt-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-mono flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                  {language === 'am' ? 'ፈጣን ቀጥታ ማውረጃ (Direct High-Speed Export)' : 'Direct High-Speed Download Mirror'}
-                </span>
-                <span className="text-[9px] bg-blue-500/10 text-blue-300 font-mono font-bold px-1.5 py-0.5 rounded border border-blue-500/20 uppercase">
-                  100% Native Speed
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-1 gap-2">
-                <a
-                  href={
-                    renderedBlobUrl
-                      ? renderedBlobUrl.includes('download=true')
-                        ? renderedBlobUrl
-                        : `${renderedBlobUrl}&download=true`
-                      : '#'
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => {
-                    if (exportQuota > 0) {
-                      const nextQ = exportQuota - 1;
-                      setExportQuota(nextQ);
-                      localStorage.setItem('yotor_video_quota', String(nextQ));
-                    }
-                  }}
-                  className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-500 hover:to-indigo-600 text-white text-xs font-bold font-sans rounded-xl shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] transition-all text-center block border border-blue-400/20 uppercase tracking-wider"
-                >
-                  📥 {language === 'am' ? 'በቀጥታ አውርድ (Direct High-Speed MP4)' : 'NATIVE DIRECT MP4 DOWNLOAD'}
-                </a>
-                
-                <p className="text-[10px] text-zinc-450 leading-relaxed font-sans text-center">
-                  {language === 'am' 
-                    ? 'ይህ ማውረጃ በቀጥታ ሰርቨሩን በማገናኘት እንደ Telegram, Chrome ወይም YouTube እጅግ በከፍተኛ ፍጥነት እና ያለ ምንም መቆራረጥ በቀጥታ እንዲያወርዱ ያስችልዎታል።' 
-                    : 'This directly initiates a native browser download stream at maximum server bandwidth (similar to Chrome/Telegram downloaders).'}
-                </p>
-              </div>
-            </div>
-
-            {/* Google AI Studio Iframe sandbox bypass help card */}
-            <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-2 mt-2">
-              <h4 className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 font-sans">
-                ⚠️ {language === 'am' ? 'ማሳሰቢያ (Iframe Security Notice)' : 'Troubleshooting / Download Notice'}
-              </h4>
-              <p className="text-[10.5px] text-zinc-350 leading-relaxed font-sans">
-                {language === 'am' ? (
-                  <>
-                    በስልክዎ የጎግል አይ ስቱዲዮ (Google AI Studio) ውስጥ ቪዲዮውን ማጫወት ወይም ማውረድ ካልቻሉ፣ እባክዎ ከላይ በስተቀኝ ያለውን <strong className="text-amber-300">"Open in new tab"</strong> የሚለውን ቁልፍ በመጫን አፑን በአዲስ ገጽ ይክፈቱት። በአዲስ ታብ ላይ ምንም ዓይነት የደህንነት ገደብ ስለማይኖርበት ቪዲዮው በጥራት ይጫናል፤ በፍጥነትም ይወርዳል!
-                  </>
-                ) : (
-                  <>
-                    If you are unable to preview or download the video inside the Google AI Studio preview window, please click the <strong className="text-amber-300">"Open in new tab"</strong> button at the top right of the page. Opening the app in a new tab bypasses iframe sandbox restrictions, allowing the video to stream and download flawlessly!
-                  </>
-                )}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {renderStatus === 'failed' && (
-          <div className="space-y-5 py-4">
-            <div className="flex flex-col items-center justify-center py-4 text-center space-y-3">
-              <AlertCircle size={44} className="text-red-500 animate-pulse" />
-              <h3 className="text-base font-semibold text-zinc-100 font-mono uppercase">Baking Session Stopped</h3>
-              <p className="text-xs text-red-400 max-w-sm">An error occurred during canvas compilation or audio synthesis</p>
-            </div>
-
-            <div className="bg-red-955/10 border border-red-900/40 p-3 rounded-xl max-h-[140px] overflow-y-auto space-y-1">
-              {renderLogs.slice(-4).map((log, index) => (
-                <div key={index} className="text-[10px] uppercase font-mono text-red-350 leading-normal">{log}</div>
-              ))}
-            </div>
-
             <div className="flex items-center gap-3">
               <button
                 type="button"

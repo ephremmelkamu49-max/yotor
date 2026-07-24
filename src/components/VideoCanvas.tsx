@@ -2067,6 +2067,9 @@ export default function VideoCanvas({
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
+                           if (projectConfig.musicTrack && projectConfig.musicTrack.startsWith('blob:')) {
+                             URL.revokeObjectURL(projectConfig.musicTrack);
+                           }
                            const url = URL.createObjectURL(file);
                            onUpdateConfig({ musicTrack: url });
                         }
@@ -2694,23 +2697,7 @@ export default function VideoCanvas({
           
 
 
-          {/* Beautiful Buffering Indicator Overlay */}
-          {isBuffering && isPlaying && (
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center gap-3 transition-all duration-350">
-              <div className="relative w-12 h-12 flex items-center justify-center">
-                <span className="absolute w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-                <Sparkles className="text-indigo-400 animate-pulse" size={18} />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-xs font-semibold text-zinc-100 font-sans tracking-wide">
-                  ቪዲዮ በመጫን ላይ...
-                </p>
-                <p className="text-[10px] text-zinc-400 font-mono tracking-wider uppercase">
-                  Buffering Video (Slow Connection)...
-                </p>
-              </div>
-            </div>
-          )}
+          
         </div>
 
         {/* Hidden active videos/images for crossfade rendering */}
@@ -2756,7 +2743,13 @@ export default function VideoCanvas({
                 playsInline
                 crossOrigin="anonymous"
                 className="pointer-events-none absolute -z-50 w-64 h-36 object-cover opacity-[0.002]"
+                style={{ transform: 'translateZ(0)', willChange: 'transform, opacity', WebkitFontSmoothing: 'antialiased', objectFit: 'cover' }}
                 preload="auto"
+                onCanPlayThrough={() => {
+                  if (idx === playbackIndex) {
+                    setIsBuffering(false);
+                  }
+                }}
                 onWaiting={() => {
                   if (idx === playbackIndex && isPlaying) {
                     setIsBuffering(true);
