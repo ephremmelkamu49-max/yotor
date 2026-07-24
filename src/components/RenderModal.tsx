@@ -3,7 +3,7 @@ import { Scene, ProjectConfig } from '../types';
 import { DEFAULT_MUSIC, getTtsUrl } from '../data';
 import { Language, translations } from '../translations';
 import { 
-  Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu, Send, Copy, Check, ExternalLink, MessageSquare, Share2
+  Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu, Send, Copy, Check, ExternalLink, MessageSquare, Share2, AlertTriangle
 } from 'lucide-react';
 
 interface RenderModalProps {
@@ -62,6 +62,7 @@ export default function RenderModal({
     });
   };
   const [renderLogs, setRenderLogs] = useState<string[]>([]);
+  const [renderError, setRenderError] = useState<string | null>(null);
   const [renderOption, setRenderOption] = useState<'full' | 'fast'>('full');
   const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
   const [shareableDirectUrl, setShareableDirectUrl] = useState<string | null>(null);
@@ -177,6 +178,7 @@ export default function RenderModal({
     setRenderStatus('processing');
     setProgress(0);
     setRenderLogs([]);
+    setRenderError(null);
     setShareableDirectUrl(null);
     setTelegramStatus({});
     addLog(`Initiating backend compile job...`);
@@ -243,9 +245,9 @@ export default function RenderModal({
             if (jobData.telegramSent) {
               setTelegramStatus({ sent: true });
               addLog(`Telegram Bot Notification sent successfully! 🎬`);
-            } else if (jobData.telegramError) {
-              setTelegramStatus({ sent: false, error: jobData.telegramError });
-              addLog(`Telegram notice: ${jobData.telegramError}`);
+            } else if (jobData.telegramError || jobData.telegramSent === false) {
+              setTelegramStatus({ sent: false, error: jobData.telegramError || 'Failed to deliver to Telegram' });
+              addLog(`Telegram notice: ${jobData.telegramError || 'Failed to deliver to Telegram'}`);
             } else {
               setTelegramStatus({ sent: true });
             }
@@ -263,7 +265,9 @@ export default function RenderModal({
             clearInterval(cloudRenderIntervalRef.current);
             cloudRenderIntervalRef.current = null;
             setRenderStatus('failed');
-            addLog(`CRITICAL ERROR: ${jobData.error || jobData.log || 'Render job failed on server'}`);
+            const errStr = jobData.error || jobData.log || 'Render job failed on server';
+            setRenderError(errStr);
+            addLog(`CRITICAL ERROR: ${errStr}`);
           }
         } catch (pollErr: any) {
           console.warn('Status polling error:', pollErr);
@@ -273,6 +277,7 @@ export default function RenderModal({
     } catch (err: any) {
       console.error(err);
       setRenderStatus('failed');
+      setRenderError(err.message);
       addLog(`CRITICAL API ERROR: ${err.message}`);
     }
   };
@@ -877,21 +882,109 @@ export default function RenderModal({
           </div>
         )}
 
+        {renderStatus === 'failed' && (
+          <div className="space-y-5 py-4 flex-1 flex flex-col justify-between overflow-y-auto max-h-[70vh] pr-1">
+            <div className="space-y-4">
+              
+              {/* ⚠️ Failure Notification Block */}
+              <div className="p-4 bg-gradient-to-r from-red-955/60 via-amber-955/50 to-zinc-950 border border-red-500/30 rounded-2xl flex items-center gap-3 shadow-lg">
+                <AlertCircle size={36} className="text-red-400 shrink-0" />
+                <div className="text-left space-y-1">
+                  <h3 className="text-xs font-mono font-extrabold text-red-300 uppercase tracking-wider">
+                    {language === 'am' ? '⚠️ ማቀናበሩ አልተሳካም (Process Failed)' : '⚠️ Compilation Failed'}
+                  </h3>
+                  <p className="text-[11px] text-red-200/85 font-medium leading-relaxed">
+                    {language === 'am' 
+                      ? 'ቪዲዮውን በክላውድ ሰርቨር ላይ በማቀናበር ላይ ሳለ ስህተት አጋጥሟል። እባክዎን የስህተት ዝርዝሩን ይመልከቱ።' 
+                      : 'An error occurred during backend cloud stitching or rendering. See detailed logs below.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Real Detailed Error Message display */}
+              {renderError && (
+                <div className="p-3 bg-red-950/20 border border-red-900/40 rounded-xl space-y-1">
+                  <span className="text-[8.5px] font-mono font-bold text-red-400 uppercase tracking-widest block">
+                    Detailed Exception Log:
+                  </span>
+                  <p className="text-[11px] font-mono text-zinc-350 break-words leading-relaxed select-text">
+                    {renderError}
+                  </p>
+                </div>
+              )}
+
+              {/* Rendering Terminal logs */}
+              <div className="space-y-1.5">
+                <span className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase block">
+                  Console Output & Session Trace
+                </span>
+                <div className="bg-[#050505] border border-zinc-900 rounded-xl p-3 max-h-[160px] overflow-y-auto font-mono text-[9px] text-[#8e909a] space-y-1" id="render-failed-terminal-logs">
+                  <div className="flex items-center gap-1.5 text-zinc-500 mb-2 border-b border-zinc-900 pb-1 shrink-0">
+                    <Terminal size={10} />
+                    <span>Compiler Trace Log</span>
+                  </div>
+                  {renderLogs.map((log, lIdx) => (
+                    <div key={lIdx} className="leading-normal">{log}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  cleanupRenderSubprocesses();
+                  setRenderStatus('idle');
+                }}
+                className="flex-1 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-400 hover:text-white transition-colors uppercase font-mono tracking-wider font-bold"
+              >
+                {language === 'am' ? 'ወደ መድረክ ተመለስ' : 'Go Back'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  initiateCloudRender();
+                }}
+                className="flex-1 py-3 text-white font-extrabold text-xs rounded-xl transition-all font-mono uppercase tracking-widest bg-red-600 hover:bg-red-500 border border-red-400/20 shadow-lg shadow-red-600/10"
+              >
+                {language === 'am' ? 'እንደገና ሞክር' : 'Retry Rendering'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {renderStatus === 'completed' && renderedBlobUrl && (
           <div className="space-y-4 py-1 overflow-y-auto max-h-[70vh] pr-1 scrollbar-thin">
             
-            {/* 🎉 Telegram Delivery Success Banner */}
-            <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-teal-950/50 to-zinc-950 border border-emerald-500/30 rounded-2xl flex items-center gap-3 shadow-lg">
-              <CheckCircle2 size={32} className="text-emerald-400 shrink-0" />
-              <div className="text-left space-y-0.5">
-                <h3 className="text-xs font-mono font-extrabold text-emerald-300 uppercase tracking-wider">
-                  {language === 'am' ? '🎉 ተሳክቷል! ቪዲዮው ወደ ቴሌግራምዎ ተልኳል።' : '🎉 Success! The video has been sent to your Telegram.'}
-                </h3>
-                <p className="text-[11px] text-emerald-200/80 font-medium">
-                  {language === 'am' ? 'ከታች ባሉት አማራጮች ቪዲዮውን በቴሌግራም መክፈት ወይም የቀጥታ ሊንኩን መቅዳት ይችላሉ።' : 'You can open it directly in Telegram or copy the shareable link below.'}
-                </p>
+            {/* 🎉 Telegram Delivery Status Banner */}
+            {telegramStatus.sent !== false ? (
+              <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-teal-950/50 to-zinc-950 border border-emerald-500/30 rounded-2xl flex items-center gap-3 shadow-lg">
+                <CheckCircle2 size={32} className="text-emerald-400 shrink-0" />
+                <div className="text-left space-y-0.5">
+                  <h3 className="text-xs font-mono font-extrabold text-emerald-300 uppercase tracking-wider">
+                    {language === 'am' ? '🎉 ተሳክቷል! ቪዲዮው ወደ ቴሌግራምዎ ተልኳል።' : '🎉 Success! The video has been sent to your Telegram.'}
+                  </h3>
+                  <p className="text-[11px] text-emerald-200/80 font-medium">
+                    {language === 'am' ? 'ከታች ባሉት አማራጮች ቪዲዮውን በቴሌግራም መክፈት ወይም የቀጥታ ሊንኩን መቅዳት ይችላሉ።' : 'You can open it directly in Telegram or copy the shareable link below.'}
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 bg-gradient-to-r from-amber-950/60 via-orange-950/50 to-zinc-950 border border-amber-500/30 rounded-2xl flex items-center gap-3 shadow-lg animate-fadeIn">
+                <AlertTriangle size={32} className="text-amber-400 shrink-0" />
+                <div className="text-left space-y-0.5 flex-1">
+                  <h3 className="text-xs font-mono font-extrabold text-amber-300 uppercase tracking-wider">
+                    {language === 'am' ? '⚠️ የቴሌግራም ማድረስ አልተሳካም (የቀጥታ ማውረጃ ሊንክ ዝግጁ ነው)' : '⚠️ Telegram Delivery Notice (Direct Fallback Ready)'}
+                  </h3>
+                  <p className="text-[10.5px] text-amber-200/80 font-medium leading-snug">
+                    {language === 'am' 
+                      ? `ቪዲዮው ተሰርቶ አልቋል ነገር ግን ወደ ቴሌግራም መላክ አልተቻለም (${telegramStatus.error || 'ያልታወቀ ስህተት'})። ምንም ችግር የለም! ከታች ባለው ሊንክ ማጫወት ወይም ማውረድ ይችላሉ።`
+                      : `Video compiled successfully but Telegram delivery failed: "${telegramStatus.error || 'network issue'}". No worries! Your video is preserved. Use the direct link or player below.`}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Real-time Inline Web Video Player Preview */}
             <div className="relative overflow-hidden rounded-2xl border border-zinc-900 bg-[#040406] p-1.5">

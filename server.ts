@@ -1853,12 +1853,43 @@ setInterval(() => {
   cleanupOldJobs().catch(err => console.error("Periodic cleanup error:", err));
 }, 5 * 60 * 1000);
 
-// Helper function to upload rendered video directly via Telegram Bot API with auto-retry mechanism
+// Helper function to send standard text messages via Telegram Bot API as a resilient fallback
+async function sendTextMessageToTelegram(
+  botToken: string,
+  chatId: string,
+  text: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: "HTML"
+      })
+    });
+    const data: any = await response.json();
+    if (!data.ok) {
+      console.error("[Telegram Bot] Fallback sendMessage failed:", data);
+      return { success: false, error: data.description || "Failed to send text fallback message" };
+    }
+    console.log("[Telegram Bot] Fallback text notification delivered successfully to chat", chatId);
+    return { success: true };
+  } catch (err: any) {
+    console.error("[Telegram Bot] Exception during fallback sendMessage:", err);
+    return { success: false, error: err.message || "Failed to send text fallback message" };
+  }
+}
+
+// Helper function to upload rendered video directly via Telegram Bot API with auto-retry mechanism and text fallback
 async function sendVideoToTelegram(
   filePath: string,
   customCaption?: string,
   customChatId?: string,
-  customToken?: string
+  customToken?: string,
+  shareableUrl?: string
 ): Promise<{ success: boolean; error?: string }> {
   const DEFAULT_BOT_TOKEN = "8870687283:AAGe87k64Gej8jJ5Ahc7m20DrB0NoaKsQSU";
   const DEFAULT_CHAT_ID = "2034380079";
@@ -1873,6 +1904,23 @@ async function sendVideoToTelegram(
   const caption = customCaption || "🎬 Your Video is Ready! Here is your high-quality MP4.";
   const maxAttempts = 3;
   let lastError = "";
+
+  const stats = fs.statSync(filePath);
+  const sizeBytes = stats.size;
+  const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
+  const isTooLarge = sizeBytes > 49 * 1024 * 1024; // 49 MB safe limit for standard Bot API
+
+  // If the file exceeds the 50MB direct upload limit of Telegram, proactively send the download link via text
+  if (isTooLarge) {
+    console.warn(`[Telegram Bot] File size is ${sizeMB} MB, which exceeds Telegram's 50MB direct upload limit. Deploying direct text link fallback...`);
+    const fallbackMessage = `${caption}\n\n⚠️ <b>File size (${sizeMB} MB) exceeds Telegram's 50MB direct upload limit.</b>\n\n🚀 You can download or play the full high-quality 1080p Master video directly using this secure link:\n🔗 <a href="${shareableUrl || ''}">${shareableUrl || 'Direct Download Link'}</a>\n\nEnjoy your video with zero device storage lag!`;
+    const textResult = await sendTextMessageToTelegram(botToken, chatId, fallbackMessage);
+    if (textResult.success) {
+      return { success: true, error: `File is ${sizeMB} MB (exceeded 50MB direct upload limit). Direct link sent via message.` };
+    } else {
+      return { success: false, error: `File exceeds 50MB limit and direct link delivery failed: ${textResult.error}` };
+    }
+  }
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -1892,8 +1940,6 @@ async function sendVideoToTelegram(
       formData.append("video", videoBlob, fileName);
       formData.append("caption", caption);
 
-      const stats = fs.statSync(filePath);
-      const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
       console.log(`[Telegram Bot] Uploading video (${sizeMB} MB) to chat ${chatId} (Attempt ${attempt}/${maxAttempts})...`);
 
       const response = await fetch(url, {
@@ -1905,6 +1951,11 @@ async function sendVideoToTelegram(
       if (!data.ok) {
         console.error(`[Telegram Bot] Attempt ${attempt} failed with API error:`, data);
         lastError = data.description || "Telegram API returned an error";
+        // If the API error is specifically 413 or "Request Entity Too Large", stop retrying and trigger text link fallback immediately
+        if (data.error_code === 413 || lastError.toLowerCase().includes("large")) {
+          console.warn("[Telegram Bot] Stopping upload attempts due to 413 payload limit. Activating direct link text fallback.");
+          break;
+        }
       } else {
         console.log(`[Telegram Bot] Video uploaded successfully to Telegram chat ${chatId} on attempt ${attempt}!`);
         return { success: true };
@@ -1918,6 +1969,14 @@ async function sendVideoToTelegram(
       console.log(`[Telegram Bot] Retrying upload in ${attempt * 2} seconds...`);
       await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
     }
+  }
+
+  // If we reach here, direct video upload failed or was bypassed. Execute standard text fallback containing the direct web download link.
+  console.warn(`[Telegram Bot] Direct upload failed (${lastError}). Sending backup text message with direct link...`);
+  const fallbackMessage = `${caption}\n\n⚠️ <b>Direct video upload failed (${lastError}).</b>\n\n🚀 You can download or play the full high-quality 1080p Master video directly via this secure link:\n🔗 <a href="${shareableUrl || ''}">${shareableUrl || 'Direct Download Link'}</a>`;
+  const textResult = await sendTextMessageToTelegram(botToken, chatId, fallbackMessage);
+  if (textResult.success) {
+    return { success: false, error: `Direct upload failed (${lastError}), but fallback direct download link was successfully sent to Telegram.` };
   }
 
   return { success: false, error: lastError };
@@ -2021,7 +2080,8 @@ class RenderQueue {
         finalPath,
         telegramCaption,
         (payload as any).telegramChatId,
-        (payload as any).telegramBotToken
+        (payload as any).telegramBotToken,
+        shareableUrl
       );
 
       console.log(`[Queue] Render job SUCCESS: ${jobId}`, finalPath);
@@ -2145,6 +2205,7 @@ app.get("/api/status/:jobId", (req, res) => {
     let allCompleted = true;
     let anyFailed = false;
     let totalProgress = 0;
+    let firstPartError = "";
     
     const populatedParts = job.parts.map((p: any) => {
       const partJob = renderJobs.get(p.jobId);
@@ -2154,7 +2215,12 @@ app.get("/api/status/:jobId", (req, res) => {
       }
       
       if (partJob.status !== "completed") allCompleted = false;
-      if (partJob.status === "failed" || partJob.status === "error") anyFailed = true;
+      if (partJob.status === "failed" || partJob.status === "error") {
+        anyFailed = true;
+        if (!firstPartError && partJob.error) {
+          firstPartError = partJob.error;
+        }
+      }
       totalProgress += (partJob.progress || 0);
       
       return { 
@@ -2177,12 +2243,13 @@ app.get("/api/status/:jobId", (req, res) => {
       ...job,
       status: newStatus,
       progress: Math.round(avgProgress),
-      parts: populatedParts
+      parts: populatedParts,
+      error: firstPartError || job.error
     };
     
     // Update master job state slightly to reflect overall completion
-    if (newStatus !== job.status || Math.round(avgProgress) !== job.progress) {
-       renderJobs.set(jobId, { ...job, status: newStatus, progress: Math.round(avgProgress) });
+    if (newStatus !== job.status || Math.round(avgProgress) !== job.progress || (firstPartError && !job.error)) {
+       renderJobs.set(jobId, { ...job, status: newStatus, progress: Math.round(avgProgress), error: firstPartError || job.error });
     }
     
     return res.json(masterJobResponse);

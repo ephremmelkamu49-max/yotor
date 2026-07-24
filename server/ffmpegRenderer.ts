@@ -172,6 +172,11 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       await Promise.all(batchScenes.map(async (scene, bIdx) => {
         const globalIdx = batchIdx + bIdx;
         const videoPath = path.join(tempDir, `vid_${globalIdx}.mp4`);
+        if (!scene.videoUrl) {
+          console.warn(`[FFmpegRenderer] No videoUrl provided for scene ${globalIdx + 1}. Falling back to solid color background.`);
+          (scene as any).downloadFailed = true;
+          return;
+        }
         let retries = 3;
         while (retries > 0) {
           try {
@@ -180,8 +185,12 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
           } catch (e: any) {
             retries--;
             console.error(`Failed to download ${scene.videoUrl}, retries left: ${retries}`);
-            if (retries === 0) throw new Error(`Failed to download video for scene ${globalIdx + 1}: ${e.message}`);
-            await new Promise(r => setTimeout(r, 500));
+            if (retries === 0) {
+              console.warn(`[FFmpegRenderer] Failed to download video for scene ${globalIdx + 1}: ${e.message}. Falling back to solid color background.`);
+              (scene as any).downloadFailed = true;
+            } else {
+              await new Promise(r => setTimeout(r, 500));
+            }
           }
         }
       }));
@@ -195,12 +204,32 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         const audioPath = path.join(tempDir, `aud_${globalIdx}.wav`);
         const outPath = path.join(tempDir, `out_${globalIdx}.mp4`);
 
-        if (scene.ttsAudioBuffer) {
-          await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
+        if ((scene as any).downloadFailed) {
+          console.log(`[FFmpegRenderer] Generating solid color fallback canvas for scene ${globalIdx + 1}...`);
+          try {
+            const solidColorCmd = `"${ffmpegPath}" -loglevel quiet -y -f lavfi -i color=c=0x1a1230:s=${width}x${height} -t ${scene.duration || 5} -r 30 -pix_fmt yuv420p "${videoPath}"`;
+            await runCommand(solidColorCmd);
+          } catch (err: any) {
+            console.error(`[FFmpegRenderer] Failed to generate solid color fallback: ${err.message}`);
+          }
         }
 
-        const isImage = scene.videoUrl.match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || scene.videoUrl.includes("pollinations.ai") || scene.videoUrl.startsWith("data:image");
-        const hasTTS = !!scene.ttsAudioBuffer;
+        if (scene.ttsAudioBuffer) {
+          try {
+            await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
+          } catch (err: any) {
+            console.error(`[FFmpegRenderer] Failed to write ttsAudioBuffer for scene ${globalIdx + 1}: ${err.message}`);
+            delete (scene as any).ttsAudioBuffer;
+          }
+        }
+
+        const isImage = (scene.videoUrl || "").match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || (scene.videoUrl || "").includes("pollinations.ai") || (scene.videoUrl || "").startsWith("data:image") || (scene as any).downloadFailed;
+        
+        let hasTTS = false;
+        if (scene.ttsAudioBuffer) {
+          hasTTS = await fs.access(audioPath).then(() => true).catch(() => false);
+        }
+
         const videoHasAudio = !isImage && (await hasAudioStream(videoPath));
 
         let baseScale = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},setsar=1,fps=30,format=yuv420p`;
@@ -331,7 +360,27 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         cmd += `-filter_complex "${filterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
         console.log(`Running FFmpeg for scene segment ${globalIdx + 1}...`);
-        await runCommand(cmd);
+        try {
+          await runCommand(cmd);
+        } catch (ffmpegErr: any) {
+          console.warn(`[FFmpegRenderer] FFmpeg failed on scene ${globalIdx + 1} with voiceover/music. Retrying with silence fallback:`, ffmpegErr.message);
+          
+          let fallbackFilterGraph = `[0:v]${finalFilter}[v];[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a]`;
+          let fallbackCmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -avoid_negative_ts make_zero `;
+          if (isImage) {
+            fallbackCmd += `-loop 1 `;
+          } else {
+            fallbackCmd += `-stream_loop 50 `;
+          }
+          fallbackCmd += `-i "${videoPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
+          fallbackCmd += `-filter_complex "${fallbackFilterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+          
+          try {
+            await runCommand(fallbackCmd);
+          } catch (retryErr: any) {
+            throw new Error(`Scene ${globalIdx + 1} rendering failed: ${ffmpegErr.message} (Fallback retry also failed: ${retryErr.message})`);
+          }
+        }
 
         const sceneExists = await fs.access(outPath).then(() => true).catch(() => false);
         if (!sceneExists) {
@@ -340,7 +389,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
         // Immediately clean up raw downloaded asset & WAV audio
         await fs.unlink(videoPath).catch(() => {});
-        if (hasTTS) {
+        if (hasTTS || await fs.access(audioPath).then(() => true).catch(() => false)) {
           await fs.unlink(audioPath).catch(() => {});
         }
 
