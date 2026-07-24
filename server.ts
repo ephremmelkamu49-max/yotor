@@ -22,6 +22,14 @@ dotenv.config();
 
 const app = express();
 app.set("trust proxy", 1);
+
+// Enable Cross-Origin Isolation headers for SharedArrayBuffer / multi-threaded wasm
+app.use((req, res, next) => {
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  next();
+});
+
 const PORT = 3000;
 
 // Ensure uploads and exports directories exist
