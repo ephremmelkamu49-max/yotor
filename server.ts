@@ -23,13 +23,6 @@ dotenv.config();
 const app = express();
 app.set("trust proxy", 1);
 
-// Enable Cross-Origin Isolation headers for SharedArrayBuffer / multi-threaded wasm
-app.use((req, res, next) => {
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-  next();
-});
-
 const PORT = 3000;
 
 // Ensure uploads and exports directories exist
@@ -1891,44 +1884,15 @@ async function sendTextMessageToTelegram(
   }
 }
 
-// Helper function to upload rendered video directly via Telegram Bot API with auto-retry mechanism and text fallback
-async function sendVideoToTelegram(
+// Helper function to send a single video file via Telegram Bot API
+async function sendSingleFileToTelegram(
   filePath: string,
-  customCaption?: string,
-  customChatId?: string,
-  customToken?: string,
-  shareableUrl?: string
+  caption: string,
+  botToken: string,
+  chatId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const DEFAULT_BOT_TOKEN = "8870687283:AAGe87k64Gej8jJ5Ahc7m20DrB0NoaKsQSU";
-  const DEFAULT_CHAT_ID = "2034380079";
-
-  const botToken = customToken || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN;
-  const chatId = customChatId || process.env.TELEGRAM_CHAT_ID || DEFAULT_CHAT_ID;
-  if (!botToken || !chatId) {
-    console.log("[Telegram Bot] Skipping notification: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured.");
-    return { success: false, error: "Telegram bot token or chat ID not configured." };
-  }
-
-  const caption = customCaption || "🎬 Your Video is Ready! Here is your high-quality MP4.";
   const maxAttempts = 3;
   let lastError = "";
-
-  const stats = fs.statSync(filePath);
-  const sizeBytes = stats.size;
-  const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
-  const isTooLarge = sizeBytes > 49 * 1024 * 1024; // 49 MB safe limit for standard Bot API
-
-  // If the file exceeds the 50MB direct upload limit of Telegram, proactively send the download link via text
-  if (isTooLarge) {
-    console.warn(`[Telegram Bot] File size is ${sizeMB} MB, which exceeds Telegram's 50MB direct upload limit. Deploying direct text link fallback...`);
-    const fallbackMessage = `${caption}\n\n⚠️ <b>File size (${sizeMB} MB) exceeds Telegram's 50MB direct upload limit.</b>\n\n🚀 You can download or play the full high-quality 1080p Master video directly using this secure link:\n🔗 <a href="${shareableUrl || ''}">${shareableUrl || 'Direct Download Link'}</a>\n\nEnjoy your video with zero device storage lag!`;
-    const textResult = await sendTextMessageToTelegram(botToken, chatId, fallbackMessage);
-    if (textResult.success) {
-      return { success: true, error: `File is ${sizeMB} MB (exceeded 50MB direct upload limit). Direct link sent via message.` };
-    } else {
-      return { success: false, error: `File exceeds 50MB limit and direct link delivery failed: ${textResult.error}` };
-    }
-  }
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -1948,7 +1912,9 @@ async function sendVideoToTelegram(
       formData.append("video", videoBlob, fileName);
       formData.append("caption", caption);
 
-      console.log(`[Telegram Bot] Uploading video (${sizeMB} MB) to chat ${chatId} (Attempt ${attempt}/${maxAttempts})...`);
+      const stats = fs.statSync(filePath);
+      const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+      console.log(`[Telegram Bot] Uploading file ${fileName} (${sizeMB} MB) to chat ${chatId} (Attempt ${attempt}/${maxAttempts})...`);
 
       const response = await fetch(url, {
         method: "POST",
@@ -1959,13 +1925,11 @@ async function sendVideoToTelegram(
       if (!data.ok) {
         console.error(`[Telegram Bot] Attempt ${attempt} failed with API error:`, data);
         lastError = data.description || "Telegram API returned an error";
-        // If the API error is specifically 413 or "Request Entity Too Large", stop retrying and trigger text link fallback immediately
         if (data.error_code === 413 || lastError.toLowerCase().includes("large")) {
-          console.warn("[Telegram Bot] Stopping upload attempts due to 413 payload limit. Activating direct link text fallback.");
           break;
         }
       } else {
-        console.log(`[Telegram Bot] Video uploaded successfully to Telegram chat ${chatId} on attempt ${attempt}!`);
+        console.log(`[Telegram Bot] File ${fileName} uploaded successfully to Telegram chat ${chatId}!`);
         return { success: true };
       }
     } catch (err: any) {
@@ -1974,20 +1938,134 @@ async function sendVideoToTelegram(
     }
 
     if (attempt < maxAttempts) {
-      console.log(`[Telegram Bot] Retrying upload in ${attempt * 2} seconds...`);
       await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
     }
   }
 
-  // If we reach here, direct video upload failed or was bypassed. Execute standard text fallback containing the direct web download link.
-  console.warn(`[Telegram Bot] Direct upload failed (${lastError}). Sending backup text message with direct link...`);
-  const fallbackMessage = `${caption}\n\n⚠️ <b>Direct video upload failed (${lastError}).</b>\n\n🚀 You can download or play the full high-quality 1080p Master video directly via this secure link:\n🔗 <a href="${shareableUrl || ''}">${shareableUrl || 'Direct Download Link'}</a>`;
-  const textResult = await sendTextMessageToTelegram(botToken, chatId, fallbackMessage);
-  if (textResult.success) {
-    return { success: false, error: `Direct upload failed (${lastError}), but fallback direct download link was successfully sent to Telegram.` };
+  return { success: false, error: lastError };
+}
+
+// Helper function to upload rendered video directly via Telegram Bot API with smart chunking for files > 48MB
+async function sendVideoToTelegram(
+  filePath: string,
+  customCaption?: string,
+  customChatId?: string,
+  customToken?: string,
+  shareableUrl?: string,
+  totalDuration?: number
+): Promise<{ success: boolean; error?: string }> {
+  const DEFAULT_BOT_TOKEN = "8870687283:AAGe87k64Gej8jJ5Ahc7m20DrB0NoaKsQSU";
+  const DEFAULT_CHAT_ID = "2034380079";
+
+  const botToken = customToken || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN;
+  const chatId = customChatId || process.env.TELEGRAM_CHAT_ID || DEFAULT_CHAT_ID;
+  if (!botToken || !chatId) {
+    console.log("[Telegram Bot] Skipping notification: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured.");
+    return { success: false, error: "Telegram bot token or chat ID not configured." };
   }
 
-  return { success: false, error: lastError };
+  const caption = customCaption || "🎬 Your Video is Ready! Here is your high-quality MP4.";
+
+  const stats = fs.statSync(filePath);
+  const sizeBytes = stats.size;
+  const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
+  const maxSingleFileBytes = 48 * 1024 * 1024; // 48MB safe limit
+
+  if (sizeBytes <= maxSingleFileBytes) {
+    console.log(`[Telegram Bot] File size (${sizeMB} MB) is <= 48MB. Sending single video file...`);
+    const result = await sendSingleFileToTelegram(filePath, caption, botToken, chatId);
+    if (!result.success) {
+      const fallbackMessage = `${caption}\n\n⚠️ <b>Direct video upload failed (${result.error}).</b>\n\n🚀 Download link:\n🔗 <a href="${shareableUrl || ''}">${shareableUrl || 'Direct Download Link'}</a>`;
+      await sendTextMessageToTelegram(botToken, chatId, fallbackMessage);
+    }
+    return result;
+  }
+
+  // File > 48MB: Split into chunks using FFmpeg segment muxer without re-encoding
+  console.warn(`[Telegram Bot] File size (${sizeMB} MB) exceeds 48MB limit. Splitting into sequential chunks...`);
+
+  const chunkDir = path.join(exportsDir, `chunks_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
+  if (!fs.existsSync(chunkDir)) {
+    fs.mkdirSync(chunkDir, { recursive: true });
+  }
+
+  try {
+    const numChunks = Math.ceil(sizeBytes / (40 * 1024 * 1024));
+    let segTime = 45;
+    if (totalDuration && totalDuration > 0) {
+      segTime = Math.max(15, Math.floor(totalDuration / numChunks));
+    }
+
+    console.log(`[Telegram Bot Chunking] Target chunks: ${numChunks}, Segment time: ${segTime}s`);
+
+    const chunkPattern = path.join(chunkDir, "chunk_%03d.mp4");
+    const ffmpegCmd = `ffmpeg -y -i "${filePath}" -c copy -map 0 -segment_time ${segTime} -f segment -reset_timestamps 1 "${chunkPattern}"`;
+
+    const { execSync } = await import("child_process");
+    execSync(ffmpegCmd, { stdio: "inherit" });
+
+    const chunkFiles = fs.readdirSync(chunkDir)
+      .filter(f => f.startsWith("chunk_") && f.endsWith(".mp4"))
+      .sort()
+      .map(f => path.join(chunkDir, f));
+
+    if (chunkFiles.length === 0) {
+      throw new Error("FFmpeg chunking produced zero output files.");
+    }
+
+    console.log(`[Telegram Bot Chunking] Created ${chunkFiles.length} sequential parts.`);
+
+    let sentCount = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < chunkFiles.length; i++) {
+      const chunkPath = chunkFiles[i];
+      const partNum = i + 1;
+      const totalParts = chunkFiles.length;
+      const partCaption = `🎬 Video Part [${partNum}] of [${totalParts}]\n\n${caption}`;
+
+      console.log(`[Telegram Bot Chunking] Sending chunk ${partNum}/${totalParts}...`);
+
+      try {
+        const chunkResult = await sendSingleFileToTelegram(chunkPath, partCaption, botToken, chatId);
+        if (chunkResult.success) {
+          sentCount++;
+        } else {
+          console.error(`[Telegram Bot Chunking] Part ${partNum} failed: ${chunkResult.error}`);
+          errors.push(`Part ${partNum}: ${chunkResult.error}`);
+        }
+      } catch (chunkErr: any) {
+        console.error(`[Telegram Bot Chunking] Part ${partNum} exception:`, chunkErr);
+        errors.push(`Part ${partNum}: ${chunkErr.message}`);
+      }
+
+      // Cleanup individual chunk after attempting upload
+      try {
+        if (fs.existsSync(chunkPath)) fs.unlinkSync(chunkPath);
+      } catch (_) {}
+    }
+
+    // Cleanup chunk directory
+    try {
+      if (fs.existsSync(chunkDir)) fs.rmSync(chunkDir, { recursive: true, force: true });
+    } catch (_) {}
+
+    if (sentCount > 0) {
+      return { success: true };
+    } else {
+      return { success: false, error: `Failed to send chunk parts to Telegram: ${errors.join("; ")}` };
+    }
+  } catch (err: any) {
+    console.error(`[Telegram Bot Chunking Error]:`, err);
+    try {
+      if (fs.existsSync(chunkDir)) fs.rmSync(chunkDir, { recursive: true, force: true });
+    } catch (_) {}
+
+    const fallbackMessage = `${caption}\n\n⚠️ <b>File size (${sizeMB} MB) exceeds 48MB limit and chunking encountered error: ${err.message}.</b>\n\n🚀 Direct download link:\n🔗 <a href="${shareableUrl || ''}">${shareableUrl || 'Direct Download Link'}</a>`;
+    await sendTextMessageToTelegram(botToken, chatId, fallbackMessage);
+
+    return { success: false, error: err.message };
+  }
 }
 
 interface QueueTask {
@@ -2089,7 +2167,8 @@ class RenderQueue {
         telegramCaption,
         (payload as any).telegramChatId,
         (payload as any).telegramBotToken,
-        shareableUrl
+        shareableUrl,
+        totalDuration
       );
 
       console.log(`[Queue] Render job SUCCESS: ${jobId}`, finalPath);
@@ -2151,54 +2230,17 @@ const renderRateLimiter = rateLimit({
 app.post("/api/render", renderRateLimiter, express.json({ limit: '500mb' }), async (req, res) => {
   const masterJobId = Math.random().toString(36).substring(2, 15);
   const payload = req.body as RenderRequest;
-  const chunkSize = req.body.chunkSize || 0; // Number of scenes per part
   
   // Trigger cleanup in background to proactively free memory/disk before starting the next compile
   cleanupOldJobs().catch(err => console.error("Background cleanup error:", err));
 
-  if (chunkSize > 0 && payload.scenes && payload.scenes.length > chunkSize) {
-    const parts = [];
-    const totalScenes = payload.scenes.length;
-    
-    for (let i = 0; i < totalScenes; i += chunkSize) {
-      const partScenes = payload.scenes.slice(i, i + chunkSize);
-      const partJobId = `${masterJobId}_part_${parts.length + 1}`;
-      
-      const partPayload = { ...payload, scenes: partScenes };
-      
-      renderJobs.set(partJobId, {
-        status: "waiting",
-        progress: 0,
-        log: `Initializing queue entry for Part ${parts.length + 1}...`,
-        createdAt: Date.now()
-      });
-      
-      renderQueue.enqueue(partJobId, partPayload);
-      parts.push({
-        jobId: partJobId,
-        partIndex: parts.length + 1,
-        startScene: i + 1,
-        endScene: Math.min(i + chunkSize, totalScenes)
-      });
-    }
-    
-    renderJobs.set(masterJobId, {
-      status: "processing",
-      progress: 0,
-      createdAt: Date.now(),
-      parts
-    });
-    
-    res.json({ jobId: masterJobId, status: "processing", parts });
-  } else {
-    renderJobs.set(masterJobId, { status: "processing", progress: 0, log: "Initializing queue entry...", createdAt: Date.now() });
-    
-    // Respond immediately with the jobId so client can start polling status
-    res.json({ jobId: masterJobId, status: "processing" });
+  renderJobs.set(masterJobId, { status: "processing", progress: 0, log: "Initializing queue entry...", createdAt: Date.now() });
+  
+  // Respond immediately with the jobId so client can start polling status
+  res.json({ jobId: masterJobId, status: "processing" });
 
-    // Add rendering job into the in-memory concurrency queue
-    renderQueue.enqueue(masterJobId, payload);
-  }
+  // Add rendering job into the in-memory concurrency queue
+  renderQueue.enqueue(masterJobId, payload);
 });
 
 app.get("/api/render-jobs", (req, res) => { res.json(Array.from(renderJobs.entries())); });

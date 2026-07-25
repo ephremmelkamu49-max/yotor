@@ -6,7 +6,6 @@ import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import path from "path";
 import os from "os";
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 const execAsync = promisify(exec);
 
@@ -19,7 +18,7 @@ async function runCommand(cmd: string) {
     throw new Error(`Command failed.\nError: ${err.message}\nStderr: ${stderr}\nStdout: ${stdout}`);
   }
 }
-// Prefer native system ffmpeg (/usr/bin/ffmpeg) over node_modules binary to guarantee architecture compatibility and executable permissions
+
 const ffmpegPath = "/usr/bin/ffmpeg";
 
 async function hasAudioStream(filePath: string): Promise<boolean> {
@@ -34,10 +33,13 @@ async function hasAudioStream(filePath: string): Promise<boolean> {
 export interface RenderScene {
   id: string;
   videoUrl: string;
-  ttsAudioBuffer?: string; // base64 encoded audio, or we can just download it if it's a full URL
+  voiceoverUrl?: string;
+  ttsAudioUrl?: string;
+  ttsAudioBuffer?: string; // base64 string or data URL
   duration: number;
   musicVolume?: number;
   caption?: string;
+  text?: string;
 }
 
 export interface RenderRequest {
@@ -53,8 +55,9 @@ export interface RenderRequest {
 }
 
 async function downloadFile(url: string, dest: string) {
+  if (!url) throw new Error("No URL provided for download");
+
   if (url.startsWith("data:")) {
-    // High-performance substring splitting instead of expensive regex match on huge base64 assets
     const commaIndex = url.indexOf(",");
     if (commaIndex !== -1) {
       const base64Data = url.substring(commaIndex + 1);
@@ -69,7 +72,7 @@ async function downloadFile(url: string, dest: string) {
     url = url.replace("images.pexels.com/video-files/", "videos.pexels.com/video-files/");
   }
 
-  // Handle http and relative local URLs
+  // Handle local filesystem URLs
   if (url.startsWith("/")) {
     const localPath = path.join(process.cwd(), url);
     try {
@@ -77,7 +80,6 @@ async function downloadFile(url: string, dest: string) {
       await fs.copyFile(localPath, dest);
       return;
     } catch (_) {
-      // Fallback to public folder if it exists
       const publicPath = path.join(process.cwd(), "public", url);
       try {
         await fs.access(publicPath);
@@ -90,7 +92,6 @@ async function downloadFile(url: string, dest: string) {
   if (url.startsWith("http") || url.startsWith("/")) {
     const fetchUrl = url.startsWith("/") ? `http://127.0.0.1:3000${url}` : url;
     
-    // Add AbortSignal timeout to prevent hanging forever on unresponsive CDN nodes (increased to 180 seconds for long video downloads)
     const response = await fetch(fetchUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -99,12 +100,8 @@ async function downloadFile(url: string, dest: string) {
     });
 
     if (!response.ok) throw new Error(`Failed to download ${fetchUrl} (status: ${response.status})`);
+    if (!response.body) throw new Error(`Response body is null for ${fetchUrl}`);
 
-    if (!response.body) {
-      throw new Error(`Response body is null for ${fetchUrl}`);
-    }
-
-    // Pipe the response body stream directly to disk file stream to completely bypass RAM buffering
     const fileStream = createWriteStream(dest);
     const nodeReadable = Readable.fromWeb(response.body as any);
     await pipeline(nodeReadable, fileStream);
@@ -143,19 +140,14 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       if (onProgress) onProgress(`Allocating ${req.ramLimit} GB high-performance RAM...`, 3);
     }
     
-    let crf = 16;
+    let crf = 18;
     let preset = 'ultrafast';
-    
     if (req.exportQuality === '720p') {
-      crf = 18;
-      preset = 'ultrafast';
+      crf = 20;
     } else if (req.exportQuality === '4k') {
-      crf = 14;
-      preset = 'ultrafast';
+      crf = 16;
     }
 
-    // Batch Processing & Chunking Architecture for 10-30+ min videos
-    // Process scenes in small batches of 5 to prevent OOM RAM/Disk spikes
     const BATCH_SIZE = 5;
     const chunkFiles: string[] = [];
     let processedCount = 0;
@@ -168,7 +160,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         onProgress(`Processing video batch ${Math.floor(batchIdx / BATCH_SIZE) + 1}/${Math.ceil(req.scenes.length / BATCH_SIZE)} (scenes ${batchIdx + 1}-${Math.min(batchIdx + BATCH_SIZE, req.scenes.length)})...`, 5 + (batchIdx / req.scenes.length) * 75);
       }
 
-      // 1. Download videos on-demand for ONLY current batch
+      // 1. Download scene video/image assets for current batch
       await Promise.all(batchScenes.map(async (scene, bIdx) => {
         const globalIdx = batchIdx + bIdx;
         const videoPath = path.join(tempDir, `vid_${globalIdx}.mp4`);
@@ -195,7 +187,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         }
       }));
 
-      // 2. Render each scene in current batch
+      // 2. Render and normalize each scene clip in current batch
       for (let bIdx = 0; bIdx < batchScenes.length; bIdx++) {
         const scene = batchScenes[bIdx];
         const globalIdx = batchIdx + bIdx;
@@ -204,6 +196,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         const audioPath = path.join(tempDir, `aud_${globalIdx}.wav`);
         const outPath = path.join(tempDir, `out_${globalIdx}.mp4`);
 
+        // Handle solid color fallback if download failed
         if ((scene as any).downloadFailed) {
           console.log(`[FFmpegRenderer] Generating solid color fallback canvas for scene ${globalIdx + 1}...`);
           try {
@@ -214,29 +207,46 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
           }
         }
 
-        if (scene.ttsAudioBuffer) {
+        // Process voiceover track (check ttsAudioBuffer, voiceoverUrl, ttsAudioUrl)
+        let hasVoiceover = false;
+        const voSource = scene.ttsAudioBuffer || scene.voiceoverUrl || scene.ttsAudioUrl || (scene as any).voiceover;
+
+        if (voSource) {
           try {
-            await fs.writeFile(audioPath, Buffer.from(scene.ttsAudioBuffer, "base64"));
+            if (voSource.startsWith("data:") || (!voSource.startsWith("http") && !voSource.startsWith("/") && voSource.length > 500)) {
+              const commaIdx = voSource.indexOf(",");
+              const base64Data = commaIdx !== -1 ? voSource.substring(commaIdx + 1) : voSource;
+              await fs.writeFile(audioPath, Buffer.from(base64Data, "base64"));
+              hasVoiceover = true;
+            } else {
+              await downloadFile(voSource, audioPath);
+              hasVoiceover = true;
+            }
           } catch (err: any) {
-            console.error(`[FFmpegRenderer] Failed to write ttsAudioBuffer for scene ${globalIdx + 1}: ${err.message}`);
-            delete (scene as any).ttsAudioBuffer;
+            console.error(`[FFmpegRenderer] Failed to write/download voiceover for scene ${globalIdx + 1}: ${err.message}`);
+            hasVoiceover = false;
+          }
+        }
+
+        // Verify audio file actually exists and is non-empty
+        if (hasVoiceover) {
+          try {
+            const st = await fs.stat(audioPath);
+            if (st.size === 0) hasVoiceover = false;
+          } catch {
+            hasVoiceover = false;
           }
         }
 
         const isImage = (scene.videoUrl || "").match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || (scene.videoUrl || "").includes("pollinations.ai") || (scene.videoUrl || "").startsWith("data:image") || (scene as any).downloadFailed;
-        
-        let hasTTS = false;
-        if (scene.ttsAudioBuffer) {
-          hasTTS = await fs.access(audioPath).then(() => true).catch(() => false);
-        }
-
         const videoHasAudio = !isImage && (await hasAudioStream(videoPath));
 
-        let baseScale = `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},setsar=1,fps=30,format=yuv420p`;
+        // Strict Video Normalization Filter: Uniform Resolution, Framerate, Padding & SAR
+        // scale to fill, crop to exact target resolution, pad if needed, set SAR to 1, CFR 30fps, yuv420p
+        let baseScale = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p,setsar=1`;
         if (isImage) {
-          const totalFrames = Math.max(30, Math.round(scene.duration * 30));
-          // Dynamic Ken Burns pan & zoom effect (slow zoom-in from 1.00 -> 1.12)
-          baseScale = `zoompan=z='min(zoom+0.0012,1.12)':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height},${baseScale}`;
+          const totalFrames = Math.max(30, Math.round((scene.duration || 5) * 30));
+          baseScale = `zoompan=z='min(zoom+0.0012,1.12)':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=30,format=yuv420p,setsar=1`;
         }
 
         let finalFilter = baseScale;
@@ -317,6 +327,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
           finalFilter += `,drawtext=text='${cleanCaption}':font='Sans':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yPos}${boxStyle}`;
         }
 
+        // Input flags and loop configurations
         let cmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -avoid_negative_ts make_zero `;
         if (isImage) {
           cmd += `-loop 1 `;
@@ -326,44 +337,41 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
         cmd += `-i "${videoPath}" `;
 
-        if (hasTTS) {
-          cmd += `-fflags +genpts -avoid_negative_ts make_zero -i "${audioPath}" `;
+        if (hasVoiceover) {
+          cmd += `-i "${audioPath}" `;
         } else if (!videoHasAudio) {
           cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
         }
 
-        // Build unified filter_complex for both video and dynamic audio ducking
+        // Robust Audio Mixing & Mapping Filter Graph
         let filterGraph = "";
-        if (hasTTS && videoHasAudio) {
-          // Both Voiceover (TTS) and Ambient Video Audio exist
-          // Dynamic sidechain compression: lower ambient sound to 10-15% when TTS speaks, smoothly recover to 40-50% during pauses
+        if (hasVoiceover && videoHasAudio) {
+          // Mix Voiceover (input 1) + Original Ambient Video Audio (input 0)
           filterGraph = `[0:v]${finalFilter}[v];` +
-            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[tts];` +
-            `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.45[ambient];` +
-            `[tts]asplit=2[tts_main][tts_sc];` +
-            `[ambient][tts_sc]sidechaincompress=threshold=0.03:ratio=10:attack=15:release=300:level_in=1.0[ambient_ducked];` +
-            `[tts_main][ambient_ducked]amix=inputs=2:duration=first:dropout_transition=2[a]`;
-        } else if (hasTTS && !videoHasAudio) {
+            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0,apad=pad_len=88200[vo];` +
+            `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.35[bg];` +
+            `[vo][bg]amix=inputs=2:duration=first:dropout_transition=2,volume=1.2[a]`;
+        } else if (hasVoiceover && !videoHasAudio) {
           // Voiceover exists, video is silent or an image
           filterGraph = `[0:v]${finalFilter}[v];` +
-            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[a]`;
-        } else if (!hasTTS && videoHasAudio) {
-          // No Voiceover for this scene, keep ambient video audio at audible level
+            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0,apad=pad_len=88200[a]`;
+        } else if (!hasVoiceover && videoHasAudio) {
+          // No Voiceover for this scene, keep original video audio
           filterGraph = `[0:v]${finalFilter}[v];` +
-            `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.5[a]`;
+            `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.8[a]`;
         } else {
           // Neither Voiceover nor ambient audio exist, pad with silence
           filterGraph = `[0:v]${finalFilter}[v];` +
             `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a]`;
         }
 
-        cmd += `-filter_complex "${filterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+        cmd += `-filter_complex "${filterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
 
-        console.log(`Running FFmpeg for scene segment ${globalIdx + 1}...`);
+        console.log(`Running FFmpeg normalization for scene ${globalIdx + 1}...`);
         try {
           await runCommand(cmd);
         } catch (ffmpegErr: any) {
-          console.warn(`[FFmpegRenderer] FFmpeg failed on scene ${globalIdx + 1} with voiceover/music. Retrying with silence fallback:`, ffmpegErr.message);
+          console.warn(`[FFmpegRenderer] FFmpeg failed on scene ${globalIdx + 1}. Retrying with silence fallback:`, ffmpegErr.message);
           
           let fallbackFilterGraph = `[0:v]${finalFilter}[v];[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a]`;
           let fallbackCmd = `"${ffmpegPath}" -loglevel quiet -y -fflags +genpts -avoid_negative_ts make_zero `;
@@ -373,7 +381,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
             fallbackCmd += `-stream_loop 50 `;
           }
           fallbackCmd += `-i "${videoPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
-          fallbackCmd += `-filter_complex "${fallbackFilterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
+          fallbackCmd += `-filter_complex "${fallbackFilterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
           
           try {
             await runCommand(fallbackCmd);
@@ -387,9 +395,9 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
           throw new Error(`Failed to produce processed video file for scene ${globalIdx + 1}`);
         }
 
-        // Immediately clean up raw downloaded asset & WAV audio
+        // Unlink raw downloaded video and voiceover files immediately to conserve disk space
         await fs.unlink(videoPath).catch(() => {});
-        if (hasTTS || await fs.access(audioPath).then(() => true).catch(() => false)) {
+        if (hasVoiceover) {
           await fs.unlink(audioPath).catch(() => {});
         }
 
@@ -397,7 +405,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         processedCount++;
       }
 
-      // 3. Concat current batch into intermediate chunk_X.mp4
+      // Concat current batch into intermediate batch chunk
       const chunkListPath = path.join(tempDir, `chunk_list_${batchIdx}.txt`);
       const chunkListContent = batchSceneFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n");
       await fs.writeFile(chunkListPath, chunkListContent);
@@ -408,56 +416,49 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       try {
         await runCommand(chunkConcatCmd);
       } catch (err) {
-        const fallbackChunkCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${chunkListPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${chunkOutPath}"`;
+        const fallbackChunkCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${chunkListPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${chunkOutPath}"`;
         await runCommand(fallbackChunkCmd);
       }
 
       chunkFiles.push(chunkOutPath);
 
-      // Clean up individual scene files for this batch immediately
       for (const f of batchSceneFiles) {
         await fs.unlink(f).catch(() => {});
       }
       await fs.unlink(chunkListPath).catch(() => {});
     }
 
-    // Concatenate all chunks using absolute paths with safe=0
-    if (onProgress) onProgress("Stitching chunks together...", 85);
-    const listPath = path.join(tempDir, "list.txt");
+    // Concatenate all batch chunks into ONE master video file
+    if (onProgress) onProgress("Stitching scenes into master video output...", 85);
+    const listPath = path.join(tempDir, "master_list.txt");
     const listContent = chunkFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n");
     await fs.writeFile(listPath, listContent);
 
-    const concatPath = path.join(tempDir, "concat.mp4");
-    // All chunk segments are pre-rendered to identical geometry, 30fps CFR, YUV420p, and GOP=30.
-    // Try lightning fast direct stream-copy concatenation first for lossless seamless transition.
-    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${concatPath}"`;
-    console.log("Stitching video chunks...");
-    if (onProgress) onProgress("Stitching video chunks (Final phase)...", 85);
+    const masterPath = path.join(tempDir, "master_output.mp4");
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${masterPath}"`;
+    console.log("Stitching video chunks into single master file...");
     
     try {
       await runCommand(concatCmd);
     } catch (concatErr) {
       console.warn("Stream copy concat failed, falling back to unified re-encode:", concatErr);
-      const fallbackConcatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -movflags +faststart "${concatPath}"`;
+      const fallbackConcatCmd = `"${ffmpegPath}" -loglevel quiet -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${masterPath}"`;
       await runCommand(fallbackConcatCmd);
     }
 
-    // Verify concat file exists
-    const concatExists = await fs.access(concatPath).then(() => true).catch(() => false);
-    if (!concatExists) {
-      throw new Error("Failed to produce concatenated video file.");
+    const masterExists = await fs.access(masterPath).then(() => true).catch(() => false);
+    if (!masterExists) {
+      throw new Error("Failed to produce master concatenated video file.");
     }
 
-    // Eagerly delete all intermediate chunk MP4 files as the concatenated master is successfully ready
-    console.log("Eagerly cleaning up intermediate chunk files...");
+    // Clean up intermediate chunk files
     for (const f of chunkFiles) {
-      try {
-        await fs.unlink(f).catch(() => {});
-      } catch (e) {}
+      await fs.unlink(f).catch(() => {});
     }
 
-    let finalPath = concatPath;
+    let finalPath = masterPath;
 
+    // Optional background music mixing
     if (req.musicUrl) {
       if (onProgress) onProgress("Downloading background music...", 88);
       const musicPath = path.join(tempDir, "music.mp3");
@@ -471,12 +472,11 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       const musicExists = await fs.access(musicPath).then(() => true).catch(() => false);
       
       if (musicExists) {
-        if (onProgress) onProgress("Mixing cinematic background music...", 90);
-        finalPath = path.join(tempDir, "final.mp4");
+        if (onProgress) onProgress("Mixing background music with voiceover...", 90);
+        finalPath = path.join(tempDir, "final_master.mp4");
         
-        const vol = req.musicVolume !== undefined ? req.musicVolume : 0.3;
+        const vol = req.musicVolume !== undefined ? req.musicVolume : 0.25;
         
-        // Compute dynamic volume expression for scenes if there are overrides
         let expr = `${vol}`;
         let cumulativeTime = 0;
         let hasOverrides = false;
@@ -494,46 +494,40 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
 
         const volumeFilter = hasOverrides ? `volume='${expr}':eval=frame` : `volume=${vol.toFixed(2)}`;
         
-        // Dynamic sidechain ducking filter graph: compress background music down to ~10-15% when voiceover/master audio is active
         const musicMixFilter = `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[bg_music];` +
           `[0:a]aformat=sample_rates=44100:channel_layouts=stereo[main_audio];` +
           `[main_audio]asplit=2[main_out][main_sc];` +
           `[bg_music][main_sc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=350[bg_ducked];` +
           `[main_out][bg_ducked]amix=inputs=2:duration=first:dropout_transition=2[a]`;
 
-        const mixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${concatPath}" -i "${musicPath}" -filter_complex "${musicMixFilter}" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
-        console.log("Mixing background music with dynamic audio ducking...");
+        const mixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${masterPath}" -i "${musicPath}" -filter_complex "${musicMixFilter}" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
+        console.log("Mixing background music into master video...");
         try {
           await runCommand(mixCmd);
         } catch (mixErr) {
-          console.warn("Sidechain ducking mix failed for background music, falling back to standard amix:", mixErr);
-          const fallbackMixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${concatPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
+          console.warn("Sidechain ducking mix failed, falling back to standard amix:", mixErr);
+          const fallbackMixCmd = `"${ffmpegPath}" -loglevel quiet -y -i "${masterPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
           await runCommand(fallbackMixCmd);
         }
         
         const finalExists = await fs.access(finalPath).then(() => true).catch(() => false);
         if (!finalExists) {
-          console.warn("Final mixed file not produced, falling back to concat version.");
-          finalPath = concatPath;
+          console.warn("Final mixed file not produced, falling back to masterPath.");
+          finalPath = masterPath;
         } else {
-          // Eagerly delete the unmixed concatPath and background musicPath to save critical memory/disk space
-          try {
-            await fs.unlink(concatPath).catch(() => {});
-            await fs.unlink(musicPath).catch(() => {});
-          } catch (e) {}
+          await fs.unlink(masterPath).catch(() => {});
+          await fs.unlink(musicPath).catch(() => {});
         }
       }
     }
 
-    if (onProgress) onProgress("Finalizing render...", 98);
-    return finalPath; // Return the path to the final video
+    if (onProgress) onProgress("Master video compilation complete!", 98);
+    return finalPath;
 
   } catch (err) {
     console.error("Render error:", err);
-    // Delete the entire temp directory to prevent orphan files
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
-      console.log(`[Storage Cleanup] Cleared temporary directory on error: ${tempDir}`);
     } catch (rmErr) {
       console.warn("Failed to delete temp dir on error:", rmErr);
     }
