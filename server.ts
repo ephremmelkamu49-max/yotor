@@ -7,7 +7,10 @@ import { GoogleGenAI, Type, Modality, GenerateVideosOperation } from "@google/ge
 import { EdgeTTS } from "edge-tts-universal";
 import dotenv from "dotenv";
 import { rateLimit } from "express-rate-limit";
+import ffmpegStatic from "ffmpeg-static";
 import { renderVideo, RenderRequest } from "./server/ffmpegRenderer.js";
+
+const ffmpegPath = ffmpegStatic || "ffmpeg";
 
 // 🛡️ UNCAUGHT ERROR HANDLING (Crash Prevention)
 process.on("uncaughtException", (error) => {
@@ -1999,7 +2002,7 @@ async function sendVideoToTelegram(
     console.log(`[Telegram Bot Chunking] Target chunks: ${numChunks}, Segment time: ${segTime}s`);
 
     const chunkPattern = path.join(chunkDir, "chunk_%03d.mp4");
-    const ffmpegCmd = `ffmpeg -y -i "${filePath}" -c copy -map 0 -segment_time ${segTime} -f segment -reset_timestamps 1 "${chunkPattern}"`;
+    const ffmpegCmd = `"${ffmpegPath}" -y -i "${filePath}" -c copy -map 0 -segment_time ${segTime} -f segment -reset_timestamps 1 "${chunkPattern}"`;
 
     const { execSync } = await import("child_process");
     execSync(ffmpegCmd, { stdio: "inherit" });

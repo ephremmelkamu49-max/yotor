@@ -6,6 +6,8 @@ import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import path from "path";
 import os from "os";
+import ffmpegStatic from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 
 const execAsync = promisify(exec);
 
@@ -19,11 +21,12 @@ async function runCommand(cmd: string) {
   }
 }
 
-const ffmpegPath = "/usr/bin/ffmpeg";
+const ffmpegPath = ffmpegStatic || "ffmpeg";
+const ffprobePath = ffprobeStatic?.path || "ffprobe";
 
 async function hasAudioStream(filePath: string): Promise<boolean> {
   try {
-    const { stdout } = await execAsync(`/usr/bin/ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "${filePath}"`);
+    const { stdout } = await execAsync(`"${ffprobePath}" -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "${filePath}"`);
     return stdout.trim().length > 0;
   } catch {
     return false;
