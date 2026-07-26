@@ -126,7 +126,11 @@ export default function RenderModal({
   }, []);
 
   const addLog = (msg: string) => {
-    setRenderLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    setRenderLogs(prev => {
+      const lastLog = prev.length > 0 ? prev[prev.length - 1] : "";
+      if (lastLog.includes(msg)) return prev;
+      return [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`];
+    });
   };
 
   const cleanupRenderSubprocesses = () => {

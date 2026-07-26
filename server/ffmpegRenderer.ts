@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
 import { createWriteStream } from "fs";
@@ -9,16 +9,67 @@ import os from "os";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 
-const execAsync = promisify(exec);
+async function runCommand(cmd: string, timeoutMs: number = 180000, captureOutput: boolean = false): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // We use shell: true to support complex FFmpeg command strings easily
+    const child = spawn(cmd, { shell: true });
+    
+    let isDone = false;
+    let stdoutData = "";
+    let stderrData = "";
 
-async function runCommand(cmd: string, timeoutMs: number = 180000) {
-  try {
-    await execAsync(cmd, { maxBuffer: 1024 * 1024 * 100, timeout: timeoutMs });
-  } catch (err: any) {
-    const stderr = err.stderr ? err.stderr.toString() : "";
-    const stdout = err.stdout ? err.stdout.toString() : "";
-    throw new Error(`Command failed.\nError: ${err.message}\nStderr: ${stderr}\nStdout: ${stdout}`);
-  }
+    if (child.stdout) {
+      child.stdout.on("data", (data) => {
+        if (captureOutput) stdoutData += data.toString();
+      });
+    }
+
+    if (child.stderr) {
+      child.stderr.on("data", (data) => {
+        if (captureOutput) stderrData += data.toString();
+      });
+    }
+
+    const timeout = setTimeout(() => {
+      if (!isDone) {
+        isDone = true;
+        child.kill("SIGKILL");
+        reject(new Error(`Command timed out after ${timeoutMs}ms. Command: ${cmd.substring(0, 100)}...`));
+      }
+    }, timeoutMs);
+
+    child.on("close", (code) => {
+      if (!isDone) {
+        isDone = true;
+        clearTimeout(timeout);
+        if (code === 0) {
+          resolve(stdoutData);
+        } else {
+          reject(new Error(`Command failed with exit code ${code}.\nCommand: ${cmd.substring(0, 100)}...\nStderr: ${stderrData.substring(0, 500)}`));
+        }
+      }
+    });
+
+    child.on("exit", (code) => {
+      if (!isDone) {
+        isDone = true;
+        clearTimeout(timeout);
+        if (code === 0) {
+          resolve(stdoutData);
+        } else {
+          reject(new Error(`Command exited with code ${code}.\nCommand: ${cmd.substring(0, 100)}...\nStderr: ${stderrData.substring(0, 500)}`));
+        }
+      }
+    });
+
+    child.on("error", (err) => {
+      if (!isDone) {
+        isDone = true;
+        clearTimeout(timeout);
+        reject(new Error(`Failed to start command: ${err.message}`));
+      }
+    });
+  });
 }
 
 const ffmpegPath = ffmpegStatic || "ffmpeg";
@@ -26,7 +77,7 @@ const ffprobePath = ffprobeStatic?.path || "ffprobe";
 
 async function hasAudioStream(filePath: string): Promise<boolean> {
   try {
-    const { stdout } = await execAsync(`"${ffprobePath}" -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "${filePath}"`);
+    const stdout = await runCommand(`"${ffprobePath}" -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "${filePath}"`, 30000, true);
     return stdout.trim().length > 0;
   } catch {
     return false;
@@ -169,9 +220,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     const chunkFiles: string[] = [];
     let processedCount = 0;
 
-    for (let idx = 0; idx < req.scenes.length; idx++) {
-      const scene = req.scenes[idx];
-      
+    for (const [idx, scene] of req.scenes.entries()) {
       if (onProgress) {
         onProgress(`Processing video scene ${idx + 1}/${req.scenes.length}...`, 5 + (idx / req.scenes.length) * 75);
       }

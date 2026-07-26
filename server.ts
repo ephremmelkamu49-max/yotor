@@ -2004,8 +2004,24 @@ async function sendVideoToTelegram(
     const chunkPattern = path.join(chunkDir, "chunk_%03d.mp4");
     const ffmpegCmd = `"${ffmpegPath}" -nostdin -y -i "${filePath}" -c copy -map 0 -segment_time ${segTime} -f segment -reset_timestamps 1 "${chunkPattern}"`;
 
-    const { execSync } = await import("child_process");
-    execSync(ffmpegCmd, { stdio: "inherit" });
+    const { spawn } = await import("child_process");
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(ffmpegCmd, { shell: true, stdio: "inherit" });
+      const timeout = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error("FFmpeg chunking timed out"));
+      }, 300000);
+      
+      child.on("close", (code) => {
+        clearTimeout(timeout);
+        if (code === 0) resolve();
+        else reject(new Error(`FFmpeg chunking failed with code ${code}`));
+      });
+      child.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
 
     const chunkFiles = fs.readdirSync(chunkDir)
       .filter(f => f.startsWith("chunk_") && f.endsWith(".mp4"))
