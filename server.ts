@@ -2002,7 +2002,7 @@ async function sendVideoToTelegram(
     console.log(`[Telegram Bot Chunking] Target chunks: ${numChunks}, Segment time: ${segTime}s`);
 
     const chunkPattern = path.join(chunkDir, "chunk_%03d.mp4");
-    const ffmpegCmd = `"${ffmpegPath}" -y -i "${filePath}" -c copy -map 0 -segment_time ${segTime} -f segment -reset_timestamps 1 "${chunkPattern}"`;
+    const ffmpegCmd = `"${ffmpegPath}" -nostdin -y -i "${filePath}" -c copy -map 0 -segment_time ${segTime} -f segment -reset_timestamps 1 "${chunkPattern}"`;
 
     const { execSync } = await import("child_process");
     execSync(ffmpegCmd, { stdio: "inherit" });
@@ -2252,60 +2252,6 @@ app.get("/api/status/:jobId", (req, res) => {
   const job = renderJobs.get(jobId);
   if (!job) {
     return res.status(404).json({ error: "Job not found" });
-  }
-  
-  if (job.parts) {
-    let allCompleted = true;
-    let anyFailed = false;
-    let totalProgress = 0;
-    let firstPartError = "";
-    
-    const populatedParts = job.parts.map((p: any) => {
-      const partJob = renderJobs.get(p.jobId);
-      if (!partJob) {
-        allCompleted = false;
-        return p;
-      }
-      
-      if (partJob.status !== "completed") allCompleted = false;
-      if (partJob.status === "failed" || partJob.status === "error") {
-        anyFailed = true;
-        if (!firstPartError && partJob.error) {
-          firstPartError = partJob.error;
-        }
-      }
-      totalProgress += (partJob.progress || 0);
-      
-      return { 
-        ...p, 
-        status: partJob.status, 
-        progress: partJob.progress, 
-        log: partJob.log, 
-        downloadUrl: partJob.downloadUrl,
-        error: partJob.error
-      };
-    });
-    
-    let newStatus = job.status;
-    if (anyFailed) newStatus = "failed";
-    else if (allCompleted) newStatus = "completed";
-    
-    const avgProgress = totalProgress / job.parts.length;
-    
-    const masterJobResponse = {
-      ...job,
-      status: newStatus,
-      progress: Math.round(avgProgress),
-      parts: populatedParts,
-      error: firstPartError || job.error
-    };
-    
-    // Update master job state slightly to reflect overall completion
-    if (newStatus !== job.status || Math.round(avgProgress) !== job.progress || (firstPartError && !job.error)) {
-       renderJobs.set(jobId, { ...job, status: newStatus, progress: Math.round(avgProgress), error: firstPartError || job.error });
-    }
-    
-    return res.json(masterJobResponse);
   }
 
   if (job.status === "completed" && job.outPath && fs.existsSync(job.outPath)) {

@@ -150,10 +150,13 @@ export default function RenderModal({
 
       const renderPayload = {
         scenes: scenesToRender,
-        projectConfig,
+        aspectRatio: projectConfig.aspectRatio || '16:9',
         exportQuality,
-        chunkSize,
-        dataProfile,
+        musicUrl: projectConfig.backgroundMusicUrl,
+        musicVolume: projectConfig.musicVolume,
+        subtitleStyle: projectConfig.subtitleStyle,
+        visualStyle: projectConfig.visualStyle,
+        videoFilter: projectConfig.videoFilter,
         telegramBotToken: telegramBotToken.trim() || undefined,
         telegramChatId: telegramChatId.trim() || undefined,
       };
