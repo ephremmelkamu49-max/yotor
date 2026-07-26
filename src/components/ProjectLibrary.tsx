@@ -197,7 +197,7 @@ export default function ProjectLibrary({
                 setShowSaveModal(true);
               }}
               disabled={!currentScript}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white text-[10px] uppercase font-black tracking-widest rounded-xl shadow-lg shadow-cyan-505/10 transition-all disabled:opacity-20 disabled:pointer-events-none active:scale-[0.98]"
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#3EA6FF] hover:bg-[#3EA6FF]/90 text-[#181818] text-xs font-semibold rounded-lg transition-all disabled:opacity-20 disabled:pointer-events-none"
             >
               <Save size={13} />
               <span>{t.save_current_project}</span>
@@ -390,7 +390,7 @@ export default function ProjectLibrary({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all hover:shadow-lg hover:shadow-cyan-500/10"
+                  className="px-4 py-2 bg-[#3EA6FF] hover:bg-[#3EA6FF]/90 text-[#181818] text-xs font-semibold rounded-lg transition-all"
                 >
                   {language === "am" ? "አስቀምጥ (SAVE)" : "Save project"}
                 </button>

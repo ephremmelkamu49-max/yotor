@@ -667,40 +667,28 @@ export default function App() {
 
   return (
     <AccessGate>
-      <div className="min-h-screen bg-[#0B0914] text-slate-100 font-sans antialiased pb-12 selection:bg-[#00D2D3] selection:text-[#0B0914] relative overflow-x-hidden">
-        {/* Animated Cyber-Organic Aurora background blobs */}
-        <div className="aurora-bg-container">
-          <div className="aurora-blob-1" />
-          <div className="aurora-blob-2" />
-          <div className="aurora-blob-3" />
-        </div>
-
+      <div className="min-h-screen bg-[#0F0F0F] text-[#F1F1F1] font-sans antialiased pb-12 selection:bg-[#3EA6FF] selection:text-[#0F0F0F] relative overflow-x-hidden">
         {/* Top Status Badge */}
         <div className="pt-4 px-6 max-w-[92rem] mx-auto flex items-center justify-between relative z-10">
-          <div className="py-1.5 px-3.5 bg-[#141026]/80 border border-[#00D2D3]/30 text-[10px] uppercase font-mono tracking-widest text-[#00D2D3] rounded-full flex items-center gap-2 backdrop-blur-xl shadow-[0_0_15px_rgba(0,210,211,0.15)]">
-            <Sparkles size={12} className="text-[#00D2D3] animate-pulse" />
-            <span>YOTOR AURORA STUDIO NEXUS</span>
+          <div className="py-1 px-3 bg-[#212121] border border-[#303030] text-[11px] font-medium text-[#AAAAAA] rounded-md flex items-center gap-2">
+            <Video size={14} className="text-[#3EA6FF]" />
+            <span>Studio Nexus</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#00D2D3] animate-ping" />
-            <span className="text-[10px] font-mono text-[#00D2D3] uppercase tracking-wider">LIVE GPU ENGINE</span>
+            <span className="w-2 h-2 rounded-full bg-[#3EA6FF] animate-pulse" />
+            <span className="text-[11px] font-medium text-[#AAAAAA] uppercase tracking-wider">Engine Online</span>
           </div>
         </div>
 
         {/* Main Header */}
-        <header className="max-w-[92rem] mx-auto px-6 pt-6 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+        <header className="max-w-[92rem] mx-auto px-6 pt-6 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10 border-b border-[#303030] mb-6">
           <div className="flex items-center gap-4">
-            <div className="p-4 bg-gradient-to-br from-[#00D2D3] to-[#7000FF] text-white rounded-3xl shadow-lg shadow-[#00D2D3]/25 ring-1 ring-white/20 active:scale-95 transition-transform">
-              <Video size={28} className="text-white drop-shadow-md" />
+            <div className="p-2.5 bg-[#3EA6FF]/10 rounded-xl">
+              <Video size={24} className="text-[#3EA6FF]" />
             </div>
             <div>
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[10px] uppercase tracking-[0.25em] font-extrabold text-[#00D2D3] font-mono">
-                  {t.logo_sub || "NEXT-GEN CYBER-STUDIO"}
-                </span>
-              </div>
-              <h1 className="text-3xl md:text-4xl font-extrabold text-white font-display tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-[#00D2D3]">
+              <h1 className="text-2xl font-bold text-[#F1F1F1] tracking-tight">
                 {t.studio_title}
               </h1>
             </div>
@@ -712,14 +700,14 @@ export default function App() {
               type="button"
               onClick={handleUndo}
               disabled={undoStack.length === 0}
-              className={`btn-aurora-glass flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-[10px] uppercase tracking-wider font-bold ${
+              className={`btn-glass flex items-center justify-center gap-1.5 px-3.5 py-2 text-[12px] font-medium ${
                 undoStack.length > 0
-                  ? "text-slate-200 hover:text-white"
+                  ? "text-[#F1F1F1]"
                   : "opacity-40 cursor-not-allowed"
               }`}
               title={language === "am" ? "ድርጊት መልስ (Ctrl+Z)" : "Undo Last Action (Ctrl+Z)"}
             >
-              <Undo2 size={14} className={undoStack.length > 0 ? "text-[#00D2D3]" : "text-slate-500"} />
+              <Undo2 size={16} className={undoStack.length > 0 ? "text-[#F1F1F1]" : "text-[#71717A]"} />
               <span className="hidden xl:inline">{language === "am" ? "መልስ" : "Undo"}</span>
             </button>
 
@@ -728,14 +716,14 @@ export default function App() {
               type="button"
               onClick={handleRedo}
               disabled={redoStack.length === 0}
-              className={`btn-aurora-glass flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-[10px] uppercase tracking-wider font-bold ${
+              className={`btn-glass flex items-center justify-center gap-1.5 px-3.5 py-2 text-[12px] font-medium ${
                 redoStack.length > 0
-                  ? "text-slate-200 hover:text-white"
+                  ? "text-[#F1F1F1]"
                   : "opacity-40 cursor-not-allowed"
               }`}
               title={language === "am" ? "የተመለሰውን መልስ (Ctrl+Y)" : "Redo Action (Ctrl+Y)"}
             >
-              <Redo2 size={14} className={redoStack.length > 0 ? "text-[#00D2D3]" : "text-slate-500"} />
+              <Redo2 size={16} className={redoStack.length > 0 ? "text-[#F1F1F1]" : "text-[#71717A]"} />
               <span className="hidden xl:inline">{language === "am" ? "ድገም" : "Redo"}</span>
             </button>
 
@@ -743,14 +731,14 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="btn-aurora-glass flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] uppercase tracking-widest font-bold relative"
+              className="btn-glass flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-medium relative"
             >
-              <Settings size={14} className="text-[#00D2D3]" />
+              <Settings size={16} className="text-[#AAAAAA]" />
               <span>{t.settings}</span>
               {deferredPrompt && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF6B6B] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#FF6B6B] ring-2 ring-[#0B0914]"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3EA6FF] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#3EA6FF]"></span>
                 </span>
               )}
             </button>
@@ -768,10 +756,10 @@ export default function App() {
                 localStorage.setItem("yotor_active_draft", JSON.stringify(activeDraft, replacer));
                 window.location.reload();
               }}
-              className="btn-aurora-glass flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] uppercase tracking-widest font-bold"
+              className="btn-glass flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-medium"
               title="Refresh / Reload Application"
             >
-              <RefreshCw size={14} className="text-slate-300" />
+              <RefreshCw size={16} className="text-[#AAAAAA]" />
               <span className="hidden sm:inline">Refresh</span>
             </button>
 
@@ -779,10 +767,10 @@ export default function App() {
             <button
               onClick={() => setIsRenderOpen(true)}
               disabled={scenes.length === 0}
-              className="btn-aurora-coral flex items-center justify-center gap-2 px-5 py-2.5 text-[11px] uppercase tracking-widest disabled:opacity-30 disabled:pointer-events-none"
+              className="btn-primary flex items-center justify-center gap-2 px-5 py-2 text-[13px] font-semibold disabled:opacity-50 disabled:pointer-events-none"
               id="bake-video-btn"
             >
-              <Download size={16} className="stroke-[2.5px] drop-shadow-md" />
+              <Download size={16} />
               {t.ready_to_export}
             </button>
           </div>
@@ -869,22 +857,22 @@ export default function App() {
 
         {/* App Settings and PWA Installer Modal */}
         {isSettingsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-            <div className="relative w-full max-w-lg bg-[#0c0c0e] border border-zinc-800/80 rounded-3xl overflow-hidden shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="relative w-full max-w-lg bg-[#212121] border border-[#303030] rounded-xl overflow-hidden shadow-2xl">
               {/* Header */}
-              <div className="flex items-center justify-between p-5 border-b border-zinc-900 bg-zinc-950/40">
+              <div className="flex items-center justify-between p-5 border-b border-[#303030] bg-[#1A1A1A]">
                 <div className="flex items-center gap-2">
-                  <Settings size={18} className="text-indigo-400" />
-                  <h3 className="text-sm font-bold text-white tracking-tight uppercase">
+                  <Settings size={18} className="text-[#AAAAAA]" />
+                  <h3 className="text-base font-semibold text-[#F1F1F1]">
                     {language === "am"
-                      ? "የመተግበሪያ ቅንብሮች & መጫኛ"
-                      : "Settings & App Installer"}
+                      ? "የመተግበሪያ ቅንብሮች"
+                      : "Settings"}
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsSettingsOpen(false)}
-                  className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-850 hover:text-white text-zinc-400 rounded-lg text-xs transition-all font-mono"
+                  className="p-1 px-2.5 bg-[#303030] hover:bg-[#404040] text-[#AAAAAA] hover:text-[#F1F1F1] rounded-md text-xs transition-all font-mono"
                 >
                   ESC ✕
                 </button>
@@ -892,16 +880,16 @@ export default function App() {
 
               {/* Content body */}
               <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
-                {/* 1. Voice / Narration Settings (The requested "Voice memokriya" - Prominent / Front) */}
-                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                {/* 1. Voice / Narration Settings */}
+                <div className="space-y-4 pb-5 border-b border-[#303030]">
                   <div className="flex items-center justify-between">
                     <div>
-                      <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                      <label className="text-sm font-medium text-[#F1F1F1] block">
                         {language === "am"
                           ? "የድምፅ ንባብ (Voiceover Narration)"
                           : "Voiceover Narration"}
                       </label>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                      <p className="text-xs text-[#AAAAAA] mt-1">
                         {language === "am"
                           ? "ቪዲዮው ላይ የሰው ድምፅ እንዲኖር ያድርጉ።"
                           : "Enable realistic narration for your project."}
@@ -915,8 +903,8 @@ export default function App() {
                       }
                       className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
                         projectConfig.isVoiceEnabled
-                          ? "bg-indigo-600"
-                          : "bg-zinc-800"
+                          ? "bg-[#3EA6FF]"
+                          : "bg-[#404040]"
                       }`}
                     >
                       <span
@@ -932,8 +920,8 @@ export default function App() {
                   {projectConfig.isVoiceEnabled && (
                     <div className="space-y-3 animate-fadeIn">
                       <div className="space-y-1.5">
-                        <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider block">
-                          Select Narration Voice / ድምፅ ይምረጡ
+                        <span className="text-xs font-medium text-[#AAAAAA] block">
+                          Select Narration Voice
                         </span>
                         <select
                           value={
@@ -948,7 +936,7 @@ export default function App() {
                               voiceType: type,
                             });
                           }}
-                          className="w-full bg-zinc-950 border border-zinc-900 text-zinc-300 text-xs rounded-xl px-3 py-2.5 outline-none cursor-pointer hover:border-zinc-800 transition-all font-sans"
+                          className="w-full bg-[#181818] border border-[#303030] text-[#F1F1F1] text-sm rounded-lg px-3 py-2 outline-none cursor-pointer hover:border-[#404040] transition-all"
                         >
                           {GOOGLE_TTS_LANGUAGES.map((langOpt) => (
                             <option key={langOpt.code} value={langOpt.code}>
@@ -961,7 +949,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={handleTestVoice}
-                        className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-indigo-400 hover:text-indigo-300 font-bold text-[11px] uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2"
+                        className="w-full py-2 bg-[#303030] hover:bg-[#404040] text-[#F1F1F1] font-medium text-sm rounded-lg transition-all flex items-center justify-center gap-2"
                       >
                         🔊{" "}
                         {language === "am"
@@ -972,13 +960,13 @@ export default function App() {
                   )}
                 </div>
 
-                {/* 2. Visual Style Selection (Animation support requested) */}
-                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                {/* 2. Visual Style Selection */}
+                <div className="space-y-4 pb-5 border-b border-[#303030]">
                   <div>
-                    <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                    <label className="text-sm font-medium text-[#F1F1F1] block">
                       {translations[language].visual_style_title}
                     </label>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                    <p className="text-xs text-[#AAAAAA] mt-1">
                       {translations[language].visual_style_desc}
                     </p>
                   </div>
@@ -991,18 +979,18 @@ export default function App() {
                         onClick={() =>
                           handleUpdateConfig({ visualStyle: style.id as any })
                         }
-                        className={`flex flex-col items-start p-2.5 rounded-xl border transition-all text-left ${
+                        className={`flex flex-col items-start p-3 rounded-lg border transition-all text-left ${
                           projectConfig.visualStyle === style.id
-                            ? "bg-indigo-600/10 border-indigo-600/50 ring-1 ring-indigo-600/20"
-                            : "bg-zinc-950 border-zinc-900 hover:border-zinc-800"
+                            ? "bg-[#3EA6FF]/10 border-[#3EA6FF]"
+                            : "bg-[#181818] border-[#303030] hover:border-[#404040]"
                         }`}
                       >
                         <span
-                          className={`text-[11px] font-bold ${projectConfig.visualStyle === style.id ? "text-indigo-400" : "text-zinc-300"}`}
+                          className={`text-sm font-medium ${projectConfig.visualStyle === style.id ? "text-[#3EA6FF]" : "text-[#F1F1F1]"}`}
                         >
                           {language === "am" ? style.am : style.name}
                         </span>
-                        <span className="text-[9px] text-zinc-500 mt-0.5 line-clamp-1">
+                        <span className="text-xs text-[#AAAAAA] mt-1 line-clamp-1">
                           {style.id === "realistic"
                             ? "Cinematic 4K"
                             : style.id.replace("-", " ")}
@@ -1013,14 +1001,14 @@ export default function App() {
                 </div>
 
                 {/* Video Color Grading & Filters */}
-                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                <div className="space-y-4 pb-5 border-b border-[#303030]">
                   <div>
-                    <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                    <label className="text-sm font-medium text-[#F1F1F1] block">
                       {language === "am"
-                        ? "የቪዲዮ ቀለም ቅንብር እና ፊልተሮች (Color Grading & Filters)"
+                        ? "የቪዲዮ ቀለም ቅንብር እና ፊልተሮች"
                         : "Video Color Grading & Filters"}
                     </label>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                    <p className="text-xs text-[#AAAAAA] mt-1">
                       {language === "am"
                         ? "ለቪዲዮዎ አስደናቂ ሲኒማቲክ ገጽታ ለመስጠት የቀለም ፊልተር ይምረጡ።"
                         : "Apply high-quality color grading to make your storyboard cinematic."}
@@ -1042,22 +1030,22 @@ export default function App() {
                         onClick={() =>
                           handleUpdateConfig({ videoFilter: filt.id as any })
                         }
-                        className={`flex flex-col items-start p-2.5 rounded-xl border transition-all text-left ${
+                        className={`flex flex-col items-start p-3 rounded-lg border transition-all text-left ${
                           (projectConfig.videoFilter || "none") === filt.id
-                            ? "bg-indigo-600/10 border-indigo-600/50 ring-1 ring-indigo-600/20"
-                            : "bg-zinc-950 border-zinc-900 hover:border-zinc-800"
+                            ? "bg-[#3EA6FF]/10 border-[#3EA6FF]"
+                            : "bg-[#181818] border-[#303030] hover:border-[#404040]"
                         }`}
                       >
                         <span
-                          className={`text-[11px] font-bold ${
+                          className={`text-sm font-medium ${
                             (projectConfig.videoFilter || "none") === filt.id
-                              ? "text-indigo-400"
-                              : "text-zinc-300"
+                              ? "text-[#3EA6FF]"
+                              : "text-[#F1F1F1]"
                           }`}
                         >
                           {language === "am" ? filt.am : filt.name}
                         </span>
-                        <span className="text-[9px] text-zinc-500 mt-0.5">
+                        <span className="text-xs text-[#AAAAAA] mt-1">
                           {filt.desc}
                         </span>
                       </button>
@@ -1066,25 +1054,25 @@ export default function App() {
                 </div>
 
                 {/* 3. App Language Config */}
-                <div className="space-y-2 pb-5 border-b border-zinc-900/40">
-                  <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                <div className="space-y-2 pb-5 border-b border-[#303030]">
+                  <label className="text-sm font-medium text-[#F1F1F1] block">
                     {language === "am"
                       ? "የመተግበሪያ ቋንቋ / App Language"
                       : "App Language"}
                   </label>
-                  <p className="text-[11px] text-zinc-400">
+                  <p className="text-xs text-[#AAAAAA]">
                     {language === "am"
                       ? "የስቱዲዮውን አጠቃላይ ገፅታ ቋንቋ ይቀይሩ።"
-                      : "Toggle translation of Yotor Cinematic Studio."}
+                      : "Toggle translation of Studio."}
                   </p>
-                  <div className="flex items-center gap-1.5 mt-2 bg-zinc-950 rounded-xl p-1.5 border border-zinc-900/60 w-fit">
+                  <div className="flex items-center gap-1 mt-2 bg-[#181818] rounded-lg p-1 border border-[#303030] w-fit">
                     <button
                       type="button"
                       onClick={() => handleLanguageChange("am")}
-                      className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
                         language === "am"
-                          ? "bg-indigo-600 text-white shadow"
-                          : "text-zinc-400 hover:text-white"
+                          ? "bg-[#303030] text-[#F1F1F1]"
+                          : "text-[#AAAAAA] hover:text-[#F1F1F1]"
                       }`}
                     >
                       አማርኛ 🇪🇹
@@ -1092,10 +1080,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => handleLanguageChange("en")}
-                      className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
                         language === "en"
-                          ? "bg-indigo-600 text-white shadow"
-                          : "text-zinc-400 hover:text-white"
+                          ? "bg-[#303030] text-[#F1F1F1]"
+                          : "text-[#AAAAAA] hover:text-[#F1F1F1]"
                       }`}
                     >
                       English 🇬🇧
@@ -1104,15 +1092,15 @@ export default function App() {
                 </div>
 
                 {/* 3.5. Watermark Overlay Configuration */}
-                <div className="space-y-4 pb-5 border-b border-zinc-900/40">
+                <div className="space-y-4 pb-5 border-b border-[#303030]">
                   <div className="flex items-center justify-between">
                     <div>
-                      <label className="text-[10px] font-mono text-zinc-550 uppercase tracking-widest block">
+                      <label className="text-sm font-medium text-[#F1F1F1] block">
                         {language === "am"
                           ? "ዋተርማርክ / አርማ (Watermark & Logo)"
                           : "Watermark & Logo Overlay"}
                       </label>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                      <p className="text-xs text-[#AAAAAA] mt-1">
                         {language === "am"
                           ? "በቪዲዮው ላይ የራስዎን ጽሑፍ ወይም አርማ ማከል ይችላሉ።"
                           : "Overlay a custom text or brand logo onto the video canvas."}
@@ -1126,8 +1114,8 @@ export default function App() {
                       }
                       className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none ${
                         projectConfig.watermarkEnabled
-                          ? "bg-indigo-600"
-                          : "bg-zinc-800"
+                          ? "bg-[#3EA6FF]"
+                          : "bg-[#404040]"
                       }`}
                     >
                       <span

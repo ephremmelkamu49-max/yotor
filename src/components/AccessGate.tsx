@@ -366,19 +366,19 @@ export default function AccessGate({ children }: AccessGateProps) {
         <div className="fixed inset-0 bg-[#09090b] text-zinc-100 z-[9999] flex items-center justify-center p-4 overflow-y-auto font-sans">
           {/* Subtle cosmic particle glow and canvas style grid */}
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293708_1px,transparent_1px),linear-gradient(to_bottom,#1f293708_1px,transparent_1px)] bg-[size:24px_24px]" />
-          <div className="absolute top-[10%] left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-indigo-500/10 rounded-full blur-[140px] pointer-events-none" />
+          <div className="absolute top-[10%] left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-[#181818]/10 rounded-full pointer-events-none" />
           
-          <div className="bg-[#0e0e11] border border-zinc-900 rounded-3xl max-w-md w-full p-8 shadow-2xl relative overflow-hidden z-10 flex flex-col space-y-6">
+          <div className="bg-[#181818] border border-[#303030] rounded-xl max-w-md w-full p-8 shadow-2xl relative overflow-hidden z-10 flex flex-col space-y-6">
             
             {/* Header branding */}
             <div className="text-center space-y-2">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-violet-500 text-white shadow-xl shadow-indigo-500/10 mb-2">
-                <Lock size={26} className="animate-pulse" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-[#303030] border border-[#404040] text-[#3EA6FF] mb-2">
+                <Lock size={26} />
               </div>
-              <h1 className="text-3xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-zinc-100 via-indigo-200 to-white font-sans uppercase">
+              <h1 className="text-3xl font-bold tracking-widest text-[#F1F1F1] font-sans uppercase">
                 YOTOR
               </h1>
-              <p className="text-[10px] font-mono tracking-widest text-[#8e909a] uppercase">
+              <p className="text-[10px] font-mono tracking-widest text-[#AAAAAA] uppercase">
                 High-definition Cinematic Engine / ዮቶር
               </p>
             </div>
@@ -434,7 +434,7 @@ export default function AccessGate({ children }: AccessGateProps) {
                         setTimeout(() => setErrorMessage(''), 4005);
                       }
                     }}
-                    className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-cyan-600/10 font-mono"
+                    className="w-full py-2.5 bg-[#3EA6FF] hover:bg-[#3EA6FF]/90 text-[#181818] font-semibold text-xs uppercase tracking-wider rounded-lg transition-all font-mono"
                   >
                     🔄 ሁኔታውን አረጋግጥ / Verify Approval Status
                   </button>

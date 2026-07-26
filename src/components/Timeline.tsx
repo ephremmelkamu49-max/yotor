@@ -501,7 +501,7 @@ export default function Timeline({
                       onMoveScene(idx, 'up');
                     }}
                     disabled={idx === 0}
-                    className="p-1.5 bg-slate-900/80 backdrop-blur-sm hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                    className="p-2 bg-[#181818] hover:bg-[#303030] border border-[#303030] rounded-md text-[#AAAAAA] hover:text-[#F1F1F1] disabled:opacity-30 disabled:pointer-events-none transition-colors"
                     title="Move Up"
                   >
                     <ChevronUp size={14} />
@@ -512,7 +512,7 @@ export default function Timeline({
                       onMoveScene(idx, 'down');
                     }}
                     disabled={idx === scenes.length - 1}
-                    className="p-1.5 bg-slate-900/80 backdrop-blur-sm hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                    className="p-2 bg-[#181818] hover:bg-[#303030] border border-[#303030] rounded-md text-[#AAAAAA] hover:text-[#F1F1F1] disabled:opacity-30 disabled:pointer-events-none transition-colors"
                     title="Move Down"
                   >
                     <ChevronDown size={14} />
@@ -523,7 +523,7 @@ export default function Timeline({
                       onDeleteScene(scene.id);
                     }}
                     disabled={scenes.length <= 1}
-                    className="p-1.5 bg-slate-900/80 backdrop-blur-sm hover:bg-red-500/20 border border-slate-800 hover:border-red-500/50 rounded-lg text-slate-400 hover:text-red-400 disabled:opacity-30 disabled:pointer-events-none transition-colors ml-1"
+                    className="p-2 bg-[#181818] hover:bg-red-500/10 border border-[#303030] hover:border-red-500/30 rounded-md text-[#AAAAAA] hover:text-red-400 disabled:opacity-30 disabled:pointer-events-none transition-colors ml-1"
                     title="Delete Scene"
                   >
                     <Trash2 size={14} />
@@ -545,12 +545,12 @@ export default function Timeline({
                         <span className="text-[9px] mt-1">{t.no_visual}</span>
                       </div>
                     )}
-                    <div className="absolute left-1.5 bottom-1.5 bg-slate-900/90 backdrop-blur-md text-[10px] font-mono text-cyan-400 px-2 py-0.5 rounded shadow border border-slate-800/50 font-bold">
+                    <div className="absolute left-1.5 bottom-1.5 bg-[#181818]/90 text-[10px] font-mono text-[#3EA6FF] px-2 py-0.5 rounded border border-[#303030] font-bold">
                       S-{idx + 1}
                     </div>
 
                     {visualStyle && visualStyle !== 'realistic' && (
-                      <div className="absolute right-1.5 bottom-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-[8px] font-bold text-white px-1.5 py-0.5 rounded shadow-lg uppercase tracking-tighter">
+                      <div className="absolute right-1.5 bottom-1.5 bg-[#3EA6FF] text-[8px] font-bold text-[#181818] px-1.5 py-0.5 rounded uppercase tracking-tighter">
                         {visualStyle.replace('-', ' ')}
                       </div>
                     )}
@@ -737,9 +737,9 @@ export default function Timeline({
 
       {/* Pexels Visual Stock Finder Modal */}
       {searchSceneId && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[#0c0c0e] border border-zinc-800 rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-zoomIn relative">
-                         <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/20 z-10">
+        <div className="fixed inset-0 bg-[#0F0F0F]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#181818] border border-[#303030] rounded-xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-zoomIn relative">
+                         <div className="p-5 border-b border-[#303030] flex items-center justify-between z-10">
               <div>
                 <h3 className="text-base font-light text-zinc-100">{t.search_online}</h3>
                 <p className="text-xs text-zinc-500">{language === 'am' ? 'ለቪዲዮ ክፍልዎ ተስማሚ ምስሎችን ይፈልጉና በጥራት መተኪያ ያድርጉ' : 'Query and update matching scenic visuals and high-definition clips'}</p>
@@ -835,9 +835,9 @@ export default function Timeline({
 
       {/* Batch Timing Modal */}
       {isBatchTimingOpen && onBatchUpdateScenes && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[#0c0c0e] border border-zinc-800 rounded-3xl max-w-md w-full flex flex-col shadow-2xl overflow-hidden animate-zoomIn relative">
-            <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/20">
+        <div className="fixed inset-0 bg-[#0F0F0F]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#181818] border border-[#303030] rounded-xl max-w-md w-full flex flex-col shadow-2xl overflow-hidden animate-zoomIn relative">
+            <div className="p-5 border-b border-[#303030] flex items-center justify-between">
               <div>
                 <h3 className="text-base font-light text-zinc-100">{language === 'am' ? 'የጊዜ ማስተካከያ' : 'Batch Timing Adjustments'}</h3>
                 <p className="text-[10px] text-zinc-500 mt-1 uppercase font-mono">{language === 'am' ? 'የሁሉንም ክፍሎች ጊዜ በአንድ ጊዜ ያስተካክሉ' : 'Adjust duration for all scenes'}</p>

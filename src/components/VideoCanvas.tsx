@@ -2864,7 +2864,7 @@ export default function VideoCanvas({
       </div>
 
       {/* Mechanical Playback Control Deck */}
-      <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
+      <div className="bg-[#181818] border border-[#303030] rounded-xl p-5 space-y-4 shadow-xl">
         {/* Cumulative Timeline Scroll */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
@@ -2917,7 +2917,7 @@ export default function VideoCanvas({
                 setIsPlaying(!isPlaying);
               }}
               type="button"
-              className="p-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-full transform transition-all active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.4)]"
+              className="p-3 bg-[#F1F1F1] hover:bg-[#F1F1F1]/90 text-[#181818] rounded-full transform transition-all active:scale-95 shadow-md"
               id="compositor-play-btn"
             >
               {isPlaying ? (

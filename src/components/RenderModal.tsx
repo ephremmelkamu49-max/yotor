@@ -258,20 +258,16 @@ export default function RenderModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-[#0B0914]/90 backdrop-blur-2xl z-50 flex items-center justify-center p-4 animate-fadeIn" id="render-workbench">
+    <div className="fixed inset-0 bg-[#0F0F0F]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn" id="render-workbench">
       <div className="bento-card max-w-xl w-full p-6 relative overflow-hidden flex flex-col max-h-[90vh]">
         
-        {/* Visual particles glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-36 bg-[#00D2D3]/10 rounded-full blur-[90px] pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-64 h-32 bg-[#FF6B6B]/10 rounded-full blur-[90px] pointer-events-none" />
-
         {/* Header bar */}
-        <div className="text-center pb-4 mb-5 border-b border-violet-500/15">
-          <h1 className="text-sm font-extrabold text-white uppercase tracking-widest justify-center flex items-center gap-2 font-display">
-            <FileVideo className="text-[#00D2D3]" size={18} />
+        <div className="text-center pb-4 mb-5 border-b border-[#303030]">
+          <h1 className="text-base font-semibold text-[#F1F1F1] justify-center flex items-center gap-2">
+            <FileVideo className="text-[#3EA6FF]" size={18} />
             {t.render_studio}
           </h1>
-          <p className="text-xs text-slate-400 mt-1.5 font-sans">
+          <p className="text-xs text-[#AAAAAA] mt-1.5 font-sans">
             {renderStatus === 'idle' && (language === 'am' ? 'የቪዲዮ ማውረጃ ምርጫዎችን ያስተካክሉ' : 'Configure video export parameters')}
             {(renderStatus === 'rendering' || renderStatus === 'processing') && (language === 'am' ? '⚡ በሰርቨር ላይ በመቀናጀት ላይ...' : '⚡ Processing and sending to Telegram...')}
             {renderStatus === 'completed' && (language === 'am' ? 'ቪዲዮው በተሳካ ሁኔታ ተጠናቋል!' : 'Master export completed successfully!')}
@@ -283,29 +279,27 @@ export default function RenderModal({
           <div className="space-y-4 py-2 overflow-y-auto max-h-[70vh] pr-1 scrollbar-thin">
             
             {/* 🎙️ Fluent Amharic Voice & Video Download Quota System */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-zinc-950 via-[#0a0a0d] to-zinc-950 border border-indigo-500/10 shadow-xl space-y-3 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-xl pointer-events-none" />
-              
+            <div className="p-4 rounded-xl bg-[#181818] border border-[#303030] space-y-3 relative overflow-hidden">
               <div className="flex items-center justify-between gap-2">
                 <div className="space-y-0.5">
-                  <span className="px-1.5 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-[8px] font-mono font-bold text-indigo-400 rounded-md uppercase tracking-wide">
+                  <span className="px-2 py-0.5 bg-[#3EA6FF]/10 text-[10px] font-medium text-[#3EA6FF] rounded-md uppercase tracking-wide">
                     {t.engine_tts}
                   </span>
-                  <h4 className="text-[11px] font-bold text-white uppercase tracking-tight">
+                  <h4 className="text-sm font-semibold text-[#F1F1F1]">
                     🎙️ {t.voice_speaker_label} (Ameha Neural) - {t.active}
                   </h4>
                 </div>
                 
-                <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 flex items-center gap-1">
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-full font-semibold shrink-0 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Active
                 </span>
               </div>
 
-              <div className="p-3 bg-[#030304] border border-zinc-900 rounded-xl space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-zinc-400">
+              <div className="p-3 bg-[#212121] border border-[#303030] rounded-lg space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#AAAAAA]">
                   <span>{t.export_quota_title}:</span>
-                  <span className={`font-bold font-mono text-xs ${exportQuota > 0 ? 'text-indigo-400' : 'text-rose-400'}`}>
+                  <span className={`font-semibold text-sm ${exportQuota > 0 ? 'text-[#3EA6FF]' : 'text-rose-400'}`}>
                     {exportQuota} / 3 {t.ready_to_export}
                   </span>
                 </div>
@@ -317,17 +311,17 @@ export default function RenderModal({
                     return (
                       <div 
                         key={num} 
-                        className={`h-2 flex-1 rounded-full transition-all duration-300 ${
+                        className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
                           isFilled 
-                            ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 shadow-[0_0_8px_rgba(99,102,241,0.2)]' 
-                            : 'bg-zinc-900'
+                            ? 'bg-[#3EA6FF]' 
+                            : 'bg-[#303030]'
                         }`} 
                       />
                     );
                   })}
                 </div>
 
-                <div className="flex items-center justify-between gap-4 mt-1 text-[10px] text-zinc-500 font-sans leading-normal">
+                <div className="flex items-center justify-between gap-4 mt-1 text-xs text-[#AAAAAA] leading-normal">
                   <p>
                     {t.quota_pills_desc}
                   </p>
@@ -335,7 +329,7 @@ export default function RenderModal({
                   <button
                     type="button"
                     onClick={handleRefillQuota}
-                    className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:text-indigo-400 text-zinc-400 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all active:scale-[0.98] shrink-0"
+                    className="px-3 py-1.5 bg-[#303030] hover:bg-[#404040] text-[#F1F1F1] rounded-md text-xs font-semibold transition-all shrink-0"
                   >
                     🔄 {t.refill_quota}
                   </button>
@@ -343,8 +337,8 @@ export default function RenderModal({
               </div>
 
               {exportQuota === 0 && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-350 text-[10px] rounded-xl font-semibold leading-relaxed space-y-0.5">
-                  <span className="font-mono text-[8.5px] text-rose-400 uppercase tracking-widest block">⚠️ {t.quota_exhausted}</span>
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-350 text-xs rounded-lg font-medium leading-relaxed space-y-1">
+                  <span className="text-[10px] text-rose-400 font-semibold uppercase tracking-wider block">⚠️ {t.quota_exhausted}</span>
                   <p>
                     {t.refill_desc}
                   </p>
@@ -353,58 +347,58 @@ export default function RenderModal({
             </div>
 
             {/* 📥 Telegram Bot Delivery Info Card */}
-            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
+            <div className="p-4 bg-[#181818] rounded-xl border border-[#303030] space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-400 uppercase flex items-center gap-1.5">
-                  <Send size={12} className="text-cyan-400" />
+                <span className="text-xs font-semibold text-[#F1F1F1] flex items-center gap-2">
+                  <Send size={14} className="text-[#3EA6FF]" />
                   {language === 'am' ? 'የቴሌግራም ቦት መላኪያ (Telegram Bot Delivery)' : 'Telegram Delivery Target'}
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowTelegramSettings(!showTelegramSettings)}
-                  className="text-[9px] text-zinc-400 hover:text-white flex items-center gap-1 bg-zinc-900 px-2 py-0.5 rounded-lg border border-zinc-800"
+                  className="text-[11px] text-[#AAAAAA] hover:text-[#F1F1F1] flex items-center gap-1.5 bg-[#303030] px-2.5 py-1 rounded-md transition-colors"
                 >
-                  <Settings size={10} />
+                  <Settings size={12} />
                   {showTelegramSettings ? 'Close' : 'Configure'}
                 </button>
               </div>
 
               {showTelegramSettings ? (
-                <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 text-left">
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-zinc-400 font-mono">Telegram Bot Token:</label>
+                <div className="p-3 bg-[#212121] border border-[#303030] rounded-lg space-y-3 text-left">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-[#AAAAAA] font-medium">Telegram Bot Token:</label>
                     <input
                       type="text"
                       value={telegramBotToken}
                       onChange={(e) => handleSaveTelegramConfig(e.target.value, telegramChatId)}
                       placeholder="e.g. 8870687283:AAG..."
-                      className="w-full bg-zinc-900 border border-zinc-800 text-xs text-white p-2 rounded-lg font-mono focus:outline-none focus:border-cyan-500"
+                      className="w-full bg-[#181818] border border-[#303030] text-sm text-[#F1F1F1] px-3 py-2 rounded-md focus:outline-none focus:border-[#3EA6FF]"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-zinc-400 font-mono">Telegram Chat ID:</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-[#AAAAAA] font-medium">Telegram Chat ID:</label>
                     <input
                       type="text"
                       value={telegramChatId}
                       onChange={(e) => handleSaveTelegramConfig(telegramBotToken, e.target.value)}
                       placeholder="e.g. 2034380079"
-                      className="w-full bg-zinc-900 border border-zinc-800 text-xs text-white p-2 rounded-lg font-mono focus:outline-none focus:border-cyan-500"
+                      className="w-full bg-[#181818] border border-[#303030] text-sm text-[#F1F1F1] px-3 py-2 rounded-md focus:outline-none focus:border-[#3EA6FF]"
                     />
                   </div>
                 </div>
               ) : (
-                <div className="p-3 bg-cyan-950/20 border border-cyan-500/20 rounded-xl flex items-center justify-between">
-                  <div className="space-y-0.5 text-left">
-                    <span className="text-[10px] font-bold text-cyan-300 block">
+                <div className="p-3 bg-[#3EA6FF]/10 border border-[#3EA6FF]/20 rounded-lg flex items-center justify-between">
+                  <div className="space-y-1 text-left">
+                    <span className="text-[11px] font-semibold text-[#3EA6FF] block">
                       Target Chat ID: {telegramChatId || '2034380079'}
                     </span>
-                    <p className="text-[9px] text-zinc-400">
+                    <p className="text-[10px] text-[#AAAAAA]">
                       {language === 'am' 
                         ? 'ከ 48MB በላይ የሆኑ ቪዲዮዎች በቴሌግራም 50MB ገደብ ምክንያት በከፋፋይ (FFmpeg segment copy) ተከፋፍለው ይላካሉ!' 
                         : 'Videos > 48MB are automatically split into sequential parts without re-encoding to respect Telegram 50MB bot limits!'}
                     </p>
                   </div>
-                  <Send size={18} className="text-cyan-400 shrink-0 ml-2" />
+                  <Send size={18} className="text-[#3EA6FF] shrink-0 ml-3 opacity-80" />
                 </div>
               )}
             </div>
@@ -649,13 +643,13 @@ export default function RenderModal({
             <div className="space-y-4">
               
               {/* ⚡ Server rendering status card */}
-              <div className="p-3.5 bg-gradient-to-r from-indigo-955/70 via-cyan-955/70 to-purple-955/70 border border-indigo-500/30 rounded-2xl flex items-center gap-3 shadow-lg animate-pulse">
-                <Send className="text-cyan-400 shrink-0 animate-bounce" size={22} />
-                <div className="text-left space-y-0.5">
-                  <span className="text-[10px] font-mono font-bold text-cyan-300 uppercase tracking-widest block">
+              <div className="p-4 bg-[#3EA6FF]/10 border border-[#3EA6FF]/30 rounded-xl flex items-center gap-3">
+                <Send className="text-[#3EA6FF] shrink-0 animate-bounce" size={24} />
+                <div className="text-left space-y-1">
+                  <span className="text-xs font-semibold text-[#3EA6FF] uppercase tracking-wider block">
                     ⚡ Server Processing & Telegram Delivery
                   </span>
-                  <p className="text-[11px] text-cyan-100/90 font-medium leading-snug">
+                  <p className="text-[11px] text-[#AAAAAA] leading-snug">
                     Video is rendering on server using native FFmpeg. If &gt; 48MB, it will be automatically chunked and sent to Telegram!
                   </p>
                 </div>
@@ -716,13 +710,13 @@ export default function RenderModal({
             <div className="space-y-4">
               
               {/* ⚠️ Failure Notification Block */}
-              <div className="p-4 bg-gradient-to-r from-red-955/60 via-amber-955/50 to-zinc-950 border border-red-500/30 rounded-2xl flex items-center gap-3 shadow-lg">
-                <AlertCircle size={36} className="text-red-400 shrink-0" />
+              <div className="p-4 bg-red-950/20 border border-red-900/40 rounded-xl flex items-center gap-3">
+                <AlertCircle size={32} className="text-red-400 shrink-0" />
                 <div className="text-left space-y-1">
-                  <h3 className="text-xs font-mono font-extrabold text-red-300 uppercase tracking-wider">
+                  <h3 className="text-sm font-semibold text-red-400">
                     {language === 'am' ? '⚠️ ማቀናበሩ አልተሳካም (Server Error)' : '⚠️ Server Render Failed'}
                   </h3>
-                  <p className="text-[11px] text-red-200/85 font-medium leading-relaxed">
+                  <p className="text-xs text-[#AAAAAA] leading-relaxed">
                     {language === 'am' 
                       ? 'ቪዲዮውን በሰርቨር ላይ በማቀናበር ላይ ሳለ ስህተት አጋጥሟል። እባክዎን የስህተት ዝርዝሩን ይመልከቱ።' 
                       : 'An error occurred during backend rendering or video compilation.'}
@@ -787,13 +781,13 @@ export default function RenderModal({
           <div className="space-y-4 py-1 overflow-y-auto max-h-[70vh] pr-1 scrollbar-thin">
             
             {/* 🎉 Server Compilation Completed Banner */}
-            <div className="p-4 bg-gradient-to-r from-emerald-950/60 via-teal-950/50 to-zinc-950 border border-emerald-500/30 rounded-2xl flex items-center gap-3 shadow-lg">
+            <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-xl flex items-center gap-3">
               <CheckCircle2 size={32} className="text-emerald-400 shrink-0" />
-              <div className="text-left space-y-0.5">
-                <h3 className="text-xs font-mono font-extrabold text-emerald-300 uppercase tracking-wider">
+              <div className="text-left space-y-1">
+                <h3 className="text-sm font-semibold text-emerald-400">
                   {language === 'am' ? '🎉 ተሳክቷል! ቪዲዮው ተጠናቆ ወደ ቴሌግራም ተልኳል።' : '🎉 Server Render Completed & Sent to Telegram!'}
                 </h3>
-                <p className="text-[11px] text-emerald-200/80 font-medium">
+                <p className="text-xs text-[#AAAAAA]">
                   {language === 'am' 
                     ? 'ቪዲዮው በከፍተኛ ጥራት ተዘጋጅቷል። ከታች ማየት፣ ማውረድ ወይም በቴሌግራም ማግኘት ይችላሉ።' 
                     : 'The video rendered successfully on server and delivered to Telegram.'}

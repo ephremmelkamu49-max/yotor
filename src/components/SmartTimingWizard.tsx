@@ -669,7 +669,7 @@ export default function SmartTimingWizard({
                           <span className="w-12 text-indigo-400 uppercase tracking-wider font-bold">Optimal:</span>
                           <div className="flex-1 bg-zinc-900/50 rounded-full h-2 overflow-hidden relative">
                             <div 
-                              className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-300" 
+                              className="bg-[#3EA6FF] h-full rounded-full transition-all duration-300" 
                               style={{ width: `${Math.min(100, (scene.calculatedDuration / 15) * 100)}%` }}
                             />
                           </div>
@@ -718,7 +718,7 @@ export default function SmartTimingWizard({
             </button>
             <button
               onClick={handleApply}
-              className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#3EA6FF] hover:bg-[#3EA6FF]/90 text-[#181818] text-xs font-semibold rounded-lg transition-all"
             >
               <CheckCircle2 className="w-4 h-4" />
               {language === 'am' ? 'ጊዜውን በሙሉ ተግብር' : 'Apply Smart Pacing'}

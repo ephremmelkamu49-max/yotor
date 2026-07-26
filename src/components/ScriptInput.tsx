@@ -159,28 +159,25 @@ export default function ScriptInput({
       className="bento-card p-6 relative overflow-hidden"
       id="script-panel"
     >
-      <div className="absolute top-0 right-0 w-72 h-72 bg-[#00D2D3]/10 rounded-full blur-[90px] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-72 h-72 bg-[#FF6B6B]/10 rounded-full blur-[90px] pointer-events-none" />
-
-      <div className="flex items-center justify-between border-b border-violet-500/15 pb-4 mb-5">
+      <div className="flex items-center justify-between border-b border-[#303030] pb-4 mb-5">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-[#00D2D3]/10 text-[#00D2D3] rounded-2xl border border-[#00D2D3]/20 shadow-[0_0_15px_rgba(0,210,211,0.2)]">
+          <div className="p-3 bg-[#181818] text-[#3EA6FF] rounded-xl border border-[#303030]">
             <FileText size={20} />
           </div>
           <div>
-            <h2 className="text-sm uppercase tracking-widest font-extrabold text-white font-display">
+            <h2 className="text-base font-semibold text-[#F1F1F1]">
               {t.script_processor}
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">{t.script_desc}</p>
+            <p className="text-xs text-[#AAAAAA] mt-0.5">{t.script_desc}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-2.5 rounded-xl transition-all ${
+          className={`p-2.5 rounded-lg transition-all ${
             showSettings
-              ? "bg-[#00D2D3]/20 text-[#00D2D3] border border-[#00D2D3]/30"
-              : "btn-aurora-glass"
+              ? "bg-[#3EA6FF]/10 text-[#3EA6FF] border border-[#3EA6FF]/30"
+              : "bg-[#181818] text-[#AAAAAA] border border-[#303030] hover:text-[#F1F1F1] hover:bg-[#303030]"
           }`}
           title="Toggle Credentials & Settings / ማስተካከያ"
           id="toggle-settings-btn"
@@ -539,7 +536,7 @@ export default function ScriptInput({
                   : "bg-[#141026]/50 border-violet-500/10 text-slate-400 hover:border-violet-500/30"
               }`}
             >
-              <div className="absolute -top-2.5 -right-1 bg-gradient-to-r from-[#FF6B6B] to-[#00D2D3] text-[8px] font-black text-white px-2 py-0.5 rounded-full shadow-lg border border-white/20 animate-pulse">
+              <div className="absolute -top-2.5 -right-1 bg-[#3EA6FF] text-[8px] font-bold text-[#181818] px-2 py-0.5 rounded-full shadow-lg">
                 PRO
               </div>
               <Sparkles
@@ -630,12 +627,12 @@ export default function ScriptInput({
                   type="button"
                   disabled={isGeneratingAny}
                   onClick={() => handleTemplateClick(tmp.id)}
-                  className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border transition-all text-center group relative overflow-hidden ${
+                  className={`flex flex-col items-center justify-center p-3.5 rounded-xl border transition-all text-center group relative overflow-hidden ${
                     isGeneratingThis
-                      ? "bg-[#FF6B6B]/15 border-[#FF6B6B]/60 text-[#FF6B6B] animate-pulse"
+                      ? "bg-[#3EA6FF]/15 border-[#3EA6FF]/60 text-[#3EA6FF] animate-pulse"
                       : isGeneratingAny
-                        ? "bg-[#141026]/40 border-transparent text-slate-600 opacity-40 cursor-not-allowed"
-                        : "bg-[#141026]/60 border-violet-500/10 hover:border-[#FF6B6B]/50 hover:bg-[#FF6B6B]/10 cursor-pointer text-slate-300 active:scale-95"
+                        ? "bg-[#181818] border-transparent text-[#AAAAAA] opacity-40 cursor-not-allowed"
+                        : "bg-[#212121] border-[#303030] hover:border-[#3EA6FF]/50 hover:bg-[#3EA6FF]/10 cursor-pointer text-[#F1F1F1] active:scale-95"
                   }`}
                   title={language === "am" ? "አዲስ ኦሪጅናል ታሪክ ለመፍጠር ይጫኑ" : "Click to generate a unique, fresh story"}
                 >
@@ -688,48 +685,44 @@ export default function ScriptInput({
         </div>
 
         <div className="pt-2">
-          <button
+            <button
             type="submit"
             disabled={isLoading || !script.trim()}
-            className={`w-full py-4 flex items-center justify-center gap-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-widest text-white transition-all ${
+            className={`w-full py-3.5 flex items-center justify-center gap-2.5 rounded-xl text-sm font-semibold transition-all ${
               isLoading
-                ? "bg-[#141026] border border-[#00D2D3]/30 text-slate-400 cursor-not-allowed"
-                : "btn-aurora-coral shadow-lg active:scale-95"
+                ? "bg-[#303030] text-[#AAAAAA] cursor-not-allowed"
+                : "bg-[#3EA6FF] hover:bg-[#3EA6FF]/90 text-[#181818]"
             }`}
             id="generate-button"
           >
             {isLoading ? (
               <div className="flex items-center gap-3">
-                <div className="relative w-5 h-5 flex items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-2 border-t-[#00D2D3] border-r-[#FF6B6B] border-b-transparent border-l-transparent animate-spin" />
-                  <div className="w-2 h-2 rounded-full bg-[#00D2D3] animate-ping" />
-                </div>
-                <span className="font-extrabold text-[#00D2D3] uppercase tracking-wider text-[11px] animate-pulse">
+                <div className="w-4 h-4 border-2 border-[#AAAAAA] border-t-transparent rounded-full animate-spin" />
+                <span className="font-medium text-[#AAAAAA] uppercase tracking-wider text-xs">
                   {language === "am" ? "በጥበብ እያቀናበረ ነው..." : "GENERATING SCENES..."}
                 </span>
               </div>
             ) : (
               <>
-                <Sparkles size={16} className="fill-current text-white" />
+                <Sparkles size={16} className="fill-current text-[#181818]" />
                 {t.generate_scenes_btn}
               </>
             )}
           </button>
         </div>
 
-        {/* Custom Magical Rendering Ring / Loading state card */}
+        {/* Custom Loading state card */}
         {isLoading && (
-          <div className="p-4 bg-[#141026]/90 border border-[#00D2D3]/40 rounded-2xl flex items-center gap-4 shadow-[0_0_25px_rgba(0,210,211,0.2)] animate-fadeIn">
-            <div className="relative w-8 h-8 shrink-0 flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full border-2 border-t-[#00D2D3] border-r-[#7000FF] border-b-[#FF6B6B] border-l-transparent animate-spin" />
-              <div className="w-3 h-3 rounded-full bg-gradient-to-r from-[#00D2D3] to-[#FF6B6B] animate-pulse" />
+          <div className="p-4 bg-[#181818] border border-[#303030] rounded-xl flex items-center gap-4 animate-fadeIn">
+            <div className="relative w-6 h-6 shrink-0 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-2 border-[#3EA6FF] border-b-transparent animate-spin" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-mono font-extrabold text-[#00D2D3] uppercase tracking-wider truncate">
+              <div className="text-xs font-medium text-[#F1F1F1] truncate">
                 {displayedLoadingStage}
               </div>
-              <div className="w-full bg-[#0B0914] h-1.5 rounded-full overflow-hidden mt-1.5">
-                <div className="h-full bg-gradient-to-r from-[#00D2D3] via-[#7000FF] to-[#FF6B6B] w-full animate-pulse" />
+              <div className="w-full bg-[#303030] h-1.5 rounded-full overflow-hidden mt-2">
+                <div className="h-full bg-[#3EA6FF] w-full animate-pulse" />
               </div>
             </div>
           </div>
