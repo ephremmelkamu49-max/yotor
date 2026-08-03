@@ -156,7 +156,7 @@ export default function RenderModal({
         scenes: scenesToRender,
         aspectRatio: projectConfig.aspectRatio || '16:9',
         exportQuality,
-        musicUrl: projectConfig.backgroundMusicUrl,
+        musicUrl: projectConfig.musicTrack,
         musicVolume: projectConfig.musicVolume,
         subtitleStyle: projectConfig.subtitleStyle,
         visualStyle: projectConfig.visualStyle,

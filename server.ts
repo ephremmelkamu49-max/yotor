@@ -1897,47 +1897,50 @@ async function sendSingleFileToTelegram(
   const maxAttempts = 3;
   let lastError = "";
 
+  const { default: FormData } = await import("form-data");
+  const { default: axios } = await import("axios");
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const url = `https://api.telegram.org/bot${botToken}/sendVideo`;
       const fileName = path.basename(filePath);
 
-      let videoBlob: Blob;
-      if (typeof (fs as any).openAsBlob === "function") {
-        videoBlob = await (fs as any).openAsBlob(filePath, { type: "video/mp4" });
-      } else {
-        const fileBuffer = await fs.promises.readFile(filePath);
-        videoBlob = new Blob([fileBuffer], { type: "video/mp4" });
-      }
-
       const formData = new FormData();
       formData.append("chat_id", chatId);
-      formData.append("video", videoBlob, fileName);
+      formData.append("video", fs.createReadStream(filePath));
       formData.append("caption", caption);
 
       const stats = fs.statSync(filePath);
       const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
       console.log(`[Telegram Bot] Uploading file ${fileName} (${sizeMB} MB) to chat ${chatId} (Attempt ${attempt}/${maxAttempts})...`);
 
-      const response = await fetch(url, {
-        method: "POST",
-        body: formData,
+      const response = await axios.post(url, formData, {
+        headers: {
+          ...formData.getHeaders(),
+        },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        timeout: 600000, // 10 minutes timeout
       });
 
-      const data: any = await response.json();
-      if (!data.ok) {
-        console.error(`[Telegram Bot] Attempt ${attempt} failed with API error:`, data);
-        lastError = data.description || "Telegram API returned an error";
-        if (data.error_code === 413 || lastError.toLowerCase().includes("large")) {
+      if (response.data && response.data.ok) {
+        console.log(`[Telegram Bot] File ${fileName} uploaded successfully to Telegram chat ${chatId}!`);
+        return { success: true };
+      } else {
+        throw new Error("Telegram API returned non-ok status: " + JSON.stringify(response.data));
+      }
+    } catch (err: any) {
+      console.error(`[Telegram Bot] Attempt ${attempt} exception:`, err?.response?.data || err.message);
+      
+      const apiError = err?.response?.data;
+      if (apiError && !apiError.ok) {
+        lastError = apiError.description || "Telegram API returned an error";
+        if (apiError.error_code === 413 || lastError.toLowerCase().includes("large")) {
           break;
         }
       } else {
-        console.log(`[Telegram Bot] File ${fileName} uploaded successfully to Telegram chat ${chatId}!`);
-        return { success: true };
+        lastError = err.message || "Failed to upload video to Telegram";
       }
-    } catch (err: any) {
-      console.error(`[Telegram Bot] Attempt ${attempt} exception:`, err);
-      lastError = err.message || "Failed to upload video to Telegram";
     }
 
     if (attempt < maxAttempts) {
