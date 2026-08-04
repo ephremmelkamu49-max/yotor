@@ -66,6 +66,7 @@ export default function RenderModal({
 
   // Dedicated Render Canvas Ref
   const renderCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hiddenVideoContainerRef = useRef<HTMLDivElement | null>(null);
   
   // Active execution refs
   const isAbortedRef = useRef<boolean>(false);
@@ -251,14 +252,21 @@ export default function RenderModal({
     let isVideoMedia = false;
 
     if (scene.videoUrl) {
-      addLog(`Loading video source...`);
+      addLog(`Loading video source into DOM element...`);
       videoElement = document.createElement('video');
       videoElement.crossOrigin = 'anonymous';
       videoElement.setAttribute('playsinline', 'true');
       videoElement.setAttribute('webkit-playsinline', 'true');
-      videoElement.muted = true; // Autoplay requirement on Android Mobile
+      videoElement.muted = true; // Required for mobile autoplay policy
       videoElement.preload = 'auto';
       videoElement.src = scene.videoUrl;
+
+      // ATTACH TO DOM to prevent mobile browsers (iOS/Android) from throttling or blocking
+      if (hiddenVideoContainerRef.current) {
+        hiddenVideoContainerRef.current.appendChild(videoElement);
+      } else {
+        document.body.appendChild(videoElement);
+      }
 
       await new Promise<void>((resolve) => {
         if (!videoElement) return resolve();
@@ -270,13 +278,17 @@ export default function RenderModal({
           }
         };
 
-        videoElement.onloadeddata = done;
-        videoElement.oncanplay = done;
-        videoElement.onerror = () => {
-          addLog('⚠️ Video failed to load. Switching to static fallback image.');
+        if (videoElement.readyState >= 2) {
           done();
-        };
-        setTimeout(done, 5000); // 5s fallback timeout
+        } else {
+          videoElement.onloadeddata = done;
+          videoElement.oncanplay = done;
+          videoElement.onerror = () => {
+            addLog('⚠️ Video failed to load. Switching to static fallback image.');
+            done();
+          };
+          setTimeout(done, 5000); // 5s fallback timeout
+        }
       });
 
       if (videoElement.readyState >= 2) {
@@ -375,7 +387,46 @@ export default function RenderModal({
 
     setTotalSceneDuration(targetDuration);
 
-    // 4. COMBINE STREAMS & INITIALIZE MEDIARECORDER WITH HIGH BITRATE
+    // 4. WAIT FOR MOBILE VIDEO 'PLAYING' EVENT BEFORE STARTING RECORDING
+    if (isVideoMedia && videoElement) {
+      addLog(`▶ Requesting video playback and waiting for 'playing' event...`);
+      await new Promise<void>((resolve) => {
+        if (!videoElement) return resolve();
+        
+        let started = false;
+        const onPlaying = () => {
+          if (!started) {
+            started = true;
+            addLog(`▶ Video 'playing' event confirmed!`);
+            resolve();
+          }
+        };
+
+        videoElement.addEventListener('playing', onPlaying, { once: true });
+        
+        videoElement.currentTime = 0;
+        const playPromise = videoElement.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            addLog(`⚠️ Video play notice: ${err?.message || err}. Continuing with render.`);
+            if (!started) {
+              started = true;
+              resolve();
+            }
+          });
+        }
+
+        // Safety fallback timeout
+        setTimeout(() => {
+          if (!started) {
+            started = true;
+            resolve();
+          }
+        }, 2500);
+      });
+    }
+
+    // 5. COMBINE STREAMS & INITIALIZE MEDIARECORDER
     const canvasStream = canvas.captureStream(30); // 30 FPS stream
     const audioTracks = audioDestination.stream.getAudioTracks();
     const combinedTracks = [...canvasStream.getVideoTracks(), ...audioTracks];
@@ -405,24 +456,22 @@ export default function RenderModal({
 
     addLog(`MediaRecorder initialized (${mimeType || 'default'}, ${Math.round(bitrate / 1000000)}Mbps)`);
 
-    // 5. START PLAYBACK & RECORDING LOOP
+    // START AUDIO & RECORDING
     mediaRecorder.start(100);
 
     if (voiceBufferNode) voiceBufferNode.start(0);
     if (musicBufferNode) musicBufferNode.start(0);
 
-    if (isVideoMedia && videoElement) {
-      videoElement.currentTime = 0;
-      videoElement.play().catch((e) => addLog(`Video play notice: ${e}`));
-    }
-
     const startTime = performance.now();
 
-    // CONTINUOUS FRAME DRAWING LOOP (FIXES CHOPPINESS & STATIC IMAGE ISSUES)
+    // CONTINUOUS FRAME DRAWING LOOP (FORCE TIME TRACKING FOR STATIC IMAGES & VIDEOS)
     return new Promise<RenderedSceneResult>((resolve, reject) => {
       const renderFrame = () => {
         if (isAbortedRef.current) {
           mediaRecorder.stop();
+          if (videoElement && videoElement.parentNode) {
+            videoElement.parentNode.removeChild(videoElement);
+          }
           return reject(new Error('Render cancelled by user.'));
         }
 
@@ -601,7 +650,12 @@ export default function RenderModal({
           mediaRecorder.onstop = () => {
             if (voiceBufferNode) { try { voiceBufferNode.stop(); } catch (_) {} }
             if (musicBufferNode) { try { musicBufferNode.stop(); } catch (_) {} }
-            if (videoElement) { videoElement.pause(); }
+            if (videoElement) {
+              videoElement.pause();
+              if (videoElement.parentNode) {
+                videoElement.parentNode.removeChild(videoElement);
+              }
+            }
 
             const finalMime = mimeType || 'video/webm';
             const finalBlob = new Blob(recordedChunks, { type: finalMime });
@@ -697,6 +751,12 @@ export default function RenderModal({
 
   return (
     <div className="fixed inset-0 bg-[#0F0F0F]/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn" id="render-workbench">
+      {/* Hidden DOM container for mobile-compliant video playback */}
+      <div 
+        ref={hiddenVideoContainerRef} 
+        aria-hidden="true" 
+        className="pointer-events-none fixed -top-[9999px] -left-[9999px] w-px h-px opacity-01 overflow-hidden" 
+      />
       <div className="bento-card max-w-2xl w-full p-6 relative overflow-hidden flex flex-col max-h-[92vh]">
         
         {/* Header bar */}
