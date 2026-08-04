@@ -9,7 +9,7 @@ import os from "os";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 
-async function runCommand(cmd: string, timeoutMs: number = 180000, captureOutput: boolean = true): Promise<string> {
+async function runCommand(cmd: string, timeoutMs: number = 180000, captureOutput: boolean = false): Promise<string> {
   return new Promise((resolve, reject) => {
     // We use shell: true to support complex FFmpeg command strings easily
     const child = spawn(cmd, { shell: true });
@@ -72,21 +72,12 @@ async function runCommand(cmd: string, timeoutMs: number = 180000, captureOutput
   });
 }
 
-const ffmpegPath = ffmpegStatic;
-const ffprobePath = ffprobeStatic.path;
+const ffmpegPath = ffmpegStatic || "ffmpeg";
+const ffprobePath = ffprobeStatic?.path || "ffprobe";
 
 async function hasAudioStream(filePath: string): Promise<boolean> {
   try {
     const stdout = await runCommand(`"${ffprobePath}" -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "${filePath}"`, 30000, true);
-    return stdout.trim().length > 0;
-  } catch {
-    return false;
-  }
-}
-
-async function hasVideoStream(filePath: string): Promise<boolean> {
-  try {
-    const stdout = await runCommand(`"${ffprobePath}" -v error -select_streams v:0 -show_entries stream=index -of csv=p=0 "${filePath}"`, 30000, true);
     return stdout.trim().length > 0;
   } catch {
     return false;
@@ -139,10 +130,7 @@ async function downloadFile(url: string, dest: string) {
   const cleanUrl = url.split("?")[0].split("#")[0];
   const relativeClean = cleanUrl.replace(/^\/+/, '');
 
-  if (url.startsWith("/api/")) {
-    // Rewrite local API endpoints to absolute HTTP requests so the server can fetch from itself
-    url = `http://127.0.0.1:3000${url}`;
-  } else if (cleanUrl.startsWith("/") || cleanUrl.startsWith("public/") || cleanUrl.startsWith("uploads/")) {
+  if (cleanUrl.startsWith("/") || cleanUrl.startsWith("public/") || cleanUrl.startsWith("uploads/")) {
     const candidatePaths = [
       path.join(process.cwd(), relativeClean),
       path.join(process.cwd(), "public", relativeClean),
@@ -250,10 +238,6 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         while (retries > 0) {
           try {
             await downloadFile(scene.videoUrl, videoPath);
-            const isValidVideo = await hasVideoStream(videoPath);
-            if (!isValidVideo) {
-                throw new Error("Downloaded file is not a valid video or image format");
-            }
             break;
           } catch (e: any) {
             retries--;
@@ -272,7 +256,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       if ((scene as any).downloadFailed) {
         console.log(`[FFmpegRenderer] Generating solid color fallback canvas for scene ${idx + 1}...`);
         try {
-          const solidColorCmd = `"${ffmpegPath}" -nostdin -y -f lavfi -i color=c=0x1a1230:s=${width}x${height} -t ${scene.duration || 5} -r 30 -pix_fmt yuv420p "${videoPath}"`;
+          const solidColorCmd = `"${ffmpegPath}" -loglevel quiet -nostdin -y -f lavfi -i color=c=0x1a1230:s=${width}x${height} -t ${scene.duration || 5} -r 30 -pix_fmt yuv420p "${videoPath}"`;
           await runCommand(solidColorCmd);
         } catch (err: any) {
           console.error(`[FFmpegRenderer] Failed to generate solid color fallback: ${err.message}`);
@@ -304,127 +288,74 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       if (hasVoiceover) {
         try {
           const st = await fs.stat(audioPath);
-          if (st.size === 0) {
-              hasVoiceover = false;
-          } else {
-              const isValidAudio = await hasAudioStream(audioPath);
-              if (!isValidAudio) {
-                  hasVoiceover = false;
-                  console.warn(`[FFmpegRenderer] Voiceover for scene ${idx + 1} has no valid audio stream.`);
-              }
-          }
+          if (st.size === 0) hasVoiceover = false;
         } catch {
           hasVoiceover = false;
         }
       }
 
-      const isImage = !((scene as any).downloadFailed) && ((scene.videoUrl || "").match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || (scene.videoUrl || "").includes("pollinations.ai") || (scene.videoUrl || "").startsWith("data:image"));
+      const isImage = (scene.videoUrl || "").match(/\.(jpeg|jpg|png|gif|webp)(\?|$)/i) || (scene.videoUrl || "").includes("pollinations.ai") || (scene.videoUrl || "").startsWith("data:image") || (scene as any).downloadFailed;
       const videoHasAudio = !isImage && (await hasAudioStream(videoPath));
 
-      // Helper function to safely convert hex or color names to FFmpeg-compatible colors
-      const parseFFmpegColor = (colorStr?: string, defaultColor: string = "white"): string => {
-        if (!colorStr) return defaultColor;
-        const cleaned = colorStr.trim();
-        if (cleaned.startsWith("#")) {
-          return `0x${cleaned.substring(1)}`;
-        }
-        if (/^0x[0-9a-fA-F]+$/i.test(cleaned)) {
-          return cleaned;
-        }
-        if (/^[a-zA-Z]+$/.test(cleaned)) {
-          return cleaned.toLowerCase();
-        }
-        return defaultColor;
-      };
-
       // 3. Normalize video to strictly 1920x1080 (or desired width/height) 30fps
-      const baseFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p,setsar=1`;
-      let finalFilter = baseFilter;
-
-      if (req.videoFilter && req.videoFilter !== 'none') {
-        switch (req.videoFilter) {
-          case 'grayscale': finalFilter += ',hue=s=0'; break;
-          case 'sepia': finalFilter += ',colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0'; break;
-          case 'contrast': finalFilter += ',eq=contrast=1.3'; break;
-          case 'high-contrast': finalFilter += ',eq=contrast=1.5:saturation=1.2'; break;
-          case 'vintage': finalFilter += ',eq=contrast=1.1:saturation=0.7,vignette'; break;
-          case 'teal': finalFilter += ',colorchannelmixer=1:0:0:0:0:1.2:0:0:0:0:1.5:0'; break;
-        }
-      }
-
+      let finalFilter = `scale=${width}:${height},fps=30,format=yuv420p,setsar=1`;
+      
       if (scene.duration >= 1.0) {
         const fadeDur = Math.min(0.25, scene.duration / 4);
         const fadeOutStart = Math.max(0, scene.duration - fadeDur).toFixed(2);
         finalFilter += `,fade=t=in:st=0:d=${fadeDur.toFixed(2)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(2)}`;
       }
 
-      const captionText = scene.caption || scene.text;
-      if (req.subtitleStyle && captionText && captionText.trim().length > 0) {
-        const captionFile = path.join(tempDir, `caption_${idx}.txt`);
-        await fs.writeFile(captionFile, captionText.trim(), "utf-8");
-        const safeCaptionPath = captionFile.replace(/\\/g, "/").replace(/'/g, "'\\''");
+      if (req.subtitleStyle?.enabled && scene.caption) {
+        const cleanCaption = scene.caption
+          .replace(/['’]/g, "")
+          .replace(/[:]/g, " ")
+          .replace(/\\/g, "");
 
-        const fontColor = parseFFmpegColor(req.subtitleStyle.color, "white");
-        const fontSize = Math.max(16, Math.floor(height * 0.048));
+        const fontColor = req.subtitleStyle.color || "white";
+        const fontSize = Math.floor(height * 0.048);
         const yPos = req.subtitleStyle.position === "middle" ? "h*0.5" : (req.subtitleStyle.position === "top" ? "h*0.18" : "h*0.82");
-        
-        let boxStyle = ":borderw=2:bordercolor=black";
-        if (req.subtitleStyle.backgroundColor && req.subtitleStyle.backgroundColor !== "transparent" && req.subtitleStyle.backgroundColor !== "none") {
-          const bgColor = parseFFmpegColor(req.subtitleStyle.backgroundColor, "black");
-          boxStyle = `:box=1:boxcolor=${bgColor}@0.6:boxborderw=10`;
-        }
-        
-        finalFilter += `,drawtext=textfile='${safeCaptionPath}':reload=0:font='Sans':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yPos}:expansion=none${boxStyle}`;
-      }
-
-      // STRICT FILE VALIDATION BEFORE FFMPEG
-      try {
-        await fs.access(videoPath);
-      } catch (err: any) {
-        throw new Error(`Input video/image file missing in /tmp/: ${videoPath} - ${err.message}`);
-      }
-      if (hasVoiceover) {
-        try {
-          await fs.access(audioPath);
-        } catch (err: any) {
-          throw new Error(`Input audio file missing in /tmp/: ${audioPath} - ${err.message}`);
-        }
+        const bgColor = req.subtitleStyle.backgroundColor ? req.subtitleStyle.backgroundColor.replace("#", "0x") : undefined;
+        const boxStyle = bgColor ? `:box=1:boxcolor=${bgColor}@0.5:boxborderw=10` : `:borderw=2:bordercolor=black`;
+        finalFilter += `,drawtext=text='${cleanCaption}':font='Sans':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${yPos}${boxStyle}`;
       }
 
       // 4. Construct FFmpeg encoding command
-      let cmd = `"${ffmpegPath}" -nostdin -y -fflags +genpts -avoid_negative_ts make_zero `;
+      let cmd = `"${ffmpegPath}" -loglevel quiet -nostdin -y -fflags +genpts -avoid_negative_ts make_zero `;
       if (isImage) {
         cmd += `-loop 1 `;
+      } else {
+        cmd += `-stream_loop 50 `;
       }
-      // Note: We deliberately DO NOT use -stream_loop 50 for videos, as it causes memory leaks/crashes.
-      
+
       cmd += `-i "${videoPath}" `;
-      
+
       if (hasVoiceover) {
         cmd += `-i "${audioPath}" `;
-      } else {
-        cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
-      }
-      
-      if (!videoHasAudio) {
-        // Dynamically add a silent audio track if original video lacks audio, ensuring amix always has 2 inputs if we were to use it.
+      } else if (!videoHasAudio) {
         cmd += `-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
       }
 
-      // Robust Audio Mixing
+      // Robust Audio Mixing using amix
       let filterGraph = "";
-      if (videoHasAudio) {
-        // Mix Voiceover or Silence (input 1) + Original Ambient Video Audio (input 0)
+      if (hasVoiceover && videoHasAudio) {
+        // Mix Voiceover (input 1) + Original Ambient Video Audio (input 0)
         filterGraph = `[0:v]${finalFilter}[v];` +
           `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[vo];` +
           `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.35[bg];` +
-          `[vo][bg]amix=inputs=2:duration=longest:dropout_transition=2,volume=1.2[a]`;
-      } else {
-        // Mix Voiceover or Silence (input 1) + Generated Silence (input 2)
+          `[vo][bg]amix=inputs=2:duration=first:dropout_transition=2,volume=1.2[a]`;
+      } else if (hasVoiceover && !videoHasAudio) {
+        // Voiceover exists, video is silent or an image
         filterGraph = `[0:v]${finalFilter}[v];` +
-          `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[vo];` +
-          `[2:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.0[bg];` +
-          `[vo][bg]amix=inputs=2:duration=longest:dropout_transition=2,volume=1.2[a]`;
+          `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[a]`;
+      } else if (!hasVoiceover && videoHasAudio) {
+        // No Voiceover for this scene, keep original video audio
+        filterGraph = `[0:v]${finalFilter}[v];` +
+          `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.8[a]`;
+      } else {
+        // Neither Voiceover nor ambient audio exist, pad with silence
+        filterGraph = `[0:v]${finalFilter}[v];` +
+          `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a]`;
       }
 
       cmd += `-filter_complex "${filterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
@@ -433,26 +364,22 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
       try {
         await runCommand(cmd);
       } catch (ffmpegErr: any) {
-        console.warn(`[FFmpegRenderer] FFmpeg failed on scene ${idx + 1}. Retrying with silence fallback:\n`, ffmpegErr.message);
+        console.warn(`[FFmpegRenderer] FFmpeg failed on scene ${idx + 1}. Retrying with silence fallback:`, ffmpegErr.message);
         
-        let fallbackCmd = `"${ffmpegPath}" -nostdin -y -fflags +genpts -avoid_negative_ts make_zero `;
+        let fallbackFilterGraph = `[0:v]${finalFilter}[v];[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a]`;
+        let fallbackCmd = `"${ffmpegPath}" -loglevel quiet -nostdin -y -fflags +genpts -avoid_negative_ts make_zero `;
         if (isImage) {
           fallbackCmd += `-loop 1 `;
+        } else {
+          fallbackCmd += `-stream_loop 50 `;
         }
-        
-        fallbackCmd += `-i "${videoPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
-        
-        let fallbackFilterGraph = `[0:v]${baseFilter}[v];` +
-          `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=1.0[vo];` +
-          `[2:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.0[bg];` +
-          `[vo][bg]amix=inputs=2:duration=longest:dropout_transition=2,volume=1.2[a]`;
-
+        fallbackCmd += `-i "${videoPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 `;
         fallbackCmd += `-filter_complex "${fallbackFilterGraph}" -t ${scene.duration} -map "[v]" -map "[a]" -c:v libx264 -threads 0 -preset ${preset} -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -ac 2 -pix_fmt yuv420p -r 30 -vsync cfr -video_track_timescale 90000 "${outPath}"`;
         
         try {
           await runCommand(fallbackCmd);
         } catch (retryErr: any) {
-          throw new Error(`Scene ${idx + 1} rendering failed:\nCommand 1 Error: ${ffmpegErr.message}\nFallback Error: ${retryErr.message}`);
+          throw new Error(`Scene ${idx + 1} rendering failed: ${ffmpegErr.message} (Fallback retry also failed: ${retryErr.message})`);
         }
       }
 
@@ -478,14 +405,14 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
     await fs.writeFile(listPath, listContent);
 
     const masterPath = path.join(tempDir, "master_output.mp4");
-    const concatCmd = `"${ffmpegPath}" -nostdin -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${masterPath}"`;
+    const concatCmd = `"${ffmpegPath}" -loglevel quiet -nostdin -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${masterPath}"`;
     console.log("Stitching video chunks into single master file...");
     
     try {
       await runCommand(concatCmd);
     } catch (concatErr) {
       console.warn("Stream copy concat failed, falling back to unified re-encode:", concatErr);
-      const fallbackConcatCmd = `"${ffmpegPath}" -nostdin -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${masterPath}"`;
+      const fallbackConcatCmd = `"${ffmpegPath}" -loglevel quiet -nostdin -y -f concat -safe 0 -i "${listPath}" -c:v libx264 -threads 0 -preset ultrafast -crf ${crf} -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${masterPath}"`;
       await runCommand(fallbackConcatCmd);
     }
 
@@ -512,14 +439,7 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
         if (onProgress) onProgress("Warning: Background music download failed. Proceeding...", 89);
       }
       
-      let musicExists = await fs.access(musicPath).then(() => true).catch(() => false);
-      if (musicExists) {
-          const isMusicValid = await hasAudioStream(musicPath);
-          if (!isMusicValid) {
-              musicExists = false;
-              console.warn("[FFmpegRenderer] Background music file has no audio stream. Skipping music mix.");
-          }
-      }
+      const musicExists = await fs.access(musicPath).then(() => true).catch(() => false);
       
       if (musicExists) {
         if (onProgress) onProgress("Mixing background music with voiceover...", 90);
@@ -549,13 +469,13 @@ export async function renderVideo(req: RenderRequest, onProgress?: (msg: string,
           `[bg_music][main_sc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=350[bg_ducked];` +
           `[main_out][bg_ducked]amix=inputs=2:duration=first:dropout_transition=2[a]`;
 
-        const mixCmd = `"${ffmpegPath}" -nostdin -y -i "${masterPath}" -i "${musicPath}" -filter_complex "${musicMixFilter}" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
+        const mixCmd = `"${ffmpegPath}" -loglevel quiet -nostdin -y -i "${masterPath}" -i "${musicPath}" -filter_complex "${musicMixFilter}" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
         console.log("Mixing background music into master video...");
         try {
           await runCommand(mixCmd);
         } catch (mixErr) {
           console.warn("Sidechain ducking mix failed, falling back to standard amix:", mixErr);
-          const fallbackMixCmd = `"${ffmpegPath}" -nostdin -y -i "${masterPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
+          const fallbackMixCmd = `"${ffmpegPath}" -loglevel quiet -nostdin -y -i "${masterPath}" -i "${musicPath}" -filter_complex "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${volumeFilter}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[a]" -map 0:v:0 -map "[a]" -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${finalPath}"`;
           await runCommand(fallbackMixCmd);
         }
         
