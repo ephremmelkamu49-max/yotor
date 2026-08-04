@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Scene, ProjectConfig } from '../types';
+import { Scene, ProjectConfig, AnimationStyle } from '../types';
 import { Language, translations } from '../translations';
 import { 
-  Download, Loader2, Play, CheckCircle2, Film, ShieldCheck, AlertCircle, FileVideo, Terminal, Crown, Lock, Zap, Cpu, Send, Copy, Check, ExternalLink, MessageSquare, Share2, AlertTriangle, Settings
+  Download, Loader2, Play, CheckCircle2, FileVideo, AlertCircle, Terminal,
+  Zap, Settings, ShieldCheck, RefreshCw, Film
 } from 'lucide-react';
 
 interface RenderModalProps {
@@ -20,6 +21,19 @@ interface RenderModalProps {
   setExportQuality: React.Dispatch<React.SetStateAction<'720p' | '1080p' | '4k'>>;
 }
 
+export interface RenderedSceneResult {
+  sceneId: string;
+  sceneIndex: number;
+  blobUrl: string;
+  blob: Blob;
+  mimeType: string;
+  extension: string;
+  fileSize: string;
+  duration: number;
+  title: string;
+  createdAt: string;
+}
+
 export default function RenderModal({
   isOpen,
   onClose,
@@ -35,9 +49,31 @@ export default function RenderModal({
   setExportQuality
 }: RenderModalProps) {
   const t = translations[language] || translations.en;
-  const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'processing' | 'completed' | 'failed'>('idle');
   
-  // Custom video download quota (starts at 3)
+  // Render state
+  const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'completed' | 'failed'>('idle');
+  const [renderingSceneIndex, setRenderingSceneIndex] = useState<number>(0);
+  const [renderProgress, setRenderProgress] = useState<number>(0);
+  const [currentSceneTime, setCurrentSceneTime] = useState<number>(0);
+  const [totalSceneDuration, setTotalSceneDuration] = useState<number>(0);
+  
+  const [selectedSceneMode, setSelectedSceneMode] = useState<'all' | 'single'>('all');
+  const [targetSingleSceneId, setTargetSingleSceneId] = useState<string>('');
+
+  const [renderedResults, setRenderedResults] = useState<RenderedSceneResult[]>([]);
+  const [renderLogs, setRenderLogs] = useState<string[]>([]);
+  const [renderError, setRenderError] = useState<string | null>(null);
+
+  // Dedicated Render Canvas Ref
+  const renderCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  
+  // Active execution refs
+  const isAbortedRef = useRef<boolean>(false);
+  const activeAnimationRef = useRef<number | null>(null);
+  const activeAudioContextRef = useRef<AudioContext | null>(null);
+  const activeMediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  // Quota state
   const [exportQuota, setExportQuota] = useState<number>(() => {
     const saved = localStorage.getItem('yotor_video_quota');
     return saved ? parseInt(saved, 10) : 3;
@@ -48,255 +84,648 @@ export default function RenderModal({
     localStorage.setItem('yotor_video_quota', '3');
   };
 
-  const [progress, setProgress] = useState<number>(0);
-
-  const updateProgressForward = (nextVal: number) => {
-    setProgress((prev) => {
-      let quantized = Math.round(nextVal / 5) * 5;
-      quantized = Math.max(0, Math.min(100, quantized));
-      if (quantized >= 100 && nextVal < 99.5) {
-        quantized = 95;
-      }
-      return Math.max(prev, quantized);
-    });
-  };
-
-  const [renderLogs, setRenderLogs] = useState<string[]>([]);
-  const [renderError, setRenderError] = useState<string | null>(null);
-  const [renderOption, setRenderOption] = useState<'full' | 'fast'>('full');
-  const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
-  const [shareableDirectUrl, setShareableDirectUrl] = useState<string | null>(null);
-  const [telegramStatus, setTelegramStatus] = useState<{ sent?: boolean; error?: string }>({});
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
-  const [downloadExtension, setDownloadExtension] = useState<string>('mp4');
-  const [dataProfile, setDataProfile] = useState<'saver' | 'premium'>('premium');
-  
-  // Telegram Bot Token and Chat ID state
-  const [telegramBotToken, setTelegramBotToken] = useState<string>(() => localStorage.getItem('yotor_telegram_bot_token') || '8870687283:AAGe87k64Gej8jJ5Ahc7m20DrB0NoaKsQSU');
-  const [telegramChatId, setTelegramChatId] = useState<string>(() => localStorage.getItem('yotor_telegram_chat_id') || '2034380079');
-  const [showTelegramSettings, setShowTelegramSettings] = useState<boolean>(false);
-
-  const handleSaveTelegramConfig = (token: string, chatId: string) => {
-    setTelegramBotToken(token);
-    setTelegramChatId(chatId);
-    localStorage.setItem('yotor_telegram_bot_token', token);
-    localStorage.setItem('yotor_telegram_chat_id', chatId);
-  };
-
-  const handleCopyLink = (url: string) => {
-    navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 3000);
-  };
-
-  const [statistics, setStatistics] = useState({
-    duration: 0,
-    fileSize: '0 MB',
-    scenesProcessed: 0,
-    fps: 30
-  });
-
-  const [chunkSize, setChunkSize] = useState<number>(0);
-  
-  const getSubscribedPlan = (): '720p' | '1080p' | '4k' => {
-    return '4k';
-  };
-
-  const activePlan = getSubscribedPlan();
-
   useEffect(() => {
-    if (isOpen) {
-      setExportQuality(getSubscribedPlan());
+    if (scenes.length > 0 && !targetSingleSceneId) {
+      setTargetSingleSceneId(scenes[0].id);
     }
-  }, [isOpen]);
-
-  const handleTriggerUpgrade = () => {
-    window.dispatchEvent(new CustomEvent('yotor_trigger_upgrade'));
-    onClose();
-  };
-
-  const cloudRenderIntervalRef = useRef<any>(null);
-
-  useEffect(() => {
-    return () => {
-      if (cloudRenderIntervalRef.current) {
-        clearInterval(cloudRenderIntervalRef.current);
-      }
-    };
-  }, []);
+  }, [scenes]);
 
   const addLog = (msg: string) => {
-    setRenderLogs(prev => {
-      const lastLog = prev.length > 0 ? prev[prev.length - 1] : "";
-      if (lastLog.includes(msg)) return prev;
-      return [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`];
+    setRenderLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const cancelCurrentRender = () => {
+    isAbortedRef.current = true;
+    if (activeAnimationRef.current) {
+      cancelAnimationFrame(activeAnimationRef.current);
+      activeAnimationRef.current = null;
+    }
+    if (activeMediaRecorderRef.current && activeMediaRecorderRef.current.state !== 'inactive') {
+      try {
+        activeMediaRecorderRef.current.stop();
+      } catch (_) {}
+    }
+    if (activeAudioContextRef.current && activeAudioContextRef.current.state !== 'closed') {
+      try {
+        activeAudioContextRef.current.close();
+      } catch (_) {}
+    }
+    setRenderStatus('idle');
+    addLog('⚠️ Render cancelled.');
+  };
+
+  // Helper to draw text wrapped line by line on canvas
+  const drawWrappedText = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    lineHeight: number,
+    bgColor: string,
+    textColor: string
+  ) => {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = words[0] || '';
+
+    for (let i = 1; i < words.length; i++) {
+      const word = words[i];
+      const width = ctx.measureText(currentLine + ' ' + word).width;
+      if (width < maxWidth) {
+        currentLine += ' ' + word;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    lines.push(currentLine);
+
+    const totalHeight = lines.length * lineHeight + 16;
+    let maxLineWidth = 0;
+    lines.forEach(line => {
+      const w = ctx.measureText(line).width;
+      if (w > maxLineWidth) maxLineWidth = w;
+    });
+
+    const boxWidth = Math.min(maxWidth + 24, maxLineWidth + 32);
+    const boxX = x - boxWidth / 2;
+    const boxY = y - totalHeight / 2;
+
+    if (bgColor && bgColor !== 'transparent') {
+      ctx.fillStyle = bgColor;
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxWidth, totalHeight, 12);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const startY = y - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, idx) => {
+      ctx.fillText(line, x, startY + idx * lineHeight);
     });
   };
 
-  const cleanupRenderSubprocesses = () => {
-    if (cloudRenderIntervalRef.current) {
-      clearInterval(cloudRenderIntervalRef.current);
-      cloudRenderIntervalRef.current = null;
+  // Detect supported MediaRecorder MIME types on mobile browser
+  const getSupportedMimeType = (): { mimeType: string; extension: string } => {
+    const types = [
+      { mimeType: 'video/webm;codecs=vp8,opus', extension: 'webm' },
+      { mimeType: 'video/webm;codecs=vp9,opus', extension: 'webm' },
+      { mimeType: 'video/webm', extension: 'webm' },
+      { mimeType: 'video/mp4;codecs=avc1,mp4a', extension: 'mp4' },
+      { mimeType: 'video/mp4;codecs=h264,aac', extension: 'mp4' },
+      { mimeType: 'video/mp4', extension: 'mp4' }
+    ];
+
+    for (const t of types) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t.mimeType)) {
+        return t;
+      }
     }
+    return { mimeType: '', extension: 'webm' };
   };
 
-  const initiateCloudRender = async () => {
-    setRenderStatus('processing');
-    setProgress(0);
-    setRenderLogs([]);
-    setRenderError(null);
-    setShareableDirectUrl(null);
-    setTelegramStatus({});
-    addLog(`Initiating backend video compilation on Cloud Server...`);
+  // Main client-side scene recording function
+  const renderSingleSceneClientSide = async (
+    scene: Scene,
+    sceneIndex: number,
+    audioCtx: AudioContext
+  ): Promise<RenderedSceneResult> => {
+    addLog(`🎬 Initializing render for Scene ${sceneIndex + 1}...`);
+    
+    // 1. EXACT CANVAS RESOLUTION BASED ON ASPECT RATIO & QUALITY
+    let width = 1280;
+    let height = 720;
 
-    try {
-      const scenesToRender = renderOption === 'fast' ? scenes.slice(0, 2) : scenes;
+    if (exportQuality === '4k') {
+      if (projectConfig.aspectRatio === '9:16') {
+        width = 2160; height = 3840;
+      } else if (projectConfig.aspectRatio === '1:1') {
+        width = 2160; height = 2160;
+      } else {
+        width = 3840; height = 2160;
+      }
+    } else if (exportQuality === '1080p') {
+      if (projectConfig.aspectRatio === '9:16') {
+        width = 1080; height = 1920;
+      } else if (projectConfig.aspectRatio === '1:1') {
+        width = 1080; height = 1080;
+      } else {
+        width = 1920; height = 1080;
+      }
+    } else { // 720p
+      if (projectConfig.aspectRatio === '9:16') {
+        width = 720; height = 1280;
+      } else if (projectConfig.aspectRatio === '1:1') {
+        width = 720; height = 720;
+      } else {
+        width = 1280; height = 720;
+      }
+    }
 
-      const renderPayload = {
-        scenes: scenesToRender,
-        aspectRatio: projectConfig.aspectRatio || '16:9',
-        exportQuality,
-        musicUrl: projectConfig.backgroundMusicUrl,
-        musicVolume: projectConfig.musicVolume,
-        subtitleStyle: projectConfig.subtitleStyle,
-        visualStyle: projectConfig.visualStyle,
-        videoFilter: projectConfig.videoFilter,
-        telegramBotToken: telegramBotToken.trim() || undefined,
-        telegramChatId: telegramChatId.trim() || undefined,
-      };
+    const canvas = renderCanvasRef.current || document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
 
-      addLog(`Sending compilation request to server backend...`);
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) {
+      throw new Error('Canvas 2D context initialization failed.');
+    }
 
-      const response = await fetch('/api/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(renderPayload),
+    addLog(`Resolution locked to ${width}x${height} (${exportQuality}, Aspect: ${projectConfig.aspectRatio})`);
+
+    // 2. PREPARE VISUAL MEDIA (VIDEO OR STATIC IMAGE)
+    let videoElement: HTMLVideoElement | null = null;
+    let imageElement: HTMLImageElement | null = null;
+    let isVideoMedia = false;
+
+    if (scene.videoUrl) {
+      addLog(`Loading video source...`);
+      videoElement = document.createElement('video');
+      videoElement.crossOrigin = 'anonymous';
+      videoElement.setAttribute('playsinline', 'true');
+      videoElement.setAttribute('webkit-playsinline', 'true');
+      videoElement.muted = true; // Autoplay requirement on Android Mobile
+      videoElement.preload = 'auto';
+      videoElement.src = scene.videoUrl;
+
+      await new Promise<void>((resolve) => {
+        if (!videoElement) return resolve();
+        let resolved = false;
+        const done = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+
+        videoElement.onloadeddata = done;
+        videoElement.oncanplay = done;
+        videoElement.onerror = () => {
+          addLog('⚠️ Video failed to load. Switching to static fallback image.');
+          done();
+        };
+        setTimeout(done, 5000); // 5s fallback timeout
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to start backend render job');
+      if (videoElement.readyState >= 2) {
+        isVideoMedia = true;
       }
+    }
 
-      const { jobId } = await response.json();
-      addLog(`Render job created successfully (ID: ${jobId})`);
-      addLog(`⚡ Processing on server... Video will be split and delivered to Telegram if > 48MB.`);
+    // Fallback static image loading
+    if (!isVideoMedia) {
+      const fallbackUrl = scene.videoThumb || scene.previewUrl || '';
+      if (fallbackUrl) {
+        addLog(`Loading image source...`);
+        imageElement = new Image();
+        imageElement.crossOrigin = 'anonymous';
+        imageElement.src = fallbackUrl;
 
-      if (cloudRenderIntervalRef.current) {
-        clearInterval(cloudRenderIntervalRef.current);
+        await new Promise<void>((resolve) => {
+          if (!imageElement) return resolve();
+          imageElement.onload = () => resolve();
+          imageElement.onerror = () => resolve();
+          setTimeout(resolve, 3000);
+        });
       }
+    }
 
-      cloudRenderIntervalRef.current = setInterval(async () => {
-        try {
-          const statusRes = await fetch(`/api/status/${jobId}`);
-          if (!statusRes.ok) return;
+    // 3. AUDIO PREPARATION & DECODING
+    const audioDestination = audioCtx.createMediaStreamDestination();
 
-          const jobData = await statusRes.json();
-          
-          if (jobData.progress !== undefined) {
-            updateProgressForward(jobData.progress);
+    // Voiceover Audio
+    let voiceBufferNode: AudioBufferSourceNode | null = null;
+    let targetDuration = scene.duration || 4.0;
+
+    if (projectConfig.isVoiceEnabled !== false && scene.voiceoverUrl) {
+      addLog(`Decoding voiceover audio buffer...`);
+      try {
+        const res = await fetch(scene.voiceoverUrl);
+        const arrayBuf = await res.arrayBuffer();
+        const voiceBuffer = await audioCtx.decodeAudioData(arrayBuf);
+
+        voiceBufferNode = audioCtx.createBufferSource();
+        voiceBufferNode.buffer = voiceBuffer;
+
+        const voiceGain = audioCtx.createGain();
+        voiceGain.gain.value = 1.0;
+        voiceBufferNode.connect(voiceGain);
+        voiceGain.connect(audioDestination);
+
+        if (voiceBuffer.duration > targetDuration) {
+          targetDuration = voiceBuffer.duration + 0.2;
+        }
+      } catch (err) {
+        addLog(`⚠️ Voiceover decoding failed: ${err}`);
+      }
+    }
+
+    // Background Music Audio
+    let musicBufferNode: AudioBufferSourceNode | null = null;
+    if (projectConfig.isMusicEnabled !== false && projectConfig.musicTrack) {
+      addLog(`Decoding background music buffer...`);
+      try {
+        const res = await fetch(projectConfig.musicTrack);
+        const arrayBuf = await res.arrayBuffer();
+        const musicBuffer = await audioCtx.decodeAudioData(arrayBuf);
+
+        musicBufferNode = audioCtx.createBufferSource();
+        musicBufferNode.buffer = musicBuffer;
+        musicBufferNode.loop = true;
+
+        const musicGain = audioCtx.createGain();
+        let musicVol = projectConfig.musicVolume ?? 0.12;
+        if (projectConfig.autoDuckNarration && voiceBufferNode) {
+          musicVol = Math.min(0.03, musicVol * 0.25);
+        }
+        musicGain.gain.value = musicVol;
+
+        musicBufferNode.connect(musicGain);
+        musicGain.connect(audioDestination);
+      } catch (e) {
+        console.warn('Music decode failed:', e);
+      }
+    }
+
+    // Video Sound Track
+    if (projectConfig.isVideoSoundEnabled !== false && isVideoMedia && videoElement) {
+      try {
+        videoElement.muted = false; // Unmute so Web Audio captures track
+        const vidSource = audioCtx.createMediaElementSource(videoElement);
+        const vidGain = audioCtx.createGain();
+        vidGain.gain.value = projectConfig.videoVolume ?? 0.8;
+        vidSource.connect(vidGain);
+        vidGain.connect(audioDestination);
+      } catch (e) {
+        console.warn('Video audio node binding notice:', e);
+      }
+    }
+
+    setTotalSceneDuration(targetDuration);
+
+    // 4. COMBINE STREAMS & INITIALIZE MEDIARECORDER WITH HIGH BITRATE
+    const canvasStream = canvas.captureStream(30); // 30 FPS stream
+    const audioTracks = audioDestination.stream.getAudioTracks();
+    const combinedTracks = [...canvasStream.getVideoTracks(), ...audioTracks];
+    const combinedStream = new MediaStream(combinedTracks);
+
+    const { mimeType, extension } = getSupportedMimeType();
+    let bitrate = 8000000; // 8 Mbps for 1080p
+    if (exportQuality === '4k') bitrate = 14000000;
+    if (exportQuality === '720p') bitrate = 4000000;
+
+    const recorderOptions: MediaRecorderOptions = {
+      videoBitsPerSecond: bitrate
+    };
+    if (mimeType) {
+      recorderOptions.mimeType = mimeType;
+    }
+
+    const mediaRecorder = new MediaRecorder(combinedStream, recorderOptions);
+    activeMediaRecorderRef.current = mediaRecorder;
+
+    const recordedChunks: Blob[] = [];
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        recordedChunks.push(e.data);
+      }
+    };
+
+    addLog(`MediaRecorder initialized (${mimeType || 'default'}, ${Math.round(bitrate / 1000000)}Mbps)`);
+
+    // 5. START PLAYBACK & RECORDING LOOP
+    mediaRecorder.start(100);
+
+    if (voiceBufferNode) voiceBufferNode.start(0);
+    if (musicBufferNode) musicBufferNode.start(0);
+
+    if (isVideoMedia && videoElement) {
+      videoElement.currentTime = 0;
+      videoElement.play().catch((e) => addLog(`Video play notice: ${e}`));
+    }
+
+    const startTime = performance.now();
+
+    // CONTINUOUS FRAME DRAWING LOOP (FIXES CHOPPINESS & STATIC IMAGE ISSUES)
+    return new Promise<RenderedSceneResult>((resolve, reject) => {
+      const renderFrame = () => {
+        if (isAbortedRef.current) {
+          mediaRecorder.stop();
+          return reject(new Error('Render cancelled by user.'));
+        }
+
+        const now = performance.now();
+        const elapsedSeconds = (now - startTime) / 1000;
+        setCurrentSceneTime(elapsedSeconds);
+
+        const progressPercent = Math.min(100, (elapsedSeconds / targetDuration) * 100);
+        setRenderProgress(progressPercent);
+
+        if (onRenderFrameChange) {
+          onRenderFrameChange(sceneIndex, elapsedSeconds);
+        }
+
+        // --- DRAW VISUAL BASE ON CANVAS ---
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(0, 0, width, height);
+
+        const mediaSource = isVideoMedia && videoElement ? videoElement : imageElement;
+
+        if (mediaSource) {
+          // Keep video playing if paused prematurely
+          if (isVideoMedia && videoElement && videoElement.paused && elapsedSeconds < targetDuration) {
+            videoElement.play().catch(() => {});
           }
-          if (jobData.log) {
-            addLog(jobData.log);
-          }
 
-          if (jobData.status === 'completed') {
-            clearInterval(cloudRenderIntervalRef.current);
-            cloudRenderIntervalRef.current = null;
+          const vWidth = isVideoMedia ? (videoElement?.videoWidth || width) : (imageElement?.naturalWidth || width);
+          const vHeight = isVideoMedia ? (videoElement?.videoHeight || height) : (imageElement?.naturalHeight || height);
 
-            const relativeDownloadUrl = jobData.downloadUrl || `/public/exports/video_${jobId}.mp4`;
-            const absoluteShareableUrl = jobData.shareableUrl || (window.location.origin + relativeDownloadUrl);
+          if (vWidth > 0 && vHeight > 0) {
+            ctx.save();
 
-            setRenderedBlobUrl(relativeDownloadUrl);
-            setShareableDirectUrl(absoluteShareableUrl);
-            setDownloadExtension('mp4');
-            setRenderStatus('completed');
-            setProgress(100);
+            // Cover ratio calculation
+            const vRatio = vWidth / vHeight;
+            const cRatio = width / height;
+            let sx = 0, sy = 0, sWidth = vWidth, sHeight = vHeight;
 
-            if (jobData.telegramSent) {
-              setTelegramStatus({ sent: true });
-              addLog(`Telegram delivery completed successfully! 🎬`);
-            } else if (jobData.telegramError || jobData.telegramSent === false) {
-              setTelegramStatus({ sent: false, error: jobData.telegramError || 'Failed to deliver to Telegram' });
-              addLog(`Telegram delivery note: ${jobData.telegramError || 'Failed to deliver to Telegram'}`);
+            if (vRatio > cRatio) {
+              sWidth = vHeight * cRatio;
+              sx = (vWidth - sWidth) / 2;
             } else {
-              setTelegramStatus({ sent: true });
+              sHeight = vWidth / cRatio;
+              sy = (vHeight - sHeight) / 2;
             }
 
-            const totalDur = scenesToRender.reduce((s, sc) => s + (sc.duration || 0), 0);
-            setStatistics({
-              duration: totalDur > 0 ? totalDur : 10,
-              fileSize: jobData.fileSize || '15.2 MB',
-              scenesProcessed: scenesToRender.length,
-              fps: 30
-            });
+            // Animation motion (zoom/pan) applied frame-by-frame
+            let animStyle: AnimationStyle = scene.animationStyle || projectConfig.animationStyle || 'zoom-in';
+            if (projectConfig.isAnimationEnabled === false) animStyle = 'static';
 
-            addLog(`Compilation SUCCESS. Video generated and delivered to Telegram!`);
-            if (onRenderComplete) onRenderComplete();
+            const animProgress = Math.min(1, elapsedSeconds / targetDuration);
+            let dynamicScale = 1.0;
+            let dynamicOffsetX = 0;
+            let dynamicOffsetY = 0;
 
-            // Decrement quota
-            const newQuota = Math.max(0, exportQuota - 1);
-            setExportQuota(newQuota);
-            localStorage.setItem('yotor_video_quota', newQuota.toString());
-          } else if (jobData.status === 'failed' || jobData.status === 'error') {
-            clearInterval(cloudRenderIntervalRef.current);
-            cloudRenderIntervalRef.current = null;
-            setRenderStatus('failed');
-            const errStr = jobData.error || jobData.log || 'Render job failed on server';
-            setRenderError(errStr);
-            addLog(`CRITICAL ERROR: ${errStr}`);
+            switch (animStyle) {
+              case 'zoom-in':
+                dynamicScale = 1.0 + 0.12 * animProgress;
+                break;
+              case 'zoom-out':
+                dynamicScale = 1.15 - 0.15 * animProgress;
+                break;
+              case 'pan-lr':
+                dynamicOffsetX = width * 0.08 * (animProgress - 0.5);
+                break;
+              case 'pan-rl':
+                dynamicOffsetX = -width * 0.08 * (animProgress - 0.5);
+                break;
+              case 'tilt-up':
+                dynamicOffsetY = height * 0.05 * (animProgress - 0.5);
+                dynamicScale = 1.05;
+                break;
+              case 'tilt-down':
+                dynamicOffsetY = -height * 0.05 * (animProgress - 0.5);
+                dynamicScale = 1.05;
+                break;
+              default:
+                break;
+            }
+
+            ctx.translate(width / 2, height / 2);
+            ctx.scale(dynamicScale, dynamicScale);
+
+            // Color Filter Application
+            let filterStr = '';
+            if (projectConfig.videoFilter) {
+              switch (projectConfig.videoFilter) {
+                case 'sepia': filterStr = 'sepia(100%)'; break;
+                case 'grayscale': filterStr = 'grayscale(100%)'; break;
+                case 'contrast': filterStr = 'contrast(150%) brightness(95%)'; break;
+                case 'vintage': filterStr = 'sepia(40%) contrast(120%) brightness(90%) saturate(80%)'; break;
+                case 'teal': filterStr = 'contrast(115%) saturate(135%) sepia(15%) hue-rotate(-15deg)'; break;
+                case 'high-contrast': filterStr = 'contrast(180%) brightness(95%) saturate(125%)'; break;
+              }
+            }
+            ctx.filter = filterStr || 'none';
+
+            // CONTINUOUS DRAW COMMAND
+            ctx.drawImage(
+              mediaSource,
+              sx, sy, sWidth, sHeight,
+              -width / 2 + dynamicOffsetX, -height / 2 + dynamicOffsetY, width, height
+            );
+
+            ctx.restore();
+            ctx.filter = 'none';
           }
-        } catch (pollErr: any) {
-          console.warn('Status polling error:', pollErr);
         }
-      }, 2000);
 
-    } catch (err: any) {
-      console.error('Server render request failed:', err);
+        // --- SUBTITLE OVERLAY ---
+        const subStyle = projectConfig.subtitleStyle;
+        if (projectConfig.isSubtitlesEnabled !== false && subStyle?.enabled !== false && (scene.caption || scene.text)) {
+          const captionText = (subStyle?.uppercase ? (scene.caption || scene.text).toUpperCase() : (scene.caption || scene.text)).trim();
+          
+          const baseFontSize = subStyle?.fontSize || 42;
+          const scaledFontSize = Math.round(baseFontSize * (height / 720));
+          const fontFamily = subStyle?.fontFamily || 'Space Grotesk';
+
+          ctx.font = `bold ${scaledFontSize}px "${fontFamily}", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          let posY = height - 120;
+          if (subStyle?.position === 'top') posY = 120;
+          if (subStyle?.position === 'middle') posY = height / 2;
+
+          const maxWidth = width - 120;
+          const lineHeight = scaledFontSize * 1.3;
+
+          drawWrappedText(
+            ctx,
+            captionText,
+            width / 2,
+            posY,
+            maxWidth,
+            lineHeight,
+            subStyle?.backgroundColor || 'rgba(0,0,0,0.65)',
+            subStyle?.color || '#FFFFFF'
+          );
+        }
+
+        // --- WATERMARK OVERLAY ---
+        if (projectConfig.watermarkEnabled) {
+          ctx.save();
+          ctx.globalAlpha = projectConfig.watermarkOpacity ?? 0.6;
+          
+          const wmSize = (projectConfig.watermarkSize ?? 16) * (height / 720);
+          ctx.font = `bold ${wmSize}px sans-serif`;
+          
+          const padding = 30;
+          let wmX = width - padding;
+          let wmY = height - padding;
+
+          if (projectConfig.watermarkPosition === 'top-left') {
+            wmX = padding; wmY = padding + wmSize;
+            ctx.textAlign = 'left';
+          } else if (projectConfig.watermarkPosition === 'top-right') {
+            wmX = width - padding; wmY = padding + wmSize;
+            ctx.textAlign = 'right';
+          } else if (projectConfig.watermarkPosition === 'bottom-left') {
+            wmX = padding; wmY = height - padding;
+            ctx.textAlign = 'left';
+          } else if (projectConfig.watermarkPosition === 'center') {
+            wmX = width / 2; wmY = height / 2;
+            ctx.textAlign = 'center';
+          } else {
+            ctx.textAlign = 'right';
+          }
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillText(projectConfig.watermarkText || '© BRAND OVERLAY', wmX, wmY);
+          ctx.restore();
+        }
+
+        // FINISH OR CONTINUE FRAME LOOP
+        if (elapsedSeconds >= targetDuration) {
+          mediaRecorder.onstop = () => {
+            if (voiceBufferNode) { try { voiceBufferNode.stop(); } catch (_) {} }
+            if (musicBufferNode) { try { musicBufferNode.stop(); } catch (_) {} }
+            if (videoElement) { videoElement.pause(); }
+
+            const finalMime = mimeType || 'video/webm';
+            const finalBlob = new Blob(recordedChunks, { type: finalMime });
+            const blobUrl = URL.createObjectURL(finalBlob);
+            const fileSizeStr = formatFileSize(finalBlob.size);
+
+            addLog(`✅ Scene ${sceneIndex + 1} export finished! (${fileSizeStr})`);
+
+            resolve({
+              sceneId: scene.id,
+              sceneIndex,
+              blobUrl,
+              blob: finalBlob,
+              mimeType: finalMime,
+              extension,
+              fileSize: fileSizeStr,
+              duration: targetDuration,
+              title: scene.caption || scene.text || `Scene ${sceneIndex + 1}`,
+              createdAt: new Date().toLocaleTimeString()
+            });
+          };
+
+          mediaRecorder.stop();
+        } else {
+          activeAnimationRef.current = requestAnimationFrame(renderFrame);
+        }
+      };
+
+      activeAnimationRef.current = requestAnimationFrame(renderFrame);
+    });
+  };
+
+  // Trigger Client-Side Export Sequence
+  const startClientSideRender = async () => {
+    isAbortedRef.current = false;
+    setRenderStatus('rendering');
+    setRenderProgress(0);
+    setRenderLogs([]);
+    setRenderError(null);
+
+    const scenesToProcess = selectedSceneMode === 'single'
+      ? scenes.filter(s => s.id === targetSingleSceneId)
+      : scenes;
+
+    if (scenesToProcess.length === 0) {
       setRenderStatus('failed');
-      setRenderError(err.message || 'Server rendering request failed');
-      addLog(`CRITICAL API ERROR: ${err.message || 'Server rendering request failed'}`);
+      setRenderError('No scenes selected for export.');
+      return;
+    }
+
+    // AudioContext MUST be initialized/resumed inside user click gesture
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const audioCtx = new AudioContextClass();
+    activeAudioContextRef.current = audioCtx;
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    addLog(`🚀 Starting Client-Side Canvas+MediaRecorder rendering...`);
+    addLog(`Processing ${scenesToProcess.length} scene(s) at ${exportQuality} resolution (${projectConfig.aspectRatio})`);
+
+    try {
+      for (let i = 0; i < scenesToProcess.length; i++) {
+        if (isAbortedRef.current) break;
+        const currentScene = scenesToProcess[i];
+        setRenderingSceneIndex(i);
+
+        const result = await renderSingleSceneClientSide(currentScene, i, audioCtx);
+        setRenderedResults(prev => [...prev.filter(r => r.sceneId !== result.sceneId), result]);
+      }
+
+      if (!isAbortedRef.current) {
+        setRenderStatus('completed');
+        setRenderProgress(100);
+        addLog(`🎉 All scene exports completed!`);
+
+        const newQuota = Math.max(0, exportQuota - 1);
+        setExportQuota(newQuota);
+        localStorage.setItem('yotor_video_quota', newQuota.toString());
+
+        if (onRenderComplete) onRenderComplete();
+      }
+    } catch (err: any) {
+      console.error('Render error:', err);
+      setRenderStatus('failed');
+      setRenderError(err.message || 'Client-side rendering error occurred.');
+      addLog(`CRITICAL ERROR: ${err.message || 'Rendering error'}`);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-[#0F0F0F]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn" id="render-workbench">
-      <div className="bento-card max-w-xl w-full p-6 relative overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-[#0F0F0F]/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn" id="render-workbench">
+      <div className="bento-card max-w-2xl w-full p-6 relative overflow-hidden flex flex-col max-h-[92vh]">
         
         {/* Header bar */}
-        <div className="text-center pb-4 mb-5 border-b border-[#303030]">
+        <div className="text-center pb-4 mb-4 border-b border-[#303030]">
           <h1 className="text-base font-semibold text-[#F1F1F1] justify-center flex items-center gap-2">
-            <FileVideo className="text-[#3EA6FF]" size={18} />
-            {t.render_studio}
+            <FileVideo className="text-[#3EA6FF]" size={20} />
+            {t.render_studio} (100% Client-Side Engine)
           </h1>
-          <p className="text-xs text-[#AAAAAA] mt-1.5 font-sans">
-            {renderStatus === 'idle' && (language === 'am' ? 'የቪዲዮ ማውረጃ ምርጫዎችን ያስተካክሉ' : 'Configure video export parameters')}
-            {(renderStatus === 'rendering' || renderStatus === 'processing') && (language === 'am' ? '⚡ በሰርቨር ላይ በመቀናጀት ላይ...' : '⚡ Processing and sending to Telegram...')}
-            {renderStatus === 'completed' && (language === 'am' ? 'ቪዲዮው በተሳካ ሁኔታ ተጠናቋል!' : 'Master export completed successfully!')}
-            {renderStatus === 'failed' && (language === 'am' ? 'ማቀናበሩ ተቋርጧል ወይም አልተሳካም' : 'Export process stopped or aborted')}
+          <p className="text-xs text-[#AAAAAA] mt-1 font-sans">
+            {renderStatus === 'idle' && (language === 'am' ? 'እያንዳንዱን ክፍል በብሮውዘርዎ ላይ በቀጥታ ያቀናብሩና ያውርዱ' : 'Export each scene individually directly in your browser without cloud servers')}
+            {renderStatus === 'rendering' && (language === 'am' ? '⚡ በካንቫስ እና ሚዲያ ሪኮርደር በማቀናበር ላይ...' : '⚡ Recording visuals, audio mix & MediaRecorder frame-by-frame...')}
+            {renderStatus === 'completed' && (language === 'am' ? 'ቪዲዮው በተሳካ ሁኔታ ተጠናቋል!' : 'Client-side scene export completed successfully!')}
+            {renderStatus === 'failed' && (language === 'am' ? 'ማቀናበሩ ተቋርጧል ወይም አልተሳካም' : 'Export process stopped or failed')}
           </p>
         </div>
 
         {renderStatus === 'idle' && (
-          <div className="space-y-4 py-2 overflow-y-auto max-h-[70vh] pr-1 scrollbar-thin">
+          <div className="space-y-4 py-2 overflow-y-auto max-h-[72vh] pr-1 scrollbar-thin">
             
-            {/* 🎙️ Fluent Amharic Voice & Video Download Quota System */}
-            <div className="p-4 rounded-xl bg-[#181818] border border-[#303030] space-y-3 relative overflow-hidden">
+            {/* Quota & Export Info Card */}
+            <div className="p-4 rounded-xl bg-[#181818] border border-[#303030] space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="space-y-0.5">
-                  <span className="px-2 py-0.5 bg-[#3EA6FF]/10 text-[10px] font-medium text-[#3EA6FF] rounded-md uppercase tracking-wide">
-                    {t.engine_tts}
-                  </span>
-                  <h4 className="text-sm font-semibold text-[#F1F1F1]">
-                    🎙️ {t.voice_speaker_label} (Ameha Neural) - {t.active}
-                  </h4>
-                </div>
+                <span className="px-2 py-0.5 bg-[#3EA6FF]/10 text-[10px] font-medium text-[#3EA6FF] rounded-md uppercase tracking-wide flex items-center gap-1">
+                  <ShieldCheck size={12} /> Mobile-Optimized Canvas Engine
+                </span>
                 
-                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-full font-semibold shrink-0 flex items-center gap-1.5">
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-full font-semibold flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Active
+                  Direct Download
                 </span>
               </div>
 
@@ -308,28 +737,19 @@ export default function RenderModal({
                   </span>
                 </div>
 
-                {/* Quota pills */}
                 <div className="flex gap-2">
-                  {[1, 2, 3].map((num) => {
-                    const isFilled = exportQuota >= num;
-                    return (
-                      <div 
-                        key={num} 
-                        className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
-                          isFilled 
-                            ? 'bg-[#3EA6FF]' 
-                            : 'bg-[#303030]'
-                        }`} 
-                      />
-                    );
-                  })}
+                  {[1, 2, 3].map((num) => (
+                    <div 
+                      key={num} 
+                      className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                        exportQuota >= num ? 'bg-[#3EA6FF]' : 'bg-[#303030]'
+                      }`} 
+                    />
+                  ))}
                 </div>
 
-                <div className="flex items-center justify-between gap-4 mt-1 text-xs text-[#AAAAAA] leading-normal">
-                  <p>
-                    {t.quota_pills_desc}
-                  </p>
-                  
+                <div className="flex items-center justify-between gap-4 mt-1 text-xs text-[#AAAAAA]">
+                  <p>{t.quota_pills_desc}</p>
                   <button
                     type="button"
                     onClick={handleRefillQuota}
@@ -339,284 +759,139 @@ export default function RenderModal({
                   </button>
                 </div>
               </div>
-
-              {exportQuota === 0 && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-350 text-xs rounded-lg font-medium leading-relaxed space-y-1">
-                  <span className="text-[10px] text-rose-400 font-semibold uppercase tracking-wider block">⚠️ {t.quota_exhausted}</span>
-                  <p>
-                    {t.refill_desc}
-                  </p>
-                </div>
-              )}
             </div>
 
-            {/* 📥 Telegram Bot Delivery Info Card */}
-            <div className="p-4 bg-[#181818] rounded-xl border border-[#303030] space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#F1F1F1] flex items-center gap-2">
-                  <Send size={14} className="text-[#3EA6FF]" />
-                  {language === 'am' ? 'የቴሌግራም ቦት መላኪያ (Telegram Bot Delivery)' : 'Telegram Delivery Target'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowTelegramSettings(!showTelegramSettings)}
-                  className="text-[11px] text-[#AAAAAA] hover:text-[#F1F1F1] flex items-center gap-1.5 bg-[#303030] px-2.5 py-1 rounded-md transition-colors"
-                >
-                  <Settings size={12} />
-                  {showTelegramSettings ? 'Close' : 'Configure'}
-                </button>
-              </div>
-
-              {showTelegramSettings ? (
-                <div className="p-3 bg-[#212121] border border-[#303030] rounded-lg space-y-3 text-left">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] text-[#AAAAAA] font-medium">Telegram Bot Token:</label>
-                    <input
-                      type="text"
-                      value={telegramBotToken}
-                      onChange={(e) => handleSaveTelegramConfig(e.target.value, telegramChatId)}
-                      placeholder="e.g. 8870687283:AAG..."
-                      className="w-full bg-[#181818] border border-[#303030] text-sm text-[#F1F1F1] px-3 py-2 rounded-md focus:outline-none focus:border-[#3EA6FF]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] text-[#AAAAAA] font-medium">Telegram Chat ID:</label>
-                    <input
-                      type="text"
-                      value={telegramChatId}
-                      onChange={(e) => handleSaveTelegramConfig(telegramBotToken, e.target.value)}
-                      placeholder="e.g. 2034380079"
-                      className="w-full bg-[#181818] border border-[#303030] text-sm text-[#F1F1F1] px-3 py-2 rounded-md focus:outline-none focus:border-[#3EA6FF]"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3 bg-[#3EA6FF]/10 border border-[#3EA6FF]/20 rounded-lg flex items-center justify-between">
-                  <div className="space-y-1 text-left">
-                    <span className="text-[11px] font-semibold text-[#3EA6FF] block">
-                      Target Chat ID: {telegramChatId || '2034380079'}
-                    </span>
-                    <p className="text-[10px] text-[#AAAAAA]">
-                      {language === 'am' 
-                        ? 'ከ 48MB በላይ የሆኑ ቪዲዮዎች በቴሌግራም 50MB ገደብ ምክንያት በከፋፋይ (FFmpeg segment copy) ተከፋፍለው ይላካሉ!' 
-                        : 'Videos > 48MB are automatically split into sequential parts without re-encoding to respect Telegram 50MB bot limits!'}
-                    </p>
-                  </div>
-                  <Send size={18} className="text-[#3EA6FF] shrink-0 ml-3 opacity-80" />
-                </div>
-              )}
-            </div>
-
-            {/* Resolution/Duration segment */}
+            {/* Render Target Selection */}
             <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
-              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">{t.baking_range}</span>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRenderOption('full')}
-                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
-                    renderOption === 'full' 
-                      ? 'bg-indigo-500/5 border-indigo-550 text-indigo-400 font-bold' 
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <span className="text-xs font-semibold">{t.hq_full_render}</span>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">{t.scenes_verbatim} ({scenes.length})</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setRenderOption('fast')}
-                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
-                    renderOption === 'fast' 
-                      ? 'bg-indigo-500/5 border-indigo-550 text-indigo-400 font-bold' 
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <span className="text-xs font-semibold">{t.fast_test_segment}</span>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">{t.fast_instant_review}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Choose Video quality */}
-            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
-              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block flex items-center gap-1">
-                <Crown size={11} className="text-cyan-400" /> {t.export_res}
-              </span>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setExportQuality('720p')}
-                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
-                    exportQuality === '720p' 
-                      ? 'bg-teal-500/5 border-teal-500 text-teal-400 font-bold shadow-sm' 
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold">{t.quality_720}</span>
-                    {exportQuality === '720p' && <div className="w-2 h-2 rounded-full bg-teal-400" />}
-                  </div>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">1280x720</span>
-                  <span className="text-[8px] font-mono text-zinc-650 mt-1 uppercase">{t.unlocked_10k}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setExportQuality('1080p')}
-                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
-                    exportQuality === '1080p' 
-                      ? 'bg-cyan-500/5 border-cyan-500 text-cyan-400 font-bold shadow-sm' 
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold flex items-center gap-1">
-                      <Crown size={11} className="text-cyan-400" /> {t.quality_1080}
-                    </span>
-                    {exportQuality === '1080p' && <div className="w-2 h-2 rounded-full bg-cyan-400" />}
-                  </div>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">1920x1080</span>
-                  <span className="text-[8.5px] font-mono text-cyan-400 mt-1 uppercase">{t.unlocked_15k}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setExportQuality('4k')}
-                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
-                    exportQuality === '4k' 
-                      ? 'bg-purple-500/5 border-purple-500 text-purple-400 font-bold shadow-sm' 
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold flex items-center gap-1">
-                      <Crown size={11} className="text-purple-400" /> 4K Ultra HD
-                    </span>
-                    {exportQuality === '4k' && <div className="w-2 h-2 rounded-full bg-purple-400" />}
-                  </div>
-                  <span className="text-[9px] text-zinc-500 mt-1 font-sans">3840x2160</span>
-                  <span className="text-[8.5px] font-mono text-purple-400 mt-1 uppercase">{t.unlocked_15k}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Choose Data Optimization Profile */}
-            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
-              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block flex items-center gap-1.5">
-                <Zap size={11} className="text-amber-400" /> የዳታ አጠቃቀምና ፍጥነት መቆጣጠሪያ / Data Optimization Profile:
-              </span>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDataProfile('saver')}
-                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
-                    dataProfile === 'saver'
-                      ? 'bg-amber-500/5 border-amber-500 text-amber-400 font-bold shadow-sm'
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold flex items-center gap-1">
-                      <Zap size={11} className="text-amber-400" /> በትንሽ ዳታ / Ultra-Saver
-                    </span>
-                    {dataProfile === 'saver' && <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
-                  </div>
-                  <span className="text-[9.5px] text-zinc-400 mt-1 leading-normal">
-                    ጥራቱ ሳይቀንስ ፋይሉን ያሳንሰዋል። በቴሌግራም ወይም ዋትስአፕ በትንሽ ዳታ በፍጥነት ለደንበኞች ይደርሳል! 🚀
-                  </span>
-                  <span className="text-[8px] font-mono text-zinc-600 mt-1.5 uppercase font-bold text-amber-500/80">Optimized for Ethiopia network</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDataProfile('premium')}
-                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
-                    dataProfile === 'premium'
-                      ? 'bg-indigo-500/5 border-indigo-500 text-indigo-400 font-bold shadow-sm'
-                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-xs font-semibold flex items-center gap-1">
-                      <Cpu size={11} className="text-indigo-400" /> ከፍተኛ ጥራት / Maximum HD
-                    </span>
-                    {dataProfile === 'premium' && <div className="w-2 h-2 rounded-full bg-indigo-400" />}
-                  </div>
-                  <span className="text-[9.5px] text-zinc-400 mt-1 leading-normal">
-                    ለትላልቅ ስክሪኖች እና ማስታወቂያዎች የሚሆን ፊልም-ጥራት ያላቸው ምስሎችን ያመርታል።
-                  </span>
-                  <span className="text-[8px] font-mono text-zinc-650 mt-1.5 uppercase font-bold">Cinema Bitrate (12.5Mbps Uncompressed)</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-[#09090b] border border-zinc-800/80 space-y-3">
               <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">
-                {language === 'am' ? 'የፕሮጀክት አስተዳደር' : 'Project Management'}
+                {language === 'am' ? 'የማቀናበሪያ ክፍሎች መምረጫ' : 'Export Scene Selection'}
               </span>
+
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    const projectData = JSON.stringify({ scenes, projectConfig }, null, 2);
-                    const blob = new Blob([projectData], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `project-${Date.now()}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl font-semibold text-xs text-white transition-colors"
+                  onClick={() => setSelectedSceneMode('all')}
+                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
+                    selectedSceneMode === 'all' 
+                      ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400 font-bold' 
+                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
+                  }`}
                 >
-                  {language === 'am' ? 'ፕሮጀክት አውርድ (JSON)' : 'Download Project (JSON)'}
+                  <span className="text-xs font-semibold">{language === 'am' ? 'ሁሉንም ክፍሎች አዘጋጅ' : 'Render All Scenes'}</span>
+                  <span className="text-[9.5px] text-zinc-500 mt-1">
+                    {scenes.length} {language === 'am' ? 'ክፍሎች በአንድ ጊዜ' : 'scenes sequentially'}
+                  </span>
                 </button>
-                <label className="py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl font-semibold text-xs text-white transition-colors text-center cursor-pointer flex items-center justify-center">
-                  {language === 'am' ? 'ፕሮጀክት አስገባ (JSON)' : 'Restore Project (JSON)'}
-                  <input
-                    type="file"
-                    accept=".json"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        try {
-                          const data = JSON.parse(event.target?.result as string);
-                          if (data.scenes && data.projectConfig && onRestoreProject) {
-                            onRestoreProject(data.scenes, data.projectConfig);
-                            alert(language === 'am' ? 'ፕሮጀክቱ በተሳካ ሁኔታ ተመልሷል!' : 'Project restored successfully!');
-                          } else {
-                            throw new Error('Invalid project structure');
-                          }
-                        } catch (err) {
-                          console.error('Failed to parse project JSON:', err);
-                          alert(language === 'am' ? 'የተሳሳተ የፕሮጀክት ፋይል። እባክዎ እንደገና ይሞክሩ።' : 'Invalid project file. Please try again.');
-                        }
-                      };
-                      reader.readAsText(file);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedSceneMode('single')}
+                  className={`p-3 border rounded-xl flex flex-col text-left transition-all ${
+                    selectedSceneMode === 'single' 
+                      ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400 font-bold' 
+                      : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <span className="text-xs font-semibold">{language === 'am' ? 'አንድ ክፍል ብቻ አዘጋጅ' : 'Render Individual Scene'}</span>
+                  <span className="text-[9.5px] text-zinc-500 mt-1">
+                    {language === 'am' ? 'የተወሰነ ክፍል መርጠው ያውርዱ' : 'Select scene to process'}
+                  </span>
+                </button>
+              </div>
+
+              {selectedSceneMode === 'single' && (
+                <div className="pt-2 animate-fadeIn">
+                  <label className="text-[11px] font-mono text-zinc-400 block mb-1">
+                    {language === 'am' ? 'ክፍል ይምረጡ:' : 'Select Target Scene:'}
+                  </label>
+                  <select
+                    value={targetSingleSceneId}
+                    onChange={(e) => setTargetSingleSceneId(e.target.value)}
+                    className="w-full bg-[#181818] border border-[#303030] text-[#F1F1F1] text-xs rounded-xl px-3 py-2.5 outline-none cursor-pointer focus:border-[#3EA6FF]"
+                  >
+                    {scenes.map((sc, idx) => (
+                      <option key={sc.id} value={sc.id}>
+                        Scene {idx + 1}: {(sc.caption || sc.text || 'Untitled Scene').substring(0, 45)}... ({sc.duration || 4}s)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Quality and Aspect Ratio Config */}
+            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 space-y-3">
+              <span className="text-[10px] font-mono tracking-widest font-semibold text-zinc-500 uppercase block">
+                {t.export_res} & Aspect Ratio ({projectConfig.aspectRatio})
+              </span>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                {(['720p', '1080p', '4k'] as const).map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setExportQuality(q)}
+                    className={`p-2.5 border rounded-xl flex flex-col text-left transition-all ${
+                      exportQuality === q 
+                        ? 'bg-[#3EA6FF]/10 border-[#3EA6FF] text-[#3EA6FF] font-bold' 
+                        : 'border-zinc-900 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    <span className="text-xs uppercase">{q} HD</span>
+                    <span className="text-[9px] text-zinc-500 mt-0.5">
+                      {q === '4k' ? '3840x2160' : q === '1080p' ? '1920x1080' : '1280x720'}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-1">
+            {/* Previously Rendered Results List */}
+            {renderedResults.length > 0 && (
+              <div className="p-4 bg-[#08080c] rounded-2xl border border-emerald-500/20 space-y-3">
+                <span className="text-[10px] font-mono tracking-widest font-bold text-emerald-400 uppercase block flex items-center gap-1.5">
+                  <CheckCircle2 size={13} /> {language === 'am' ? 'የተጠናቀቁ ክፍሎች' : 'Exported Scenes'} ({renderedResults.length})
+                </span>
+
+                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                  {renderedResults.map((item) => (
+                    <div key={item.sceneId} className="p-2.5 bg-[#121218] border border-zinc-800 rounded-xl flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <video src={item.blobUrl} className="w-14 h-10 rounded-md object-cover bg-black shrink-0" />
+                        <div className="truncate space-y-0.5">
+                          <span className="font-semibold text-zinc-200 block truncate">
+                            Scene {item.sceneIndex + 1}: {item.title}
+                          </span>
+                          <span className="text-[10px] font-mono text-zinc-500">
+                            {item.duration.toFixed(1)}s • {item.fileSize} • {item.extension.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <a
+                        href={item.blobUrl}
+                        download={`scene_${item.sceneIndex + 1}_${Date.now()}.${item.extension}`}
+                        className="py-1.5 px-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs rounded-lg transition-all shrink-0 flex items-center gap-1"
+                      >
+                        <Download size={13} />
+                        <span>{language === 'am' ? 'አውርድ' : 'Download'}</span>
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="py-3 bg-zinc-900 border border-zinc-800 rounded-xl font-semibold text-xs text-zinc-400 hover:text-white transition-colors uppercase tracking-wider font-mono text-center"
-                id="render-cancel-btn"
+                className="py-3 bg-zinc-900 border border-zinc-800 rounded-xl font-semibold text-xs text-zinc-400 hover:text-white transition-colors uppercase font-mono text-center"
               >
                 {language === 'am' ? 'ተመለስ' : 'Go Back'}
               </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -624,72 +899,63 @@ export default function RenderModal({
                     alert(language === 'am' ? 'እባክዎ መጀመሪያ ነጻ ኮታዎን ይሙሉ!' : 'Please refill your free quota first!');
                     return;
                   }
-                  initiateCloudRender();
+                  startClientSideRender();
                 }}
-                className={`py-4 text-white font-black text-xs sm:text-sm uppercase tracking-[0.2em] rounded-2xl flex items-center justify-center gap-3 transition-all border ${
+                className={`py-3.5 text-white font-black text-xs sm:text-sm uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all border ${
                   exportQuota > 0
                     ? 'bg-indigo-600 hover:bg-indigo-550 border-indigo-400/30 shadow-xl shadow-indigo-600/40 active:scale-95 cursor-pointer'
                     : 'bg-zinc-800 border-zinc-900 cursor-not-allowed opacity-40'
                 }`}
-                id="render-start-btn"
               >
-                <Cpu size={18} className={exportQuota > 0 ? "animate-pulse" : ""} />
+                <Zap size={16} className={exportQuota > 0 ? "animate-pulse" : ""} />
                 {language === 'am' 
-                  ? (exportQuota > 0 ? 'በሰርቨር ላይ ማቀናበር ጀምር' : 'ኮታ የለም • ኮታውን ይሙሉ') 
-                  : (exportQuota > 0 ? 'START CLOUD EXPORT' : 'EMPTY QUOTA • REFILL NOW')}
+                  ? (selectedSceneMode === 'single' ? 'ክፍሉን ማቀናበር ጀምር' : 'ሁሉንም ማቀናበር ጀምር') 
+                  : (selectedSceneMode === 'single' ? 'RENDER SELECTED SCENE' : 'RENDER ALL SCENES')}
               </button>
             </div>
           </div>
         )}
 
-        {(renderStatus === 'rendering' || renderStatus === 'processing') && (
-          <div className="space-y-5 py-4 flex-1 flex flex-col justify-between">
+        {/* Live Rendering State */}
+        {renderStatus === 'rendering' && (
+          <div className="space-y-4 py-3 flex-1 flex flex-col justify-between">
             <div className="space-y-4">
               
-              {/* ⚡ Server rendering status card */}
-              <div className="p-4 bg-[#3EA6FF]/10 border border-[#3EA6FF]/30 rounded-xl flex items-center gap-3">
-                <Send className="text-[#3EA6FF] shrink-0 animate-bounce" size={24} />
-                <div className="text-left space-y-1">
-                  <span className="text-xs font-semibold text-[#3EA6FF] uppercase tracking-wider block">
-                    ⚡ Server Processing & Telegram Delivery
-                  </span>
-                  <p className="text-[11px] text-[#AAAAAA] leading-snug">
-                    Video is rendering on server using native FFmpeg. If &gt; 48MB, it will be automatically chunked and sent to Telegram!
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center py-4">
-                <div className="relative flex items-center justify-center">
-                  <div className="absolute w-20 h-20 border-4 border-cyan-500/10 rounded-full" />
-                  <div className="absolute w-20 h-20 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-base font-bold font-mono text-cyan-400">{Math.round(progress)}%</span>
-                </div>
-              </div>
-
-              <div className="space-y-1 text-center">
-                <span className="text-xs font-semibold text-zinc-300 block">
-                  {language === 'am' ? 'በሰርቨር ላይ በከፍተኛ ፍጥነት እየተቀናበረ ነው...' : 'Cloud Compilation in Progress...'}
-                </span>
-                <p className="text-[10px] text-zinc-500">
-                  {language === 'am' ? 'ድምፅ እና ምስሎችን በማዋሃድ ላይ፤ አውቶማቲክ ወደ ቴሌግራም ይላካል' : 'Blending frames and voiceovers. Automatic chunked delivery to Telegram.'}
-                </p>
-              </div>
-
-              {/* Progress track */}
-              <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-cyan-500 transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+              {/* Visible Live Render Canvas (Acts as both view target and MediaRecorder source) */}
+              <div className="relative rounded-2xl overflow-hidden border border-zinc-800 bg-black flex items-center justify-center min-h-[190px] max-h-[230px]">
+                <canvas
+                  ref={renderCanvasRef}
+                  id="render-canvas-viewport"
+                  className="w-full h-auto max-h-[220px] object-contain mx-auto rounded-lg shadow-2xl"
                 />
+                
+                <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/70 backdrop-blur-md rounded-md text-[10px] font-mono text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  REC • {currentSceneTime.toFixed(1)}s / {totalSceneDuration.toFixed(1)}s
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center text-xs text-zinc-400 font-mono">
+                  <span>Rendering Scene {renderingSceneIndex + 1} of {selectedSceneMode === 'single' ? 1 : scenes.length}</span>
+                  <span className="text-[#3EA6FF] font-bold">{Math.round(renderProgress)}%</span>
+                </div>
+
+                <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                  <div 
+                    className="h-full bg-gradient-to-r from-indigo-500 to-[#3EA6FF] transition-all duration-150"
+                    style={{ width: `${renderProgress}%` }}
+                  />
+                </div>
               </div>
             </div>
 
             {/* Rendering Terminal logs */}
-            <div className="flex-1 bg-[#050505] border border-zinc-900 rounded-xl p-3 max-h-[140px] overflow-y-auto font-mono text-[9px] text-[#8e909a] space-y-1.5" id="render-terminal-logs">
-              <div className="flex items-center gap-1.5 text-zinc-500 mb-2 border-b border-zinc-900 pb-1 shrink-0">
+            <div className="bg-[#050505] border border-zinc-900 rounded-xl p-3 max-h-[110px] overflow-y-auto font-mono text-[9px] text-[#8e909a] space-y-1">
+              <div className="flex items-center gap-1.5 text-zinc-500 mb-1 border-b border-zinc-900 pb-1 shrink-0">
                 <Terminal size={10} />
-                <span>Server Processing Logs</span>
+                <span>Mobile Canvas Render Engine Logs</span>
               </div>
               {renderLogs.map((log, lIdx) => (
                 <div key={lIdx} className="leading-normal">{log}</div>
@@ -697,229 +963,114 @@ export default function RenderModal({
             </div>
 
             <button
-              onClick={() => {
-                cleanupRenderSubprocesses();
-                setRenderStatus('idle');
-              }}
-              className="w-full py-2.5 bg-red-955/10 hover:bg-red-950/40 border border-red-900/30 text-red-400 hover:text-red-200 text-xs font-semibold rounded-xl transition-colors shrink-0 font-mono uppercase tracking-widest"
-              id="render-stop-abort-btn"
+              onClick={cancelCurrentRender}
+              className="w-full py-2.5 bg-rose-950/20 hover:bg-rose-900/40 border border-rose-900/40 text-rose-400 text-xs font-semibold rounded-xl transition-colors shrink-0 font-mono uppercase tracking-widest"
             >
-              Cancel Process
+              Cancel Export
             </button>
           </div>
         )}
 
+        {/* Failed State */}
         {renderStatus === 'failed' && (
-          <div className="space-y-5 py-4 flex-1 flex flex-col justify-between overflow-y-auto max-h-[70vh] pr-1">
-            <div className="space-y-4">
-              
-              {/* ⚠️ Failure Notification Block */}
+          <div className="space-y-4 py-4 flex-1 flex flex-col justify-between">
+            <div className="space-y-3">
               <div className="p-4 bg-red-950/20 border border-red-900/40 rounded-xl flex items-center gap-3">
-                <AlertCircle size={32} className="text-red-400 shrink-0" />
-                <div className="text-left space-y-1">
-                  <h3 className="text-sm font-semibold text-red-400">
-                    {language === 'am' ? '⚠️ ማቀናበሩ አልተሳካም (Server Error)' : '⚠️ Server Render Failed'}
-                  </h3>
-                  <p className="text-xs text-[#AAAAAA] leading-relaxed">
-                    {language === 'am' 
-                      ? 'ቪዲዮውን በሰርቨር ላይ በማቀናበር ላይ ሳለ ስህተት አጋጥሟል። እባክዎን የስህተት ዝርዝሩን ይመልከቱ።' 
-                      : 'An error occurred during backend rendering or video compilation.'}
-                  </p>
+                <AlertCircle size={28} className="text-red-400 shrink-0" />
+                <div>
+                  <h3 className="text-sm font-semibold text-red-400">Export Error</h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">{renderError || 'An error occurred during client-side rendering.'}</p>
                 </div>
               </div>
 
-              {/* Real Detailed Error Message display */}
-              {renderError && (
-                <div className="p-3 bg-red-950/20 border border-red-900/40 rounded-xl space-y-1">
-                  <span className="text-[8.5px] font-mono font-bold text-red-400 uppercase tracking-widest block">
-                    Detailed Error Output:
-                  </span>
-                  <p className="text-[11px] font-mono text-zinc-350 break-words leading-relaxed select-text">
-                    {renderError}
-                  </p>
-                </div>
-              )}
-
-              {/* Rendering Terminal logs */}
-              <div className="space-y-1.5">
-                <span className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase block">
-                  Server Trace Log
-                </span>
-                <div className="bg-[#050505] border border-zinc-900 rounded-xl p-3 max-h-[160px] overflow-y-auto font-mono text-[9px] text-[#8e909a] space-y-1" id="render-failed-terminal-logs">
-                  <div className="flex items-center gap-1.5 text-zinc-500 mb-2 border-b border-zinc-900 pb-1 shrink-0">
-                    <Terminal size={10} />
-                    <span>Compiler Trace Log</span>
-                  </div>
-                  {renderLogs.map((log, lIdx) => (
-                    <div key={lIdx} className="leading-normal">{log}</div>
-                  ))}
-                </div>
+              <div className="bg-[#050505] border border-zinc-900 rounded-xl p-3 max-h-[150px] overflow-y-auto font-mono text-[9px] text-zinc-500 space-y-1">
+                {renderLogs.map((log, lIdx) => (
+                  <div key={lIdx}>{log}</div>
+                ))}
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  cleanupRenderSubprocesses();
-                  setRenderStatus('idle');
-                }}
-                className="flex-1 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-400 hover:text-white transition-colors uppercase font-mono tracking-wider font-bold"
+                onClick={() => setRenderStatus('idle')}
+                className="flex-1 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-400 hover:text-white font-mono uppercase"
               >
-                {language === 'am' ? 'ወደ መድረክ ተመለስ' : 'Go Back'}
+                Go Back
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  initiateCloudRender();
-                }}
-                className="flex-1 py-3 text-white font-extrabold text-xs rounded-xl transition-all font-mono uppercase tracking-widest bg-red-600 hover:bg-red-500 border border-red-400/20 shadow-lg shadow-red-600/10"
+                onClick={startClientSideRender}
+                className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl font-mono uppercase tracking-wider"
               >
-                {language === 'am' ? 'እንደገና ሞክር' : 'Retry Rendering'}
+                Retry
               </button>
             </div>
           </div>
         )}
 
-        {renderStatus === 'completed' && renderedBlobUrl && (
-          <div className="space-y-4 py-1 overflow-y-auto max-h-[70vh] pr-1 scrollbar-thin">
-            
-            {/* 🎉 Server Compilation Completed Banner */}
+        {/* Completed State */}
+        {renderStatus === 'completed' && (
+          <div className="space-y-4 py-2 overflow-y-auto max-h-[72vh] pr-1 scrollbar-thin">
             <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-xl flex items-center gap-3">
-              <CheckCircle2 size={32} className="text-emerald-400 shrink-0" />
-              <div className="text-left space-y-1">
+              <CheckCircle2 size={30} className="text-emerald-400 shrink-0" />
+              <div>
                 <h3 className="text-sm font-semibold text-emerald-400">
-                  {language === 'am' ? '🎉 ተሳክቷል! ቪዲዮው ተጠናቆ ወደ ቴሌግራም ተልኳል።' : '🎉 Server Render Completed & Sent to Telegram!'}
+                  {language === 'am' ? '🎉 ተሳክቷል! ቪዲዮዎችዎ ዝግጁ ናቸው።' : '🎉 Scene Export Completed Successfully!'}
                 </h3>
                 <p className="text-xs text-[#AAAAAA]">
-                  {language === 'am' 
-                    ? 'ቪዲዮው በከፍተኛ ጥራት ተዘጋጅቷል። ከታች ማየት፣ ማውረድ ወይም በቴሌግራም ማግኘት ይችላሉ።' 
-                    : 'The video rendered successfully on server and delivered to Telegram.'}
+                  {language === 'am' ? 'ከታች እያንዳንዱን ክፍል ማየትና ወደ መሳሪያዎ ማውረድ ይችላሉ።' : 'All selected scenes have been processed and encoded directly in your browser.'}
                 </p>
               </div>
             </div>
 
-            {/* Telegram delivery badge */}
-            {telegramStatus.sent ? (
-              <div className="p-3 bg-cyan-950/30 border border-cyan-500/30 rounded-xl flex items-center justify-between text-xs text-cyan-300 font-medium">
-                <div className="flex items-center gap-2">
-                  <Send size={16} className="text-cyan-400" />
-                  <span>
-                    {language === 'am' 
-                      ? '⚡ ቪዲዮው ወደ ቴሌግራምዎ በክፍል (Parts) ተልኳል!' 
-                      : '⚡ Video sent to Telegram sequentially! Check your chat.'}
-                  </span>
-                </div>
-                <Check size={16} className="text-emerald-400" />
-              </div>
-            ) : telegramStatus.error ? (
-              <div className="p-3 bg-amber-950/30 border border-amber-500/30 rounded-xl text-xs text-amber-300 font-medium">
-                ⚠️ {telegramStatus.error}
-              </div>
-            ) : null}
-
-            {/* Real-time Inline Web Video Player Preview */}
-            <div className="relative overflow-hidden rounded-2xl border border-zinc-900 bg-[#040406] p-1.5">
-              <video
-                key={renderedBlobUrl}
-                src={renderedBlobUrl}
-                controls
-                playsInline
-                preload="auto"
-                className="w-full h-auto max-h-[190px] rounded-xl object-contain mx-auto shadow-xl"
-              />
-              <div className="text-center pt-1.5 pb-0.5">
-                <span className="text-[9.5px] text-zinc-500 font-mono tracking-wide">
-                  ✦ {language === 'am' ? 'ቪዲዮውን እዚህ ማጫወት ይችላሉ (Preview Video)' : 'Play & Preview Master Video'} ✦
-                </span>
-              </div>
-            </div>
-
-            {/* 🚀 Download & Direct Link Section */}
-            <div className="p-4 bg-[#08080c] border border-emerald-500/20 rounded-2xl space-y-3">
-              <span className="text-[10px] font-mono tracking-widest font-bold text-emerald-400 uppercase block flex items-center gap-1.5">
-                <Download size={12} className="text-emerald-400" /> Export & Share Options
+            {/* List of Rendered Scenes with Direct Download Buttons */}
+            <div className="space-y-3">
+              <span className="text-[10px] font-mono tracking-widest font-bold text-zinc-400 uppercase block">
+                {language === 'am' ? 'የተዘጋጁ የቪዲዮ ክፍሎች (Ready Scenes)' : 'Rendered Scenes Output'}
               </span>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <a
-                  href={renderedBlobUrl}
-                  download={`yotor_video_${Date.now()}.${downloadExtension}`}
-                  className="py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 uppercase tracking-widest text-center"
-                >
-                  <Download size={16} />
-                  <span>{language === 'am' ? 'ቪዲዮ አውርድ' : 'Download Video'}</span>
-                </a>
+              {renderedResults.map((item) => (
+                <div key={item.sceneId} className="p-3.5 bg-[#121218] border border-zinc-800 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-white font-mono">
+                      Scene {item.sceneIndex + 1}: {item.title}
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-500">
+                      {item.duration.toFixed(1)}s • {item.fileSize}
+                    </span>
+                  </div>
 
-                {shareableDirectUrl && (
-                  <button
-                    type="button"
-                    onClick={() => handleCopyLink(shareableDirectUrl)}
-                    className="py-3 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-750 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
+                  <div className="relative rounded-xl overflow-hidden bg-black max-h-[180px]">
+                    <video
+                      src={item.blobUrl}
+                      controls
+                      playsInline
+                      className="w-full h-auto max-h-[170px] object-contain mx-auto"
+                    />
+                  </div>
+
+                  <a
+                    href={item.blobUrl}
+                    download={`scene_${item.sceneIndex + 1}_${Date.now()}.${item.extension}`}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 uppercase tracking-widest text-center"
                   >
-                    {copiedLink ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-                    <span>{copiedLink ? (language === 'am' ? 'ኮፒ ተደርጓል!' : 'Copied Link!') : (language === 'am' ? 'ሊንክ ኮፒ አድርግ' : 'Copy Direct Link')}</span>
-                  </button>
-                )}
-              </div>
+                    <Download size={16} />
+                    <span>
+                      {language === 'am' ? `ክፍል ${item.sceneIndex + 1} አውርድ (Download Scene ${item.sceneIndex + 1})` : `Download Scene ${item.sceneIndex + 1}`}
+                    </span>
+                  </a>
+                </div>
+              ))}
             </div>
 
-            <div className="p-4 bg-[#050505] rounded-2xl border border-zinc-900 grid grid-cols-2 gap-y-4 gap-x-2 text-xs">
-              <div className="space-y-1">
-                <span className="text-zinc-600 uppercase tracking-widest text-[8px] font-mono block">
-                  {language === 'am' ? 'ጠቅላላ ቆይታ' : 'Total Duration'}
-                </span>
-                <p className="text-zinc-200 font-mono font-bold text-sm">
-                  {statistics.duration.toFixed(1)} {language === 'am' ? 'ሰከንድ' : 'seconds'}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-zinc-600 uppercase tracking-widest text-[8px] font-mono block">
-                  {language === 'am' ? 'የፋይል መጠን' : 'File Size'}
-                </span>
-                <p className="text-zinc-200 font-mono font-bold text-sm">{statistics.fileSize}</p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-zinc-600 uppercase tracking-widest text-[8px] font-mono block">
-                  {language === 'am' ? 'የተቀናበሩ ትዕይንቶች' : 'Scenes'}
-                </span>
-                <p className="text-zinc-200 font-mono font-bold text-sm">
-                  {statistics.scenesProcessed} {language === 'am' ? 'ትዕይንቶች' : 'clips'}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-zinc-600 uppercase tracking-widest text-[8px] font-mono block">
-                  {language === 'am' ? 'የምስል ጥራት' : 'Resolution Target'}
-                </span>
-                <p className="text-zinc-250 font-mono font-bold text-xs uppercase">
-                  {exportQuality === '4k' ? (
-                    projectConfig.aspectRatio === '16:9' ? '3840x2160 (Cinema 4K)' : projectConfig.aspectRatio === '9:16' ? '2160x3840 (Shorts 4K)' : '2160x2160 (Square 4K)'
-                  ) : exportQuality === '1080p' ? (
-                    projectConfig.aspectRatio === '16:9' ? '1920x1080 (Full HD)' : projectConfig.aspectRatio === '9:16' ? '1080x1920 (Shorts)' : '1080x1080 (Square)'
-                  ) : (
-                    projectConfig.aspectRatio === '16:9' ? '1280x720 (Standard HD)' : projectConfig.aspectRatio === '9:16' ? '720x1280 (Shorts)' : '800x800 (Square)'
-                  )}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
+            <div className="pt-2">
               <button
                 type="button"
-                onClick={onClose}
-                className="flex-1 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-450 hover:text-white transition-colors"
+                onClick={() => setRenderStatus('idle')}
+                className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs text-white font-bold uppercase font-mono transition-colors"
               >
-                {language === 'am' ? 'ወደ መድረክ ተመለስ' : 'Back to Compositor'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  initiateCloudRender();
-                }}
-                className={`flex-1 py-2.5 text-white font-bold text-xs rounded-xl transition-all font-mono uppercase tracking-widest bg-indigo-600 hover:bg-indigo-500`}
-                id="retry-baking-btn"
-              >
-                {language === 'am' ? 'እንደገና ሞክር' : 'Retry Server Render'}
+                {language === 'am' ? 'ወደ ስቱዲዮ ተመለስ' : 'Back to Studio Workbench'}
               </button>
             </div>
           </div>
